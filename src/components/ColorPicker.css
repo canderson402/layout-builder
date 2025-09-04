@@ -1,0 +1,265 @@
+.color-picker-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.color-picker-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.color-picker-swatch {
+  position: relative;
+  width: 40px;
+  height: 32px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+.color-picker-checkerboard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(45deg, #ccc 25%, transparent 25%), 
+    linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #ccc 75%), 
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+
+.color-picker-color {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.color-picker-popup {
+  position: fixed;
+  z-index: 10000;
+  background: #2a2a2a;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  width: 240px;
+  pointer-events: auto;
+}
+
+.color-picker-main {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.color-picker-saturation {
+  position: relative;
+  width: 200px;
+  height: 120px;
+  cursor: crosshair;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.color-picker-saturation-white {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to right, #fff, transparent);
+}
+
+.color-picker-saturation-black {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to top, #000, transparent);
+}
+
+.color-picker-cursor {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.color-picker-hue {
+  position: relative;
+  width: 16px;
+  height: 120px;
+  background: linear-gradient(to bottom,
+    #ff0000 0%,
+    #ffff00 16.66%,
+    #00ff00 33.33%,
+    #00ffff 50%,
+    #0000ff 66.66%,
+    #ff00ff 83.33%,
+    #ff0000 100%
+  );
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.color-picker-hue-cursor {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 4px;
+  border: 2px solid #fff;
+  border-radius: 2px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.color-picker-alpha {
+  position: relative;
+  height: 12px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.color-picker-alpha-checkerboard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(45deg, #666 25%, transparent 25%), 
+    linear-gradient(-45deg, #666 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #666 75%), 
+    linear-gradient(-45deg, transparent 75%, #666 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+
+.color-picker-alpha-gradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.color-picker-alpha-cursor {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 4px;
+  border: 2px solid #fff;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.color-picker-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 4px 8px;
+  background: #3a3a3a;
+  border-radius: 4px;
+}
+
+.color-picker-preview-checkerboard {
+  width: 16px;
+  height: 16px;
+  background-image: 
+    linear-gradient(45deg, #666 25%, transparent 25%), 
+    linear-gradient(-45deg, #666 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #666 75%), 
+    linear-gradient(-45deg, transparent 75%, #666 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 0 2px, 2px -2px, -2px 0px;
+  border-radius: 2px;
+}
+
+.color-picker-preview-color {
+  position: absolute;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
+
+.color-picker-preview-text {
+  font-size: 11px;
+  color: #ccc;
+  font-family: monospace;
+  margin-left: 16px;
+}
+
+.color-picker-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.color-picker-button {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #3a3a3a;
+  color: #ccc;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.color-picker-button:hover {
+  background: #4a4a4a;
+  border-color: #666;
+}
+
+.color-picker-button:active {
+  transform: translateY(1px);
+}
+
+.color-picker-button.apply {
+  background: #4a7c59;
+  border-color: #5a8c69;
+}
+
+.color-picker-button.apply:hover {
+  background: #5a8c69;
+  border-color: #6a9c79;
+}
+
+.color-picker-button.cancel {
+  background: #7c4a4a;
+  border-color: #8c5a5a;
+}
+
+.color-picker-button.cancel:hover {
+  background: #8c5a5a;
+  border-color: #9c6a6a;
+}

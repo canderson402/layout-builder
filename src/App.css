@@ -1,0 +1,122 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: #2a2a2a;
+  border-bottom: 1px solid #444;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-left h1 {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.layout-name-input {
+  padding: 8px 12px;
+  background: #3a3a3a;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 16px;
+  width: 200px;
+}
+
+.layout-name-input:focus {
+  outline: 2px solid #4CAF50;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sport-select,
+.device-select {
+  padding: 8px 12px;
+  background: #3a3a3a;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.device-select {
+  min-width: 180px;
+}
+
+.undo-button {
+  padding: 8px 16px;
+  background: #666;
+  color: white;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.undo-button:hover:not(:disabled) {
+  background: #777;
+}
+
+.undo-button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.redo-button {
+  padding: 8px 16px;
+  background: #666;
+  color: white;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.redo-button:hover:not(:disabled) {
+  background: #777;
+}
+
+.redo-button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.export-button {
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.export-button:hover {
+  background: #45a049;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}

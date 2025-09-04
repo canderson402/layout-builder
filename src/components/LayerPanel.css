@@ -1,0 +1,236 @@
+.layer-panel {
+  width: 250px;
+  background: #2a2a2a;
+  border-right: 1px solid #444;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.layer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #444;
+}
+
+.layer-header h3 {
+  font-weight: 600;
+  margin: 0;
+  color: #fff;
+}
+
+.layer-info {
+  font-size: 12px;
+  color: #888;
+}
+
+.layer-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.no-components {
+  text-align: center;
+  color: #888;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.layer-group {
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.layer-group:last-child {
+  border-bottom: none;
+}
+
+.layer-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #333;
+  border-bottom: 1px solid #444;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.layer-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.layer-count {
+  font-size: 11px;
+  color: #888;
+}
+
+.layer-components {
+  background: #2a2a2a;
+}
+
+.layer-component {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.layer-component:hover {
+  background: #3a3a3a;
+}
+
+.layer-component.selected {
+  background: #4CAF50;
+  color: white;
+}
+
+.layer-component.selected:hover {
+  background: #45a049;
+}
+
+.component-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.component-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.component-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+  cursor: pointer;
+}
+
+.component-name-input {
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid #4CAF50;
+  color: inherit;
+  padding: 2px 4px;
+  border-radius: 2px;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+}
+
+.component-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.layer-component:hover .component-actions {
+  opacity: 1;
+}
+
+.layer-component.selected .component-actions {
+  opacity: 1;
+}
+
+.layer-action-btn {
+  padding: 2px 6px;
+  background: #4a4a4a;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+}
+
+.layer-action-btn:hover {
+  background: #5a5a5a;
+  color: #fff;
+}
+
+.layer-component.selected .layer-action-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.layer-component.selected .layer-action-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Visibility controls */
+.layer-visibility-btn,
+.component-visibility-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.layer-visibility-btn:hover,
+.component-visibility-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.layer-visibility-btn.hidden,
+.component-visibility-btn.hidden {
+  opacity: 0.4;
+}
+
+.component-visibility-btn {
+  font-size: 12px;
+  min-width: 20px;
+  height: 20px;
+  margin-right: 4px;
+}
+
+/* Hidden component styling */
+.layer-component.hidden-component {
+  opacity: 0.5;
+}
+
+.layer-component.hidden-component .component-name {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.layer-component.hidden-component .component-icon {
+  opacity: 0.5;
+}

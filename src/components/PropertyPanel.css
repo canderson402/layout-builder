@@ -1,0 +1,466 @@
+.property-panel {
+  width: 300px;
+  background: #2a2a2a;
+  border-left: 1px solid #444;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.property-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #444;
+}
+
+.property-header h3 {
+  font-weight: 600;
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.team-badge {
+  background: #4CAF50;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.property-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.property-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.no-selection {
+  text-align: center;
+  color: #888;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.property-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 16px 0 12px 0;
+  color: #ddd;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.property-section h4:first-child {
+  margin-top: 0;
+}
+
+.property-section h5 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: #ddd;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.property-section h5:first-child {
+  margin-top: 0;
+}
+
+.property-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.property-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.property-field label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.property-field input,
+.property-field select {
+  padding: 6px 8px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.property-field input[type="color"] {
+  padding: 0;
+  background: none;
+  border: 1px solid #555;
+  border-radius: 4px;
+  width: 40px;
+  height: 32px;
+  cursor: pointer;
+}
+
+.property-field input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+}
+
+.property-field input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.property-field input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.property-field input:focus,
+.property-field select:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.property-field input[type="checkbox"] {
+  width: auto;
+  margin-right: 8px;
+}
+
+.property-section select {
+  padding: 8px 10px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-button {
+  padding: 10px 16px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.action-button:hover {
+  background: #4a4a4a;
+}
+
+.corner-radius-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.corner-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.corner-control label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #aaa;
+  text-align: center;
+}
+
+.radius-input-group {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.radius-input-group input {
+  flex: 1;
+}
+
+.radius-quick-button {
+  padding: 3px 6px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+.radius-quick-button:hover {
+  background: #45a049;
+}
+
+.radius-quick-button.minus {
+  background: #f44336;
+}
+
+.radius-quick-button.minus:hover {
+  background: #d32f2f;
+}
+
+.corner-control input {
+  padding: 4px 6px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: center;
+  min-width: 0;
+}
+
+.corner-control input:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.border-sides-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.border-side-control {
+  display: flex;
+  justify-content: center;
+}
+
+.border-toggle {
+  padding: 8px 12px;
+  background: #3a3a3a;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 100%;
+}
+
+.border-toggle:hover {
+  background: #4a4a4a;
+}
+
+.border-toggle.active {
+  background: #4CAF50;
+  color: white;
+  border-color: #4CAF50;
+}
+
+.border-toggle.active:hover {
+  background: #45a049;
+}
+
+.padding-button {
+  padding: 8px 12px;
+  background: #3a3a3a;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 100%;
+}
+
+.padding-button:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+
+/* Layer input specific styling */
+.property-field .radius-input-group input[type="number"] {
+  max-width: 60px;
+  text-align: center;
+}
+
+/* Collapsible section styles */
+.section-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 16px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin: 0;
+}
+
+.section-header:hover {
+  background: transparent;
+}
+
+.section-header:active {
+  background: transparent;
+}
+
+.section-title {
+  flex: 1;
+  text-align: left;
+}
+
+.section-toggle {
+  font-size: 12px;
+  color: #888;
+  transition: color 0.2s;
+}
+
+.section-header:hover .section-toggle {
+  color: #fff;
+}
+
+.section-content {
+  padding: 12px 16px 16px 16px;
+  background: #2a2a2a;
+}
+
+.property-section {
+  margin: 0;
+  border-bottom: 2px solid #444;
+}
+
+.property-section:last-child {
+  border-bottom: none;
+}
+
+.property-section h5 {
+  font-size: 11px;
+  font-weight: 600;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 16px 0 8px 0;
+  padding-top: 12px;
+  border-top: 1px solid #3a3a3a;
+}
+
+/* Image size buttons container */
+.image-size-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Native resolution button */
+.native-resolution-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.native-resolution-btn:hover {
+  background: #45a049;
+}
+
+.native-resolution-btn:active {
+  background: #3d8b40;
+  transform: translateY(1px);
+}
+
+/* Crop to content button */
+.crop-to-content-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.crop-to-content-btn:hover {
+  background: #F57C00;
+}
+
+.crop-to-content-btn:active {
+  background: #E65100;
+  transform: translateY(1px);
+}
+
+/* Color picker adjustments for property panel */
+.property-field .color-picker-container {
+  width: 100%;
+}
+
+.property-field .color-picker-swatch {
+  width: 100%;
+  height: 32px;
+}
+
+.property-field .color-picker-popup {
+  left: auto;
+  right: 0;
+}
+
