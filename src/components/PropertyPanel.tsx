@@ -23,25 +23,15 @@ function PropertyPanel({
   // Skip heavy computation during drag operations to improve performance
   const [isDragging, setIsDragging] = useState(false);
   
-  // DEBUG: Log every render
-  console.log('🔄 PropertyPanel RENDER:', {
-    selectedComponents,
-    isDragging,
-    componentId: selectedComponents[0],
-    timestamp: Date.now()
-  });
-  
   // Create a frozen component reference that doesn't change during drag operations
   const [frozenComponent, setFrozenComponent] = useState<ComponentConfig | null>(null);
   
   // Update frozen component only when not dragging
   useEffect(() => {
-    console.log('🧊 FROZEN COMPONENT EFFECT:', { isDragging, selectedComponents });
     if (!isDragging) {
       const currentComponent = selectedComponents.length === 1 
         ? layout.components.find(c => c.id === selectedComponents[0]) || null
         : null;
-      console.log('🧊 SETTING FROZEN COMPONENT:', currentComponent?.id);
       setFrozenComponent(currentComponent);
     }
   }, [layout.components, selectedComponents, isDragging]);
@@ -56,16 +46,6 @@ function PropertyPanel({
   // Create a stable component ID reference to prevent callback recreation
   const componentId = component?.id;
   
-  // DEBUG: Track component object changes
-  console.log('🎯 COMPONENT OBJECT:', {
-    id: componentId,
-    isDragging,
-    isFrozen: isDragging ? 'USING FROZEN' : 'USING LIVE',
-    fontSize: component?.props?.fontSize,
-    position: component?.position,
-    objectRef: component
-  });
-  
   // Local state for text inputs to prevent focus loss
   const [textInputs, setTextInputs] = useState({
     label: '',
@@ -79,9 +59,7 @@ function PropertyPanel({
   
   // Update local text input state when component changes (but not when editing)
   React.useEffect(() => {
-    console.log('📝 TEXT INPUTS EFFECT:', { componentId: component?.id, editingField });
     if (component && !editingField) {
-      console.log('📝 UPDATING TEXT INPUTS');
       setTextInputs({
         label: component.props?.label || '',
         prefix: component.props?.prefix || '',
@@ -94,11 +72,9 @@ function PropertyPanel({
   // Listen for drag state changes to pause expensive rendering
   React.useEffect(() => {
     const handleDragStart = () => {
-      console.log('🏃 DRAG START');
       setIsDragging(true);
     };
     const handleDragEnd = () => {
-      console.log('🛑 DRAG END');
       setIsDragging(false);
     };
     
@@ -158,7 +134,6 @@ function PropertyPanel({
   }, [componentId]);
 
   const updateFontSize = useCallback((value: number) => {
-    console.log('📝 UPDATE FONT SIZE:', value);
     if (component && componentId) {
       updateComponentWithScrollPreservation(componentId, {
         props: { ...component.props, fontSize: value || 24 }
@@ -177,11 +152,10 @@ function PropertyPanel({
 
   // Simple number input handlers
   const handleNumberChange = useCallback((field: string, value: string) => {
-    console.log('🔢 NUMBER CHANGE:', field, value);
+    // No-op during typing to avoid interrupting user input
   }, []);
 
   const handleNumberBlur = useCallback((field: string, value: string) => {
-    console.log('🔢 NUMBER BLUR:', field, value);
     if (!component || !componentId) return;
 
     const numValue = parseInt(value) || 0;
@@ -211,8 +185,6 @@ function PropertyPanel({
     }
   }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth]);
 
-  console.log('🔢 SIMPLE NUMBER HANDLERS READY');
-
   // Create a static color swatch for drag operations
   const StaticColorSwatch = ({ label, color }: { label: string, color: string }) => (
     <div className="property-field">
@@ -231,12 +203,10 @@ function PropertyPanel({
   
   // Text input handlers - MEMOIZED to prevent creating new functions on every render
   const handleTextInputFocus = useCallback((field: keyof typeof textInputs) => {
-    console.log('📝 TEXT INPUT FOCUS:', field);
     setEditingField(field);
   }, []);
 
   const handleTextInputChange = useCallback((field: keyof typeof textInputs, value: string) => {
-    console.log('📝 TEXT INPUT CHANGE:', field, value);
     setTextInputs(prev => ({ ...prev, [field]: value }));
   }, []);
 

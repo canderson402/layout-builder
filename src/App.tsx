@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useReducer } from 'react';
 import { ComponentConfig, LayoutConfig } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
@@ -104,13 +104,16 @@ const soccerLayout = {
 };
 import './App.css';
 
-// TV screen dimensions (16:9 aspect ratio)
+// TV screen dimensions (16:9 aspect ratio) - Memoized to prevent object recreation
 const DEVICE_PRESETS = {
   '1080p TV (1920x1080)': { width: 1920, height: 1080 },
   '4K TV (3840x2160)': { width: 1920, height: 1080 }, // Scaled down for display
   'HD TV (1280x720)': { width: 1280, height: 720 },
   'Custom 16:9': { width: 1600, height: 900 }
-};
+} as const;
+
+// Pre-computed default dimensions to avoid object recreation
+const DEFAULT_DIMENSIONS = DEVICE_PRESETS['1080p TV (1920x1080)'];
 
 // Undo action types
 type UndoAction = {
@@ -119,16 +122,22 @@ type UndoAction = {
   previousLayout: LayoutConfig;
 };
 
+// Memoized child components to prevent unnecessary re-renders
+const MemoizedCanvas = React.memo(Canvas);
+const MemoizedLayerPanel = React.memo(LayerPanel);
+const MemoizedPropertyPanel = React.memo(PropertyPanel);
+const MemoizedExportModal = React.memo(ExportModal);
+
 function App() {
   const [layout, setLayout] = useState<LayoutConfig>({
     name: 'New Layout',
     sport: 'basketball',
     components: [],
     backgroundColor: '#000000',
-    dimensions: DEVICE_PRESETS['1080p TV (1920x1080)']
+    dimensions: DEFAULT_DIMENSIONS
   });
 
-  console.log('🏠 APP RENDER - layout changed:', layout.components.length, 'components');
+  // Remove expensive console.log - causes performance issues
 
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -138,13 +147,13 @@ function App() {
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
   const [redoHistory, setRedoHistory] = useState<UndoAction[]>([]);
 
-  // Save state for undo
+  // Save state for undo - optimized to avoid deep cloning
   const saveStateForUndo = useCallback((actionType: UndoAction['type'], description: string, currentLayout: LayoutConfig) => {
     setUndoHistory(prev => {
       const newAction: UndoAction = {
         type: actionType,
         description,
-        previousLayout: JSON.parse(JSON.stringify(currentLayout)) // Deep copy
+        previousLayout: structuredClone(currentLayout) // More efficient than JSON parse/stringify
       };
       
       // Keep only last 5 actions
@@ -156,43 +165,53 @@ function App() {
     setRedoHistory([]);
   }, []);
 
-  // Undo function
+  // Undo function - optimized to avoid layout dependency
   const undo = useCallback(() => {
-    if (undoHistory.length === 0) return;
-    
-    const [lastAction, ...remainingHistory] = undoHistory;
-    
-    // Save current state to redo history before undoing
-    const currentRedoAction: UndoAction = {
-      type: lastAction.type,
-      description: lastAction.description,
-      previousLayout: JSON.parse(JSON.stringify(layout)) // Deep copy current state
-    };
-    
-    setRedoHistory(prev => [currentRedoAction, ...prev].slice(0, 5)); // Keep last 5 redo actions
-    setLayout(lastAction.previousLayout);
-    setUndoHistory(remainingHistory);
-    setSelectedComponents([]); // Clear selection after undo
-  }, [undoHistory, layout]);
+    setUndoHistory(prev => {
+      if (prev.length === 0) return prev;
+      
+      const [lastAction, ...remainingHistory] = prev;
+      
+      // Save current state to redo history before undoing
+      setLayout(currentLayout => {
+        const currentRedoAction: UndoAction = {
+          type: lastAction.type,
+          description: lastAction.description,
+          previousLayout: structuredClone(currentLayout) // More efficient cloning
+        };
+        
+        setRedoHistory(prevRedo => [currentRedoAction, ...prevRedo].slice(0, 5)); // Keep last 5 redo actions
+        setSelectedComponents([]); // Clear selection after undo
+        return lastAction.previousLayout;
+      });
+      
+      return remainingHistory;
+    });
+  }, []);
 
-  // Redo function
+  // Redo function - optimized to avoid layout dependency
   const redo = useCallback(() => {
-    if (redoHistory.length === 0) return;
-    
-    const [lastRedoAction, ...remainingRedoHistory] = redoHistory;
-    
-    // Save current state to undo history before redoing
-    const currentUndoAction: UndoAction = {
-      type: lastRedoAction.type,
-      description: lastRedoAction.description,
-      previousLayout: JSON.parse(JSON.stringify(layout)) // Deep copy current state
-    };
-    
-    setUndoHistory(prev => [currentUndoAction, ...prev].slice(0, 5)); // Keep last 5 undo actions
-    setLayout(lastRedoAction.previousLayout);
-    setRedoHistory(remainingRedoHistory);
-    setSelectedComponents([]); // Clear selection after redo
-  }, [redoHistory, layout]);
+    setRedoHistory(prev => {
+      if (prev.length === 0) return prev;
+      
+      const [lastRedoAction, ...remainingRedoHistory] = prev;
+      
+      // Save current state to undo history before redoing
+      setLayout(currentLayout => {
+        const currentUndoAction: UndoAction = {
+          type: lastRedoAction.type,
+          description: lastRedoAction.description,
+          previousLayout: structuredClone(currentLayout) // More efficient cloning
+        };
+        
+        setUndoHistory(prevUndo => [currentUndoAction, ...prevUndo].slice(0, 5)); // Keep last 5 undo actions
+        setSelectedComponents([]); // Clear selection after redo
+        return lastRedoAction.previousLayout;
+      });
+      
+      return remainingRedoHistory;
+    });
+  }, []);
 
   // Listen for canvas undo/redo events
   React.useEffect(() => {
@@ -212,42 +231,43 @@ function App() {
     };
   }, [undo, redo]);
 
-  const addComponent = useCallback((type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => {
-    // Save current state for undo
-    saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, layout);
-    
-    // Calculate next layer value (one higher than the highest existing layer)
-    const highestLayer = layout.components.reduce((max, comp) => 
-      Math.max(max, comp.layer || 0), 0
-    );
-    
-    const newComponent: ComponentConfig = {
-      id: `${type}_${Date.now()}`,
-      type,
-      position: customPosition || { x: 10, y: 10 }, // 10% from left, 10% from top
-      size: customSize || getDefaultSize(type),
-      layer: highestLayer + 1,
-      props: getDefaultProps(type),
-      team: needsTeam(type) ? 'home' : undefined
-    };
+  // Memoize highest layer calculation to avoid recomputing on every render
+  const highestLayer = useMemo(() => 
+    layout.components.reduce((max, comp) => Math.max(max, comp.layer || 0), 0)
+  , [layout.components]);
 
-    setLayout(prev => ({
-      ...prev,
-      components: [...prev.components, newComponent]
-    }));
-  }, [layout, saveStateForUndo]);
+  const addComponent = useCallback((type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => {
+    setLayout(prev => {
+      // Save current state for undo
+      saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
+      
+      const newComponent: ComponentConfig = {
+        id: `${type}_${Date.now()}`,
+        type,
+        position: customPosition || { x: 10, y: 10 }, // 10% from left, 10% from top
+        size: customSize || getDefaultSize(type),
+        layer: highestLayer + 1,
+        props: getDefaultProps(type),
+        team: needsTeam(type) ? 'home' : undefined
+      };
+
+      return {
+        ...prev,
+        components: [...prev.components, newComponent]
+      };
+    });
+  }, [highestLayer, saveStateForUndo]);
 
   // Add a ref to track if we're currently dragging to batch position updates
   const isDraggingRef = React.useRef(false);
   const dragStartStateRef = React.useRef<LayoutConfig | null>(null);
 
   const updateComponent = useCallback((id: string, updates: Partial<ComponentConfig>) => {
-    console.log('🔥 APP UPDATE COMPONENT CALLED:', id, updates, new Error().stack?.split('\n')[2]);
+    // Removed expensive console.log with stack trace - major performance issue
     setLayout(prev => {
       const component = prev.components.find(c => c.id === id);
       if (component) {
         // Check if this is a position/size update (drag/resize operation)
-        const isDragUpdate = Object.keys(updates).some(key => ['position', 'size'].includes(key));
         const isPropertyUpdate = Object.keys(updates).some(key => !['position', 'size'].includes(key));
         
         if (isPropertyUpdate) {
@@ -265,13 +285,17 @@ function App() {
     });
   }, [saveStateForUndo]);
 
-  // Function to start a drag operation (save initial state)
+  // Function to start a drag operation (save initial state) - optimized
   const startDragOperation = useCallback(() => {
     if (!isDraggingRef.current) {
-      dragStartStateRef.current = JSON.parse(JSON.stringify(layout)); // Deep copy
-      isDraggingRef.current = true;
+      // Use functional update to access current layout without dependency
+      setLayout(currentLayout => {
+        dragStartStateRef.current = structuredClone(currentLayout); // More efficient cloning
+        isDraggingRef.current = true;
+        return currentLayout; // Return unchanged
+      });
     }
-  }, [layout]);
+  }, []);
 
   // Function to end a drag operation (save final state for undo)
   const endDragOperation = useCallback((description: string) => {
@@ -283,53 +307,64 @@ function App() {
   }, [saveStateForUndo]);
 
   const deleteComponent = useCallback((id: string) => {
-    const component = layout.components.find(c => c.id === id);
-    if (component) {
-      saveStateForUndo('DELETE_COMPONENT', `Delete ${component.type} component`, layout);
-    }
-    
-    setLayout(prev => ({
-      ...prev,
-      components: prev.components.filter(comp => comp.id !== id)
-    }));
-    setSelectedComponents(prev => prev.filter(compId => compId !== id));
-  }, [layout, saveStateForUndo]);
+    setLayout(prev => {
+      const component = prev.components.find(c => c.id === id);
+      if (component) {
+        saveStateForUndo('DELETE_COMPONENT', `Delete ${component.type} component`, prev);
+      }
+      
+      setSelectedComponents(prevSelected => prevSelected.filter(compId => compId !== id));
+      
+      return {
+        ...prev,
+        components: prev.components.filter(comp => comp.id !== id)
+      };
+    });
+  }, [saveStateForUndo]);
 
   const duplicateComponent = useCallback((id: string) => {
-    const original = layout.components.find(comp => comp.id === id);
-    if (original) {
-      saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, layout);
-      
-      const duplicate: ComponentConfig = {
-        ...original,
-        id: `${original.type}_${Date.now()}`,
-        position: {
-          x: original.position.x + 2, // 2% offset
-          y: original.position.y + 2  // 2% offset
-        }
-      };
-      setLayout(prev => ({
-        ...prev,
-        components: [...prev.components, duplicate]
-      }));
-    }
-  }, [layout, saveStateForUndo]);
+    setLayout(prev => {
+      const original = prev.components.find(comp => comp.id === id);
+      if (original) {
+        saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, prev);
+        
+        const duplicate: ComponentConfig = {
+          ...original,
+          id: `${original.type}_${Date.now()}`,
+          position: {
+            x: original.position.x + 2, // 2% offset
+            y: original.position.y + 2  // 2% offset
+          }
+        };
+        
+        return {
+          ...prev,
+          components: [...prev.components, duplicate]
+        };
+      }
+      return prev;
+    });
+  }, [saveStateForUndo]);
+
+  // Memoize preset mappings to avoid recreation
+  const presetMappings = useMemo(() => ({
+    'basketball': basketballLayout,
+    'volleyball': volleyballLayout,
+    'soccer': soccerLayout
+  }), []);
 
   const loadPresetLayout = useCallback((presetName: string) => {
-    saveStateForUndo('LOAD_PRESET', `Load ${presetName} preset`, layout);
-    
-    const presets = {
-      'basketball': basketballLayout,
-      'volleyball': volleyballLayout,
-      'soccer': soccerLayout
-    };
-    
-    const preset = presets[presetName as keyof typeof presets];
-    if (preset) {
-      setLayout(preset);
-      setSelectedComponents([]);
-    }
-  }, [layout, saveStateForUndo]);
+    setLayout(prev => {
+      saveStateForUndo('LOAD_PRESET', `Load ${presetName} preset`, prev);
+      
+      const preset = presetMappings[presetName as keyof typeof presetMappings];
+      if (preset) {
+        setSelectedComponents([]);
+        return preset;
+      }
+      return prev;
+    });
+  }, [presetMappings, saveStateForUndo]);
 
   return (
     <div className="app">
@@ -389,12 +424,12 @@ function App() {
           </select>
           <select
             value={Object.keys(DEVICE_PRESETS).find(key => 
-              DEVICE_PRESETS[key].width === layout.dimensions.width && 
-              DEVICE_PRESETS[key].height === layout.dimensions.height
+              DEVICE_PRESETS[key as keyof typeof DEVICE_PRESETS].width === layout.dimensions.width && 
+              DEVICE_PRESETS[key as keyof typeof DEVICE_PRESETS].height === layout.dimensions.height
             ) || 'Custom 16:9'}
             onChange={(e) => setLayout(prev => ({ 
               ...prev, 
-              dimensions: DEVICE_PRESETS[e.target.value]
+              dimensions: DEVICE_PRESETS[e.target.value as keyof typeof DEVICE_PRESETS]
             }))}
             className="device-select"
           >
@@ -412,14 +447,14 @@ function App() {
       </header>
 
       <div className="app-body">
-        <LayerPanel
+        <MemoizedLayerPanel
           layout={layout}
           selectedComponents={selectedComponents}
           onSelectComponents={setSelectedComponents}
           onUpdateComponent={updateComponent}
         />
         
-        <Canvas
+        <MemoizedCanvas
           layout={layout}
           selectedComponents={selectedComponents}
           onSelectComponents={setSelectedComponents}
@@ -433,11 +468,16 @@ function App() {
           onEndDragOperation={endDragOperation}
         />
         
-      
+        <MemoizedPropertyPanel
+          layout={layout}
+          selectedComponents={selectedComponents}
+          onUpdateComponent={updateComponent}
+          onUpdateLayout={setLayout}
+        />
       </div>
 
       {showExportModal && (
-        <ExportModal
+        <MemoizedExportModal
           layout={layout}
           onClose={() => setShowExportModal(false)}
         />
