@@ -46,28 +46,18 @@ function PropertyPanel({
   // Create a stable component ID reference to prevent callback recreation
   const componentId = component?.id;
   
-  // Local state for text inputs to prevent focus loss
-  const [textInputs, setTextInputs] = useState({
-    label: '',
-    prefix: '',
-    suffix: '',
-    imageUrl: ''
-  });
+  // Simple text input handlers - similar to number inputs
+  const handleTextChange = useCallback(() => {
+    // No-op during typing to avoid interrupting user input
+  }, []);
   
-  // Track if we're currently editing to prevent external updates
-  const [editingField, setEditingField] = useState<string | null>(null);
-  
-  // Update local text input state when component changes (but not when editing)
-  React.useEffect(() => {
-    if (component && !editingField) {
-      setTextInputs({
-        label: component.props?.label || '',
-        prefix: component.props?.prefix || '',
-        suffix: component.props?.suffix || '',
-        imageUrl: component.props?.imageUrl || ''
-      });
-    }
-  }, [component?.id, editingField]); // Remove specific prop dependencies to prevent updates during typing
+  const handleTextBlur = useCallback((field: string, value: string) => {
+    if (!component || !componentId) return;
+    
+    onUpdateComponent(componentId, {
+      props: { ...component.props, [field]: value }
+    });
+  }, [component, componentId, onUpdateComponent]);
   
   // Listen for drag state changes to pause expensive rendering
   React.useEffect(() => {
@@ -201,75 +191,6 @@ function PropertyPanel({
     </div>
   );
   
-  // Text input handlers - MEMOIZED to prevent creating new functions on every render
-  const handleTextInputFocus = useCallback((field: keyof typeof textInputs) => {
-    setEditingField(field);
-  }, []);
-
-  const handleTextInputChange = useCallback((field: keyof typeof textInputs, value: string) => {
-    setTextInputs(prev => ({ ...prev, [field]: value }));
-  }, []);
-
-  const handleTextInputSubmit = useCallback((field: keyof typeof textInputs) => {
-    if (component && componentId) {
-      // Use functional update to get current textInputs without dependency
-      setTextInputs(currentInputs => {
-        // Use onUpdateComponent directly to avoid circular dependency
-        onUpdateComponent(componentId, {
-          props: { ...component.props, [field]: currentInputs[field] }
-        });
-        return currentInputs; // Don't actually change state
-      });
-    }
-    setEditingField(null);
-  }, [componentId, component, onUpdateComponent]);
-
-  const handleTextInputBlur = useCallback((field: keyof typeof textInputs) => {
-    handleTextInputSubmit(field);
-  }, [handleTextInputSubmit]);
-
-  const handleTextInputKeyDown = useCallback((field: keyof typeof textInputs, e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleTextInputSubmit(field);
-      (e.target as HTMLInputElement).blur();
-    } else if (e.key === 'Escape') {
-      setTextInputs(prev => ({ 
-        ...prev, 
-        [field]: component?.props?.[field] || '' 
-      }));
-      setEditingField(null);
-      (e.target as HTMLInputElement).blur();
-    }
-  }, [handleTextInputSubmit, component]);
-
-  // Pre-bound handlers for each field to avoid inline functions
-  const labelHandlers = useMemo(() => ({
-    onFocus: () => handleTextInputFocus('label'),
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => handleTextInputChange('label', e.target.value),
-    onBlur: () => handleTextInputBlur('label'),
-    onKeyDown: (e: React.KeyboardEvent) => handleTextInputKeyDown('label', e)
-  }), [handleTextInputFocus, handleTextInputChange, handleTextInputBlur, handleTextInputKeyDown]);
-
-  const prefixHandlers = useMemo(() => ({
-    onFocus: () => handleTextInputFocus('prefix'),
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => handleTextInputChange('prefix', e.target.value),
-    onBlur: () => handleTextInputBlur('prefix'),
-    onKeyDown: (e: React.KeyboardEvent) => handleTextInputKeyDown('prefix', e)
-  }), [handleTextInputFocus, handleTextInputChange, handleTextInputBlur, handleTextInputKeyDown]);
-
-  const suffixHandlers = useMemo(() => ({
-    onFocus: () => handleTextInputFocus('suffix'),
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => handleTextInputChange('suffix', e.target.value),
-    onBlur: () => handleTextInputBlur('suffix'),
-    onKeyDown: (e: React.KeyboardEvent) => handleTextInputKeyDown('suffix', e)
-  }), [handleTextInputFocus, handleTextInputChange, handleTextInputBlur, handleTextInputKeyDown]);
-
-  const imageUrlHandlers = useMemo(() => ({
-    onFocus: () => handleTextInputFocus('imageUrl'),
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => handleTextInputChange('imageUrl', e.target.value),
-    onBlur: () => handleTextInputBlur('imageUrl'),
-    onKeyDown: (e: React.KeyboardEvent) => handleTextInputKeyDown('imageUrl', e)
-  }), [handleTextInputFocus, handleTextInputChange, handleTextInputBlur, handleTextInputKeyDown]);
   
   // Ref to maintain scroll position
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -535,9 +456,38 @@ function PropertyPanel({
               <label>Label</label>
               <input
                 type="text"
-                value={textInputs.label}
-                {...labelHandlers}
+                key={`${component?.id}-label`}
+                defaultValue={component.props?.label || ''}
+                onChange={handleTextChange}
+                onBlur={(e) => handleTextBlur('label', e.target.value)}
               />
+            </div>
+          )}
+
+          {component.type === 'custom' && (
+            <div className="property-grid">
+              <div className="property-field">
+                <label>Prefix</label>
+                <input
+                  type="text"
+                  key={`${component?.id}-prefix`}
+                  defaultValue={component?.props?.prefix || ''}
+                  placeholder="e.g., '$', '#'"
+                  onChange={handleTextChange}
+                  onBlur={(e) => handleTextBlur('prefix', e.target.value)}
+                />
+              </div>
+              <div className="property-field">
+                <label>Suffix</label>
+                <input
+                  type="text"
+                  key={`${component?.id}-suffix`}
+                  defaultValue={component?.props?.suffix || ''}
+                  placeholder="e.g., 'pts', '%'"
+                  onChange={handleTextChange}
+                  onBlur={(e) => handleTextBlur('suffix', e.target.value)}
+                />
+              </div>
             </div>
           )}
 
@@ -628,26 +578,6 @@ function PropertyPanel({
                 </select>
               </div>
 
-              <div className="property-grid">
-                <div className="property-field">
-                  <label>Prefix</label>
-                  <input
-                    type="text"
-                    value={textInputs.prefix}
-                    placeholder="e.g., '$', '#'"
-                    {...prefixHandlers}
-                  />
-                </div>
-                <div className="property-field">
-                  <label>Suffix</label>
-                  <input
-                    type="text"
-                    value={textInputs.suffix}
-                    placeholder="e.g., 'pts', '%'"
-                    {...suffixHandlers}
-                  />
-                </div>
-              </div>
 
               <div className="property-grid">
                 {isDragging ? (
@@ -724,9 +654,11 @@ function PropertyPanel({
                   <label>Image URL</label>
                   <input
                     type="url"
-                    value={textInputs.imageUrl}
+                    key={`${component?.id}-imageUrl`}
+                    defaultValue={component?.props?.imageUrl || ''}
                     placeholder="https://example.com/image.jpg"
-                    {...imageUrlHandlers}
+                    onChange={handleTextChange}
+                    onBlur={(e) => handleTextBlur('imageUrl', e.target.value)}
                   />
                 </div>
               )}
