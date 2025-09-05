@@ -25,11 +25,11 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
   components: [
 ${layout.components.map((comp, index) => {
   const propsStr = JSON.stringify(comp.props, null, 2).replace(/^/gm, '      ').trim();
-  return `    // ${comp.type}${comp.team ? ` (${comp.team})` : ''}
+  return `    // ${comp.type}${comp.team ? ` (${comp.team})` : ''} - Layer ${comp.layer || 0}
     {
       type: '${comp.type}',${comp.team ? `\n      team: '${comp.team}',` : ''}
       position: { x: ${comp.position.x}, y: ${comp.position.y} }, // ${comp.position.x}% x, ${comp.position.y}% y
-      size: { width: ${comp.size.width}, height: ${comp.size.height} }, // ${comp.size.width}% width, ${comp.size.height}% height
+      size: { width: ${comp.size.width}, height: ${comp.size.height} }, // ${comp.size.width}% width, ${comp.size.height}% height${comp.layer !== undefined ? `,\n      layer: ${comp.layer},` : ','}
       props: ${propsStr},
       id: '${comp.id || comp.type + '_' + (comp.team || 'main')}'
     }${index < layout.components.length - 1 ? ',' : ''}`;

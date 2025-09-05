@@ -39,11 +39,11 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
     const { type, position, size, props, team, id } = config;
     
     // Convert percentage-based positioning to pixels for display
-    // Use canvas width as reference for both dimensions to maintain consistent pixel scaling
+    // Use correct dimensions: width for X/width, height for Y/height
     const left = percentToPixels(position.x, layout.dimensions.width);
-    const top = percentToPixels(position.y, layout.dimensions.width);
+    const top = percentToPixels(position.y, layout.dimensions.height);
     const width = percentToPixels(size.width, layout.dimensions.width);
-    const height = percentToPixels(size.height, layout.dimensions.width);
+    const height = percentToPixels(size.height, layout.dimensions.height);
     
     const baseStyle = {
       position: 'absolute' as const,

@@ -1,0 +1,307 @@
+.preset-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.preset-modal {
+  background: #2a2a2a;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 700px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.preset-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #404040;
+}
+
+.preset-modal-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 24px;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 28px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-button:hover {
+  background: #404040;
+  color: #fff;
+}
+
+.preset-tabs {
+  display: flex;
+  border-bottom: 1px solid #404040;
+}
+
+.preset-tabs .tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.preset-tabs .tab:hover {
+  background: #353535;
+  color: #fff;
+}
+
+.preset-tabs .tab.active {
+  color: #4CAF50;
+  background: #353535;
+  border-bottom-color: #4CAF50;
+}
+
+.preset-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* Save Preset Section */
+.save-preset-section .input-group {
+  margin-bottom: 24px;
+}
+
+.save-preset-section .input-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #fff;
+  font-weight: 500;
+}
+
+.preset-name-input {
+  width: 100%;
+  padding: 12px;
+  background: #404040;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.preset-name-input:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.layout-preview {
+  background: #333;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.layout-preview h4 {
+  margin: 0 0 12px 0;
+  color: #fff;
+}
+
+.layout-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.layout-info div {
+  color: #ccc;
+}
+
+.layout-info strong {
+  color: #fff;
+}
+
+/* Load Preset Section */
+.preset-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.export-button, .import-button {
+  padding: 8px 16px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.export-button:hover, .import-button:hover {
+  background: #45a049;
+}
+
+.export-button:disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
+.import-button {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.no-presets {
+  text-align: center;
+  color: #ccc;
+  padding: 40px 20px;
+}
+
+.no-presets p {
+  margin: 8px 0;
+}
+
+.presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preset-item {
+  background: #333;
+  border-radius: 6px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #404040;
+  transition: border-color 0.2s;
+}
+
+.preset-item:hover {
+  border-color: #555;
+}
+
+.preset-info h4 {
+  margin: 0 0 8px 0;
+  color: #fff;
+  font-size: 16px;
+}
+
+.preset-details {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.preset-details span {
+  color: #ccc;
+  font-size: 14px;
+  background: #404040;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.preset-date {
+  color: #888;
+  font-size: 12px;
+}
+
+.preset-item .preset-actions {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.load-button, .delete-button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.load-button {
+  background: #4CAF50;
+  color: white;
+}
+
+.load-button:hover {
+  background: #45a049;
+}
+
+.delete-button {
+  background: #f44336;
+  color: white;
+}
+
+.delete-button:hover {
+  background: #da190b;
+}
+
+/* Modal Actions */
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #404040;
+}
+
+.save-button, .cancel-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.save-button {
+  background: #4CAF50;
+  color: white;
+}
+
+.save-button:hover {
+  background: #45a049;
+}
+
+.cancel-button {
+  background: #666;
+  color: white;
+}
+
+.cancel-button:hover {
+  background: #555;
+}

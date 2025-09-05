@@ -203,7 +203,7 @@ export default function Canvas({
       
       // Convert component position from percentage to pixels for drag offset calculation
       const componentPixelX = percentToPixels(component.position.x, layout.dimensions.width);
-      const componentPixelY = percentToPixels(component.position.y, layout.dimensions.width);
+      const componentPixelY = percentToPixels(component.position.y, layout.dimensions.height);
       
       setDragOffset({
         x: canvasX - componentPixelX,
@@ -286,13 +286,13 @@ export default function Canvas({
       const rawX = canvasX - dragOffset.x;
       const rawY = canvasY - dragOffset.y;
       const originalX = percentToPixels(draggedComponent.position.x, layoutRef.current.dimensions.width);
-      const originalY = percentToPixels(draggedComponent.position.y, layoutRef.current.dimensions.width);
+      const originalY = percentToPixels(draggedComponent.position.y, layoutRef.current.dimensions.height);
       const rawDeltaX = rawX - originalX;
       const rawDeltaY = rawY - originalY;
 
       // Convert current component size from percentages to pixels
       let compWidth = percentToPixels(draggedComponent.size.width, layoutRef.current.dimensions.width);
-      let compHeight = percentToPixels(draggedComponent.size.height, layoutRef.current.dimensions.width);
+      let compHeight = percentToPixels(draggedComponent.size.height, layoutRef.current.dimensions.height);
       
       // Only snap component size to grid if grid is enabled
       if (showGrid) {
@@ -311,9 +311,9 @@ export default function Canvas({
 
       // Convert back to percentages for storage
       const newPercentX = pixelsToPercent(newX, layoutRef.current.dimensions.width);
-      const newPercentY = pixelsToPercent(newY, layoutRef.current.dimensions.width);
+      const newPercentY = pixelsToPercent(newY, layoutRef.current.dimensions.height);
       const newPercentWidth = pixelsToPercent(compWidth, layoutRef.current.dimensions.width);
-      const newPercentHeight = pixelsToPercent(compHeight, layoutRef.current.dimensions.width);
+      const newPercentHeight = pixelsToPercent(compHeight, layoutRef.current.dimensions.height);
 
       // Update the primary dragged component
       onUpdateComponent(draggedComponent.id, {
@@ -328,14 +328,14 @@ export default function Canvas({
             const component = layoutRef.current.components.find(c => c.id === componentId);
             if (component) {
               const currentX = percentToPixels(component.position.x, layoutRef.current.dimensions.width);
-              const currentY = percentToPixels(component.position.y, layoutRef.current.dimensions.width);
+              const currentY = percentToPixels(component.position.y, layoutRef.current.dimensions.height);
               
               // Move by the raw mouse movement delta (not the snapped delta)
               let movedX = currentX + rawDeltaX;
               let movedY = currentY + rawDeltaY;
               
               const movedPercentX = pixelsToPercent(movedX, layoutRef.current.dimensions.width);
-              const movedPercentY = pixelsToPercent(movedY, layoutRef.current.dimensions.width);
+              const movedPercentY = pixelsToPercent(movedY, layoutRef.current.dimensions.height);
               
               onUpdateComponent(componentId, {
                 position: { x: movedPercentX, y: movedPercentY }
@@ -431,10 +431,11 @@ export default function Canvas({
     if (!draggedComponent) return;
 
     // Convert current component values from percentages to pixels
+    // Use correct dimensions: width for X/width, height for Y/height (matches rendering)
     const currentLeft = percentToPixels(draggedComponent.position.x, layout.dimensions.width);
-    const currentTop = percentToPixels(draggedComponent.position.y, layout.dimensions.width);
+    const currentTop = percentToPixels(draggedComponent.position.y, layout.dimensions.height);
     const currentWidth = percentToPixels(draggedComponent.size.width, layout.dimensions.width);
-    const currentHeight = percentToPixels(draggedComponent.size.height, layout.dimensions.width);
+    const currentHeight = percentToPixels(draggedComponent.size.height, layout.dimensions.height);
 
     let newWidth = currentWidth;
     let newHeight = currentHeight;
@@ -477,10 +478,11 @@ export default function Canvas({
     // No boundary constraints - allow resizing off grid
 
     // Convert back to percentages for storage
+    // Use correct dimensions: width for X/width, height for Y/height (matches rendering)
     const newPercentX = pixelsToPercent(newX, layout.dimensions.width);
-    const newPercentY = pixelsToPercent(newY, layout.dimensions.width);
+    const newPercentY = pixelsToPercent(newY, layout.dimensions.height);
     const newPercentWidth = pixelsToPercent(newWidth, layout.dimensions.width);
-    const newPercentHeight = pixelsToPercent(newHeight, layout.dimensions.width);
+    const newPercentHeight = pixelsToPercent(newHeight, layout.dimensions.height);
 
     onUpdateComponent(draggedComponent.id, {
       position: { x: newPercentX, y: newPercentY },
@@ -511,13 +513,13 @@ export default function Canvas({
       .filter(component => component.visible !== false) // Only check visible components
       .find(component => {
         const left = percentToPixels(component.position.x, layout.dimensions.width);
-        const top = percentToPixels(component.position.y, layout.dimensions.width);
+        const top = percentToPixels(component.position.y, layout.dimensions.height);
         const width = percentToPixels(component.size.width, layout.dimensions.width);
-        const height = percentToPixels(component.size.height, layout.dimensions.width);
+        const height = percentToPixels(component.size.height, layout.dimensions.height);
         
         return x >= left && x <= left + width && y >= top && y <= top + height;
       });
-  }, [layout.components, layout.dimensions.width]);
+  }, [layout.components, layout.dimensions.width, layout.dimensions.height]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // Handle middle mouse button for panning
@@ -648,11 +650,11 @@ export default function Canvas({
 
   const getComponentHandle = (component: ComponentConfig) => {
     // Convert percentage-based positioning to pixels for display
-    // Use canvas width as reference for both width and height to maintain aspect ratios
+    // Use correct dimensions: width for X/width, height for Y/height (matches WebPreview)
     const left = percentToPixels(component.position.x, layout.dimensions.width);
-    const top = percentToPixels(component.position.y, layout.dimensions.width);
+    const top = percentToPixels(component.position.y, layout.dimensions.height);
     const width = percentToPixels(component.size.width, layout.dimensions.width);
-    const height = percentToPixels(component.size.height, layout.dimensions.width); // Use width reference for height too
+    const height = percentToPixels(component.size.height, layout.dimensions.height);
 
     // Calculate border widths
     const borderTopWidth = component.props?.borderTopWidth !== undefined ? component.props.borderTopWidth : (component.props?.borderWidth || 0);

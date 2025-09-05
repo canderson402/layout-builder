@@ -101,7 +101,7 @@
   cursor: not-allowed;
 }
 
-.export-button {
+.export-button, .preset-button {
   padding: 10px 20px;
   background: #4CAF50;
   color: white;
@@ -109,10 +109,20 @@
   font-weight: bold;
   font-size: 14px;
   transition: background-color 0.2s;
+  cursor: pointer;
+  border: none;
 }
 
-.export-button:hover {
+.export-button:hover, .preset-button:hover {
   background: #45a049;
+}
+
+.preset-button {
+  background: #2196F3;
+}
+
+.preset-button:hover {
+  background: #1976D2;
 }
 
 .app-body {

@@ -4,6 +4,7 @@ import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
+import PresetModal from './components/PresetModal';
 // Import from shared layouts - for now we'll define them locally until we can resolve the path
 const basketballLayout = {
   name: 'Basketball Standard',
@@ -127,6 +128,7 @@ const MemoizedCanvas = React.memo(Canvas);
 const MemoizedLayerPanel = React.memo(LayerPanel);
 const MemoizedPropertyPanel = React.memo(PropertyPanel);
 const MemoizedExportModal = React.memo(ExportModal);
+const MemoizedPresetModal = React.memo(PresetModal);
 
 function App() {
   const [layout, setLayout] = useState<LayoutConfig>({
@@ -141,6 +143,7 @@ function App() {
 
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showPresetModal, setShowPresetModal] = useState(false);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
   
   // Undo/Redo system - keep track of last 5 actions each
@@ -366,6 +369,14 @@ function App() {
     });
   }, [presetMappings, saveStateForUndo]);
 
+  const loadCustomPreset = useCallback((customLayout: LayoutConfig) => {
+    setLayout(prev => {
+      saveStateForUndo('LOAD_PRESET', `Load custom preset "${customLayout.name}"`, prev);
+      setSelectedComponents([]);
+      return customLayout;
+    });
+  }, [saveStateForUndo]);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -410,6 +421,12 @@ function App() {
             <option value="volleyball">Volleyball Standard</option>
             <option value="soccer">Soccer Standard</option>
           </select>
+          <button
+            onClick={() => setShowPresetModal(true)}
+            className="preset-button"
+          >
+            Manage Presets
+          </button>
           <select
             value={layout.sport}
             onChange={(e) => setLayout(prev => ({ ...prev, sport: e.target.value }))}
@@ -480,6 +497,14 @@ function App() {
         <MemoizedExportModal
           layout={layout}
           onClose={() => setShowExportModal(false)}
+        />
+      )}
+
+      {showPresetModal && (
+        <MemoizedPresetModal
+          layout={layout}
+          onClose={() => setShowPresetModal(false)}
+          onLoadPreset={loadCustomPreset}
         />
       )}
     </div>
