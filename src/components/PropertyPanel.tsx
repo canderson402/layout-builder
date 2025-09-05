@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
-import { getAvailableImages, getImagePath } from '../utils/imageUtils';
+import { loadAvailableImages, getAvailableImages, getImagePath } from '../utils/imageUtils';
 import ColorPicker from './ColorPicker';
 import './PropertyPanel.css';
 
@@ -23,6 +23,10 @@ function PropertyPanel({
   // Skip heavy computation during drag operations to improve performance
   const [isDragging, setIsDragging] = useState(false);
   
+  // State for dynamically loaded images
+  const [availableImages, setAvailableImages] = useState<string[]>([]);
+  const [imagesLoading, setImagesLoading] = useState(true);
+  
   // Create a frozen component reference that doesn't change during drag operations
   const [frozenComponent, setFrozenComponent] = useState<ComponentConfig | null>(null);
   
@@ -35,6 +39,24 @@ function PropertyPanel({
       setFrozenComponent(currentComponent);
     }
   }, [layout.components, selectedComponents, isDragging]);
+
+  // Load available images on mount
+  useEffect(() => {
+    const loadImages = async () => {
+      try {
+        const images = await loadAvailableImages();
+        setAvailableImages(images);
+      } catch (error) {
+        console.error('Failed to load images:', error);
+        // Fallback to static list
+        setAvailableImages(['universal-stub.png', 'face.png', 'clock-node.png']);
+      } finally {
+        setImagesLoading(false);
+      }
+    };
+
+    loadImages();
+  }, []);
   
   // Use frozen component during drag, live component otherwise
   const component = isDragging ? frozenComponent : (
@@ -83,39 +105,35 @@ function PropertyPanel({
   // Memoized update functions with minimal dependencies
   const updateX = useCallback((pixelValue: number) => {
     if (component && componentId) {
-      const percentValue = (pixelValue / layout.dimensions.width) * 100;
       updateComponentWithScrollPreservation(componentId, {
-        position: { ...component.position, x: percentValue }
+        position: { ...component.position, x: pixelValue }
       });
     }
-  }, [componentId, component, layout.dimensions.width]);
+  }, [componentId, component]);
 
   const updateY = useCallback((pixelValue: number) => {
     if (component && componentId) {
-      const percentValue = (pixelValue / layout.dimensions.height) * 100;
       updateComponentWithScrollPreservation(componentId, {
-        position: { ...component.position, y: percentValue }
+        position: { ...component.position, y: pixelValue }
       });
     }
-  }, [componentId, component, layout.dimensions.height]);
+  }, [componentId, component]);
 
   const updateWidth = useCallback((pixelValue: number) => {
     if (component && componentId) {
-      const percentValue = (pixelValue / layout.dimensions.width) * 100;
       updateComponentWithScrollPreservation(componentId, {
-        size: { ...component.size, width: percentValue }
+        size: { ...component.size, width: pixelValue }
       });
     }
-  }, [componentId, component, layout.dimensions.width]);
+  }, [componentId, component]);
 
   const updateHeight = useCallback((pixelValue: number) => {
     if (component && componentId) {
-      const percentValue = (pixelValue / layout.dimensions.height) * 100;
       updateComponentWithScrollPreservation(componentId, {
-        size: { ...component.size, height: percentValue }
+        size: { ...component.size, height: pixelValue }
       });
     }
-  }, [componentId, component, layout.dimensions.height]);
+  }, [componentId, component]);
 
   const updateLayer = useCallback((value: number) => {
     if (component && componentId) {
@@ -326,7 +344,7 @@ function PropertyPanel({
               <label>X (px)</label>
               <input
                 type="number"
-                defaultValue={component ? Math.round((component.position.x / 100) * layout.dimensions.width) : 0}
+                defaultValue={component ? Math.round(component.position.x) : 0}
                 onChange={(e) => handleNumberChange('x', e.target.value)}
                 onBlur={(e) => handleNumberBlur('x', e.target.value)}
               />
@@ -335,7 +353,7 @@ function PropertyPanel({
               <label>Y (px)</label>
               <input
                 type="number"
-                defaultValue={component ? Math.round((component.position.y / 100) * layout.dimensions.height) : 0}
+                defaultValue={component ? Math.round(component.position.y) : 0}
                 onChange={(e) => handleNumberChange('y', e.target.value)}
                 onBlur={(e) => handleNumberBlur('y', e.target.value)}
               />
@@ -344,7 +362,7 @@ function PropertyPanel({
               <label>Width (px)</label>
               <input
                 type="number"
-                defaultValue={component ? Math.round((component.size.width / 100) * layout.dimensions.width) : 0}
+                defaultValue={component ? Math.round(component.size.width) : 0}
                 onChange={(e) => handleNumberChange('width', e.target.value)}
                 onBlur={(e) => handleNumberBlur('width', e.target.value)}
               />
@@ -353,7 +371,7 @@ function PropertyPanel({
               <label>Height (px)</label>
               <input
                 type="number"
-                defaultValue={component ? Math.round((component.size.height / 100) * layout.dimensions.height) : 0}
+                defaultValue={component ? Math.round(component.size.height) : 0}
                 onChange={(e) => handleNumberChange('height', e.target.value)}
                 onBlur={(e) => handleNumberBlur('height', e.target.value)}
               />
@@ -639,13 +657,42 @@ function PropertyPanel({
                       props: { ...component.props, imagePath: e.target.value }
                     })}
                   >
-                    <option value="">Select an image...</option>
-                    {getAvailableImages().map((filename) => (
+                    <option value="">
+                      {imagesLoading ? 'Loading images...' : 'Select an image...'}
+                    </option>
+                    {availableImages.map((filename) => (
                       <option key={filename} value={getImagePath(filename)}>
                         {filename}
                       </option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setImagesLoading(true);
+                      try {
+                        const images = await loadAvailableImages();
+                        setAvailableImages(images);
+                      } catch (error) {
+                        console.error('Failed to reload images:', error);
+                      } finally {
+                        setImagesLoading(false);
+                      }
+                    }}
+                    disabled={imagesLoading}
+                    style={{
+                      marginTop: '8px',
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                      backgroundColor: '#333',
+                      color: 'white',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      cursor: imagesLoading ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {imagesLoading ? 'Loading...' : 'Refresh Images'}
+                  </button>
                 </div>
               )}
 
@@ -660,6 +707,118 @@ function PropertyPanel({
                     onChange={handleTextChange}
                     onBlur={(e) => handleTextBlur('imageUrl', e.target.value)}
                   />
+                </div>
+              )}
+
+              {component.props?.imageSource !== 'none' && (
+                <div className="property-field">
+                  <label>Image Anchor Point</label>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(3, 1fr)', 
+                    gap: '4px',
+                    marginTop: '4px' 
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log('Setting imageAnchor to top-left');
+                        updateComponentWithScrollPreservation(component.id, {
+                          props: { ...component.props, imageAnchor: 'top-left' }
+                        });
+                      }}
+                      style={{
+                        padding: '8px 4px',
+                        fontSize: '10px',
+                        backgroundColor: component.props?.imageAnchor === 'top-left' ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                      title="Top Left"
+                    >
+                      ⬉
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateComponentWithScrollPreservation(component.id, {
+                        props: { ...component.props, imageAnchor: 'top-right' }
+                      })}
+                      style={{
+                        padding: '8px 4px',
+                        fontSize: '10px',
+                        backgroundColor: component.props?.imageAnchor === 'top-right' ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                      title="Top Right"
+                    >
+                      ⬈
+                    </button>
+                    <div></div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log('Setting imageAnchor to center');
+                        updateComponentWithScrollPreservation(component.id, {
+                          props: { ...component.props, imageAnchor: 'center' }
+                        });
+                      }}
+                      style={{
+                        padding: '8px 4px',
+                        fontSize: '10px',
+                        backgroundColor: component.props?.imageAnchor === 'center' || !component.props?.imageAnchor ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        gridColumn: '2'
+                      }}
+                      title="Center"
+                    >
+                      ⬛
+                    </button>
+                    <div></div>
+                    <button
+                      type="button"
+                      onClick={() => updateComponentWithScrollPreservation(component.id, {
+                        props: { ...component.props, imageAnchor: 'bottom-left' }
+                      })}
+                      style={{
+                        padding: '8px 4px',
+                        fontSize: '10px',
+                        backgroundColor: component.props?.imageAnchor === 'bottom-left' ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                      title="Bottom Left"
+                    >
+                      ⬋
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateComponentWithScrollPreservation(component.id, {
+                        props: { ...component.props, imageAnchor: 'bottom-right' }
+                      })}
+                      style={{
+                        padding: '8px 4px',
+                        fontSize: '10px',
+                        backgroundColor: component.props?.imageAnchor === 'bottom-right' ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                      title="Bottom Right"
+                    >
+                      ⬊
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -679,14 +838,11 @@ function PropertyPanel({
                           // Create a temporary image to get dimensions
                           const img = new Image();
                           img.onload = () => {
-                            // Convert pixels to percentage based on layout dimensions
-                            const widthPercent = (img.naturalWidth / layout.dimensions.width) * 100;
-                            const heightPercent = (img.naturalHeight / layout.dimensions.height) * 100;
-                            
+                            // Use native image dimensions directly in pixels
                             updateComponentWithScrollPreservation(component.id, {
                               size: { 
-                                width: widthPercent,
-                                height: heightPercent
+                                width: img.naturalWidth,
+                                height: img.naturalHeight
                               },
                               props: {
                                 ...component.props,
@@ -727,23 +883,17 @@ function PropertyPanel({
                             const imageHeight = img.naturalHeight;
                             const imageAspectRatio = imageWidth / imageHeight;
                             
-                            // Get current component dimensions in pixels
-                            const currentWidthPx = (component.size.width / 100) * layout.dimensions.width;
-                            // const currentHeightPx = (component.size.height / 100) * layout.dimensions.height; // Removed unused variable
+                            // Component dimensions are already in pixels
+                            const currentWidthPx = component.size.width;
                             
-                            // Since we use object-fit: fill, we want to maintain the image's aspect ratio
-                            // while keeping a reasonable size. We'll use the current width and calculate height.
+                            // Maintain the image's aspect ratio
                             const displayWidth = currentWidthPx;
                             const displayHeight = currentWidthPx / imageAspectRatio;
                             
-                            // Convert back to percentages
-                            const widthPercent = (displayWidth / layout.dimensions.width) * 100;
-                            const heightPercent = (displayHeight / layout.dimensions.height) * 100;
-                            
                             updateComponentWithScrollPreservation(component.id, {
                               size: { 
-                                width: Math.min(widthPercent, 100),
-                                height: Math.min(heightPercent, 100)
+                                width: Math.min(displayWidth, layout.dimensions.width),
+                                height: Math.min(displayHeight, layout.dimensions.height)
                               },
                               props: {
                                 ...component.props,

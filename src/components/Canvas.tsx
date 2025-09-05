@@ -17,13 +17,10 @@ interface CanvasProps {
   onEndDragOperation: (description: string) => void;
 }
 
-// Default grid settings
-const DEFAULT_GRID_SIZE = 10;
-const SNAP_THRESHOLD = 5; // Reduced threshold to prevent snapping between grid lines
-
-// Helper functions to convert between percentages and pixels (moved to top)
-const percentToPixels = (percent: number, total: number) => (percent / 100) * total;
-const pixelsToPercent = (pixels: number, total: number) => (pixels / total) * 100;
+// Pixel-based grid settings
+const DEFAULT_GRID_SIZE = 20;
+const SNAP_THRESHOLD = 5;
+const GRID_SIZE_OPTIONS = [5, 10, 20]; // Grid spacing options in pixels
 
 export default function Canvas({
   layout,
@@ -50,7 +47,7 @@ export default function Canvas({
   const [resizeHandle, setResizeHandle] = useState<string>('');
   const [showGrid, setShowGrid] = useState(true);
   const [showHalfwayLines, setShowHalfwayLines] = useState(false);
-  const [gridSizeIndex, setGridSizeIndex] = useState(0); // Track which size (small/medium/large) is selected
+  const [gridSizeIndex, setGridSizeIndex] = useState(2); // Default to 20px grid (index 2)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [zoomLevel, setZoomLevel] = useState(50); // Zoom level from 10% to 200%
   const [isCreating, setIsCreating] = useState(false);
@@ -83,84 +80,46 @@ export default function Canvas({
     }
   }, [selectedComponents, onSelectComponents]);
 
-  // Perfect grid calculation function for 100% coverage
-  const calculatePerfectGrid = useCallback((width: number, height: number, targetCellSize: number) => {
-    const cols = Math.floor(width / targetCellSize);
-    const rows = Math.floor(height / targetCellSize);
-    
-    const cellWidth = width / cols;
-    const cellHeight = height / rows;
-    
-    return {
-      cols,
-      rows,
-      cellWidth,
-      cellHeight,
-      totalCells: cols * rows,
-      actualWidth: cols * cellWidth,
-      actualHeight: rows * cellHeight
-    };
-  }, []);
+  // Simple pixel-based grid
+  const gridSize = GRID_SIZE_OPTIONS[gridSizeIndex] || DEFAULT_GRID_SIZE;
 
-  // Calculate smart grid sizes that scale with zoom level
-  const calculateSmartGridSizes = useCallback(() => {
-    const width = layout.dimensions.width;   // e.g., 1920
-    const height = layout.dimensions.height; // e.g., 1080
-    
-    // Base target sizes that will be adjusted by zoom
-    const BASE_TARGET_SIZES = {
-      small: 30,    // Base ~30px cells
-      medium: 50,   // Base ~50px cells  
-      large: 80     // Base ~80px cells
-    };
-    
-    // Scale target sizes based on zoom level for finer control when zoomed in
-    // At 100% zoom: use base sizes
-    // At 200% zoom: use smaller grid cells for more precision
-    // At 50% zoom: use larger grid cells to avoid clutter
-    const zoomFactor = Math.max(0.3, Math.min(2.0, 100 / zoomLevel)); // Inverse relationship
-    
-    const TARGET_SIZES = {
-      small: BASE_TARGET_SIZES.small * zoomFactor,
-      medium: BASE_TARGET_SIZES.medium * zoomFactor,  
-      large: BASE_TARGET_SIZES.large * zoomFactor
-    };
-    
-    // Calculate perfect grids for each size
-    const smallGrid = calculatePerfectGrid(width, height, TARGET_SIZES.small);
-    const mediumGrid = calculatePerfectGrid(width, height, TARGET_SIZES.medium);
-    const largeGrid = calculatePerfectGrid(width, height, TARGET_SIZES.large);
-    
-    return [
-      smallGrid.cellWidth,   // Perfect cell width for small grid
-      mediumGrid.cellWidth,  // Perfect cell width for medium grid
-      largeGrid.cellWidth    // Perfect cell width for large grid
-    ];
-  }, [layout.dimensions.width, layout.dimensions.height, calculatePerfectGrid, zoomLevel]);
+  const decreaseGridSize = () => {
+    const prevIndex = gridSizeIndex > 0 ? gridSizeIndex - 1 : GRID_SIZE_OPTIONS.length - 1;
+    setGridSizeIndex(prevIndex);
+  };
 
-  const GRID_SIZES = calculateSmartGridSizes();
-  const GRID_SIZE_LABELS = ['Small', 'Medium', 'Large'];
-  const gridSize = GRID_SIZES[gridSizeIndex] || GRID_SIZES[0];
-
-  const toggleGridSize = () => {
-    const nextIndex = (gridSizeIndex + 1) % GRID_SIZES.length;
+  const increaseGridSize = () => {
+    const nextIndex = (gridSizeIndex + 1) % GRID_SIZE_OPTIONS.length;
     setGridSizeIndex(nextIndex);
   };
 
-  const getCurrentGridLabel = () => {
-    return GRID_SIZE_LABELS[gridSizeIndex] || 'Small';
-  };
-
-  // Perfect grid snapping functions
-  const snapToGrid = useCallback((value: number) => {
-    const BASE_TARGET_SIZES = { small: 30, medium: 50, large: 80 };
-    const zoomFactor = Math.max(0.3, Math.min(2.0, 100 / zoomLevel)); // Same zoom factor as grid calculation
-    const adjustedTargetSize = BASE_TARGET_SIZES[['small', 'medium', 'large'][gridSizeIndex] as keyof typeof BASE_TARGET_SIZES] * zoomFactor;
-    const perfectGrid = calculatePerfectGrid(layout.dimensions.width, layout.dimensions.height, adjustedTargetSize);
+  // Center-aware pixel-based grid snapping
+  const snapToGrid = useCallback((value: number, dimension: 'width' | 'height') => {
+    const layoutDimension = dimension === 'width' ? layout.dimensions.width : layout.dimensions.height;
+    const center = layoutDimension / 2;
     
-    // Snap to perfect grid cells
-    return Math.round(value / perfectGrid.cellWidth) * perfectGrid.cellWidth;
-  }, [gridSizeIndex, layout.dimensions.width, layout.dimensions.height, calculatePerfectGrid, zoomLevel]);
+    // Always allow snapping to the exact center
+    if (Math.abs(value - center) <= SNAP_THRESHOLD) {
+      return center;
+    }
+    
+    // For larger grid sizes, add center as an additional snap point
+    if (gridSize >= 50) {
+      const regularSnap = Math.round(value / gridSize) * gridSize;
+      const distToRegular = Math.abs(value - regularSnap);
+      const distToCenter = Math.abs(value - center);
+      
+      // If we're closer to center than regular grid, snap to center
+      if (distToCenter < distToRegular && distToCenter <= SNAP_THRESHOLD) {
+        return center;
+      }
+      
+      return regularSnap;
+    }
+    
+    // For smaller grid sizes, use regular snapping
+    return Math.round(value / gridSize) * gridSize;
+  }, [gridSize, layout.dimensions.width, layout.dimensions.height]);
 
   const shouldSnap = useCallback((value: number, snappedValue: number) => {
     return Math.abs(value - snappedValue) <= SNAP_THRESHOLD;
@@ -201,13 +160,10 @@ export default function Canvas({
       // Component is already selected - prepare for potential drag
       setDraggedComponent(component);
       
-      // Convert component position from percentage to pixels for drag offset calculation
-      const componentPixelX = percentToPixels(component.position.x, layout.dimensions.width);
-      const componentPixelY = percentToPixels(component.position.y, layout.dimensions.height);
-      
+      // Component position is already in pixels
       setDragOffset({
-        x: canvasX - componentPixelX,
-        y: canvasY - componentPixelY
+        x: canvasX - component.position.x,
+        y: canvasY - component.position.y
       });
     } else {
       // Click on unselected component - prepare for potential creation
@@ -285,19 +241,19 @@ export default function Canvas({
       // Calculate raw mouse movement delta (before any snapping)
       const rawX = canvasX - dragOffset.x;
       const rawY = canvasY - dragOffset.y;
-      const originalX = percentToPixels(draggedComponent.position.x, layoutRef.current.dimensions.width);
-      const originalY = percentToPixels(draggedComponent.position.y, layoutRef.current.dimensions.height);
+      const originalX = draggedComponent.position.x;
+      const originalY = draggedComponent.position.y;
       const rawDeltaX = rawX - originalX;
       const rawDeltaY = rawY - originalY;
 
-      // Convert current component size from percentages to pixels
-      let compWidth = percentToPixels(draggedComponent.size.width, layoutRef.current.dimensions.width);
-      let compHeight = percentToPixels(draggedComponent.size.height, layoutRef.current.dimensions.height);
+      // Component size is already in pixels
+      let compWidth = draggedComponent.size.width;
+      let compHeight = draggedComponent.size.height;
       
       // Only snap component size to grid if grid is enabled
       if (showGrid) {
-        compWidth = snapToGrid(compWidth);
-        compHeight = snapToGrid(compHeight);
+        compWidth = snapToGrid(compWidth, 'width');
+        compHeight = snapToGrid(compHeight, 'height');
       }
       
       let newX = rawX;
@@ -305,20 +261,14 @@ export default function Canvas({
 
       // Only snap to grid if grid is enabled
       if (showGrid) {
-        newX = snapToGrid(newX);
-        newY = snapToGrid(newY);
+        newX = snapToGrid(newX, 'width');
+        newY = snapToGrid(newY, 'height');
       }
 
-      // Convert back to percentages for storage
-      const newPercentX = pixelsToPercent(newX, layoutRef.current.dimensions.width);
-      const newPercentY = pixelsToPercent(newY, layoutRef.current.dimensions.height);
-      const newPercentWidth = pixelsToPercent(compWidth, layoutRef.current.dimensions.width);
-      const newPercentHeight = pixelsToPercent(compHeight, layoutRef.current.dimensions.height);
-
-      // Update the primary dragged component
+      // Update the primary dragged component with pixel values
       onUpdateComponent(draggedComponent.id, {
-        position: { x: newPercentX, y: newPercentY },
-        size: { width: newPercentWidth, height: newPercentHeight }
+        position: { x: newX, y: newY },
+        size: { width: compWidth, height: compHeight }
       });
 
       // If multiple components are selected, move them all by the raw mouse delta
@@ -327,18 +277,16 @@ export default function Canvas({
           if (componentId !== draggedComponent.id) {
             const component = layoutRef.current.components.find(c => c.id === componentId);
             if (component) {
-              const currentX = percentToPixels(component.position.x, layoutRef.current.dimensions.width);
-              const currentY = percentToPixels(component.position.y, layoutRef.current.dimensions.height);
+              // Position is already in pixels
+              const currentX = component.position.x;
+              const currentY = component.position.y;
               
               // Move by the raw mouse movement delta (not the snapped delta)
               let movedX = currentX + rawDeltaX;
               let movedY = currentY + rawDeltaY;
               
-              const movedPercentX = pixelsToPercent(movedX, layoutRef.current.dimensions.width);
-              const movedPercentY = pixelsToPercent(movedY, layoutRef.current.dimensions.height);
-              
               onUpdateComponent(componentId, {
-                position: { x: movedPercentX, y: movedPercentY }
+                position: { x: movedX, y: movedY }
               });
             }
           }
@@ -378,19 +326,19 @@ export default function Canvas({
         const top = Math.min(createStart.y, createEnd.y);
         
         // Only snap to grid if grid is enabled
-        const snappedLeft = showGrid ? snapToGrid(left) : left;
-        const snappedTop = showGrid ? snapToGrid(top) : top;
-        const snappedWidth = showGrid ? snapToGrid(width) : width;
-        const snappedHeight = showGrid ? snapToGrid(height) : height;
+        const snappedLeft = showGrid ? snapToGrid(left, 'width') : left;
+        const snappedTop = showGrid ? snapToGrid(top, 'height') : top;
+        const snappedWidth = showGrid ? snapToGrid(width, 'width') : width;
+        const snappedHeight = showGrid ? snapToGrid(height, 'height') : height;
         
-        // Create component with the dragged dimensions
+        // Create component with the dragged dimensions in pixels
         const position = {
-          x: pixelsToPercent(snappedLeft, layout.dimensions.width),
-          y: pixelsToPercent(snappedTop, layout.dimensions.width)
+          x: snappedLeft,
+          y: snappedTop
         };
         const size = {
-          width: pixelsToPercent(snappedWidth, layout.dimensions.width),
-          height: pixelsToPercent(snappedHeight, layout.dimensions.width)
+          width: snappedWidth,
+          height: snappedHeight
         };
         
         onAddComponent('custom', position, size);
@@ -424,18 +372,17 @@ export default function Canvas({
     setResizeHandle('');
     setDraggedComponent(null);
     setHasDraggedFarEnough(false);
-  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, pixelsToPercent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning]);
+  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning]);
 
   // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number) => {
     if (!draggedComponent) return;
 
-    // Convert current component values from percentages to pixels
-    // Use correct dimensions: width for X/width, height for Y/height (matches rendering)
-    const currentLeft = percentToPixels(draggedComponent.position.x, layout.dimensions.width);
-    const currentTop = percentToPixels(draggedComponent.position.y, layout.dimensions.height);
-    const currentWidth = percentToPixels(draggedComponent.size.width, layout.dimensions.width);
-    const currentHeight = percentToPixels(draggedComponent.size.height, layout.dimensions.height);
+    // Component values are already in pixels
+    const currentLeft = draggedComponent.position.x;
+    const currentTop = draggedComponent.position.y;
+    const currentWidth = draggedComponent.size.width;
+    const currentHeight = draggedComponent.size.height;
 
     let newWidth = currentWidth;
     let newHeight = currentHeight;
@@ -469,26 +416,20 @@ export default function Canvas({
 
     // Only snap to grid during resizing if grid is enabled
     if (showGrid) {
-      newWidth = snapToGrid(newWidth);
-      newHeight = snapToGrid(newHeight);
-      newX = snapToGrid(newX);
-      newY = snapToGrid(newY);
+      newWidth = snapToGrid(newWidth, 'width');
+      newHeight = snapToGrid(newHeight, 'height');
+      newX = snapToGrid(newX, 'width');
+      newY = snapToGrid(newY, 'height');
     }
 
     // No boundary constraints - allow resizing off grid
 
-    // Convert back to percentages for storage
-    // Use correct dimensions: width for X/width, height for Y/height (matches rendering)
-    const newPercentX = pixelsToPercent(newX, layout.dimensions.width);
-    const newPercentY = pixelsToPercent(newY, layout.dimensions.height);
-    const newPercentWidth = pixelsToPercent(newWidth, layout.dimensions.width);
-    const newPercentHeight = pixelsToPercent(newHeight, layout.dimensions.height);
-
+    // Store pixel values directly
     onUpdateComponent(draggedComponent.id, {
-      position: { x: newPercentX, y: newPercentY },
-      size: { width: newPercentWidth, height: newPercentHeight }
+      position: { x: newX, y: newY },
+      size: { width: newWidth, height: newHeight }
     });
-  }, [draggedComponent, resizeHandle, snapToGrid, shouldSnap, onUpdateComponent, layout.dimensions, showGrid]);
+  }, [draggedComponent, resizeHandle, snapToGrid, shouldSnap, onUpdateComponent, showGrid]);
 
   // Handle resize handle mouse down
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, handle: string, component: ComponentConfig) => {
@@ -512,14 +453,15 @@ export default function Canvas({
     return layout.components
       .filter(component => component.visible !== false) // Only check visible components
       .find(component => {
-        const left = percentToPixels(component.position.x, layout.dimensions.width);
-        const top = percentToPixels(component.position.y, layout.dimensions.height);
-        const width = percentToPixels(component.size.width, layout.dimensions.width);
-        const height = percentToPixels(component.size.height, layout.dimensions.height);
+        // Positions and sizes are already in pixels
+        const left = component.position.x;
+        const top = component.position.y;
+        const width = component.size.width;
+        const height = component.size.height;
         
         return x >= left && x <= left + width && y >= top && y <= top + height;
       });
-  }, [layout.components, layout.dimensions.width, layout.dimensions.height]);
+  }, [layout.components]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // Handle middle mouse button for panning
@@ -649,12 +591,11 @@ export default function Canvas({
   }, [handleKeyDown]);
 
   const getComponentHandle = (component: ComponentConfig) => {
-    // Convert percentage-based positioning to pixels for display
-    // Use correct dimensions: width for X/width, height for Y/height (matches WebPreview)
-    const left = percentToPixels(component.position.x, layout.dimensions.width);
-    const top = percentToPixels(component.position.y, layout.dimensions.height);
-    const width = percentToPixels(component.size.width, layout.dimensions.width);
-    const height = percentToPixels(component.size.height, layout.dimensions.height);
+    // Positions and sizes are already in pixels
+    const left = component.position.x;
+    const top = component.position.y;
+    const width = component.size.width;
+    const height = component.size.height;
 
     // Calculate border widths
     const borderTopWidth = component.props?.borderTopWidth !== undefined ? component.props.borderTopWidth : (component.props?.borderWidth || 0);
@@ -782,14 +723,38 @@ export default function Canvas({
           >
             ╬ Center
           </button>
-          <button 
-            className="grid-button"
-            onClick={toggleGridSize}
-            title={`Grid Size: ${getCurrentGridLabel()} (${gridSize}px) - Click to cycle`}
-          >
-            ⊞ {getCurrentGridLabel()}
-          </button>
-          <span className="grid-info">{Math.round(gridSize)}px</span>
+          <div className="grid-size-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button 
+              className="grid-button"
+              onClick={decreaseGridSize}
+              title="Decrease grid size"
+              style={{ padding: '4px 8px', fontSize: '12px' }}
+            >
+              −
+            </button>
+            <span 
+              className="grid-info" 
+              style={{ 
+                minWidth: '40px', 
+                textAlign: 'center', 
+                fontSize: '12px',
+                padding: '4px 8px',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                borderRadius: '4px'
+              }}
+              title="Current grid size"
+            >
+              {gridSize}px
+            </span>
+            <button 
+              className="grid-button"
+              onClick={increaseGridSize}
+              title="Increase grid size"
+              style={{ padding: '4px 8px', fontSize: '12px' }}
+            >
+              +
+            </button>
+          </div>
         </div>
         <div className="canvas-zoom">
           <button 
@@ -861,49 +826,67 @@ export default function Canvas({
             height: layout.dimensions.height,
           }}
         >
-          {/* Perfect Grid overlay with 100% coverage */}
-          {showGrid && (() => {
-            const BASE_TARGET_SIZES = { small: 30, medium: 50, large: 80 };
-            const zoomFactor = Math.max(0.3, Math.min(2.0, 100 / zoomLevel));
-            const adjustedTargetSize = BASE_TARGET_SIZES[['small', 'medium', 'large'][gridSizeIndex] as keyof typeof BASE_TARGET_SIZES] * zoomFactor;
-            const perfectGrid = calculatePerfectGrid(layout.dimensions.width, layout.dimensions.height, adjustedTargetSize);
-            
-            return (
-              <svg
-                width={layout.dimensions.width}
-                height={layout.dimensions.height}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  pointerEvents: 'none',
-                  zIndex: 1
-                }}
-              >
-                <defs>
-                  <pattern
-                    id="perfect-grid"
-                    width={perfectGrid.cellWidth}
-                    height={perfectGrid.cellHeight}
-                    patternUnits="userSpaceOnUse"
-                  >
-                    <rect 
-                      width={perfectGrid.cellWidth} 
-                      height={perfectGrid.cellHeight} 
-                      fill="none" 
-                      stroke="rgba(255, 255, 255, 0.3)" 
-                      strokeWidth="1"
-                    />
-                  </pattern>
-                </defs>
-                <rect 
-                  width={layout.dimensions.width} 
-                  height={layout.dimensions.height} 
-                  fill="url(#perfect-grid)" 
-                />
-              </svg>
-            );
-          })()}
+          {/* Simple pixel-based grid overlay */}
+          {showGrid && (
+            <svg
+              width={layout.dimensions.width}
+              height={layout.dimensions.height}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                pointerEvents: 'none',
+                zIndex: 1
+              }}
+            >
+              <defs>
+                <pattern
+                  id="pixel-grid"
+                  width={gridSize}
+                  height={gridSize}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <rect 
+                    width={gridSize} 
+                    height={gridSize} 
+                    fill="none" 
+                    stroke="rgba(255, 255, 255, 0.3)" 
+                    strokeWidth="1"
+                  />
+                </pattern>
+              </defs>
+              <rect 
+                width={layout.dimensions.width} 
+                height={layout.dimensions.height} 
+                fill="url(#pixel-grid)" 
+              />
+              {/* Add center snap lines for large grid sizes */}
+              {gridSize >= 50 && (
+                <>
+                  {/* Vertical center line */}
+                  <line
+                    x1={layout.dimensions.width / 2}
+                    y1={0}
+                    x2={layout.dimensions.width / 2}
+                    y2={layout.dimensions.height}
+                    stroke="rgba(255, 255, 0, 0.6)"
+                    strokeWidth="2"
+                    strokeDasharray="5,5"
+                  />
+                  {/* Horizontal center line */}
+                  <line
+                    x1={0}
+                    y1={layout.dimensions.height / 2}
+                    x2={layout.dimensions.width}
+                    y2={layout.dimensions.height / 2}
+                    stroke="rgba(255, 255, 0, 0.6)"
+                    strokeWidth="2"
+                    strokeDasharray="5,5"
+                  />
+                </>
+              )}
+            </svg>
+          )}
 
           {/* Center lines positioned at exact middle of canvas */}
           {showHalfwayLines && (

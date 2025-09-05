@@ -32,18 +32,14 @@ const mockGameData = {
 };
 
 function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPreviewProps) {
-  // Helper function to convert percentage to pixels
-  const percentToPixels = (percent: number, total: number) => (percent / 100) * total;
-
   const renderComponent = (config: ComponentConfig, index: number) => {
     const { type, position, size, props, team, id } = config;
     
-    // Convert percentage-based positioning to pixels for display
-    // Use correct dimensions: width for X/width, height for Y/height
-    const left = percentToPixels(position.x, layout.dimensions.width);
-    const top = percentToPixels(position.y, layout.dimensions.height);
-    const width = percentToPixels(size.width, layout.dimensions.width);
-    const height = percentToPixels(size.height, layout.dimensions.height);
+    // Positions and sizes are already in pixels
+    const left = position.x;
+    const top = position.y;
+    const width = size.width;
+    const height = size.height;
     
     const baseStyle = {
       position: 'absolute' as const,
@@ -64,6 +60,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
       borderBottomLeftRadius: props?.borderBottomLeftRadius || 0,
       borderBottomRightRadius: props?.borderBottomRightRadius || 0,
       overflow: 'hidden' as const,  // Ensure background respects border radius
+      zIndex: config.layer || 0,  // Ensure proper layering
     };
 
     const TouchableWrapper = ({ children }: { children: React.ReactNode }) => (
@@ -155,6 +152,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               imagePath={props.imagePath}
               imageUrl={props.imageUrl}
               objectFit={props.objectFit || 'fill'}
+              imageAnchor={props.imageAnchor || 'center'}
             />
           </TouchableWrapper>
         );

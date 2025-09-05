@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 
 interface CustomDataDisplayProps {
@@ -22,6 +22,7 @@ interface CustomDataDisplayProps {
   imagePath?: string;
   imageUrl?: string;
   objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
+  imageAnchor?: 'top-left' | 'top-right' | 'center' | 'bottom-left' | 'bottom-right';
 }
 
 // Mock data for preview in layout builder
@@ -71,8 +72,12 @@ export default function CustomDataDisplay({
   imageSource = 'none',
   imagePath,
   imageUrl,
-  objectFit = 'fill'
+  objectFit = 'fill',
+  imageAnchor = 'center'
 }: CustomDataDisplayProps) {
+  
+  // State to track image natural dimensions for native resolution mode
+  const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
   
   // Helper function to get nested data using dot notation
   const getNestedData = (obj: any, path: string) => {
@@ -128,20 +133,59 @@ export default function CustomDataDisplay({
   };
 
   const imageSourceObj = getImageSource();
+  
+  // For native resolution mode, use image dimensions only if they match the current width/height
+  // If user manually resizes, respect their manual size to allow anchor positioning
+  const shouldAutoSize = objectFit === 'none' && imageDimensions && 
+    (width === imageDimensions.width && height === imageDimensions.height);
+  const containerWidth = shouldAutoSize ? imageDimensions.width : width;
+  const containerHeight = shouldAutoSize ? imageDimensions.height : height;
+
+  // Convert anchor point to flexbox alignment
+  const getAnchorAlignment = () => {
+    switch (imageAnchor) {
+      case 'top-left':
+        return { justifyContent: 'flex-start', alignItems: 'flex-start' };
+      case 'top-right':
+        return { justifyContent: 'flex-start', alignItems: 'flex-end' };
+      case 'bottom-left':
+        return { justifyContent: 'flex-end', alignItems: 'flex-start' };
+      case 'bottom-right':
+        return { justifyContent: 'flex-end', alignItems: 'flex-end' };
+      case 'center':
+      default:
+        return { justifyContent: 'center', alignItems: 'center' };
+    }
+  };
+
+  const anchorAlignment = getAnchorAlignment();
+  
+  // Debug logging
+  if (imageSourceObj) {
+    console.log('CustomDataDisplay anchor debug:', {
+      imageAnchor,
+      anchorAlignment,
+      objectFit,
+      containerWidth,
+      containerHeight
+    });
+  }
 
   return (
     <View style={{
-      width,
-      height,
+      width: containerWidth,
+      height: containerHeight,
       backgroundColor,
-      justifyContent: 'center',
-      alignItems: 'center',
+      justifyContent: imageSourceObj ? anchorAlignment.justifyContent : 'center',
+      alignItems: imageSourceObj ? anchorAlignment.alignItems : 'center',
       borderWidth: imageSourceObj ? 0 : 1, // No border for images
       borderColor: 'rgba(255, 255, 255, 0.3)',
-      paddingTop: paddingTop + (imageSourceObj ? 0 : 4), // No extra padding for images
-      paddingRight: paddingRight + (imageSourceObj ? 0 : 4),
-      paddingBottom: paddingBottom + (imageSourceObj ? 0 : 4),
-      paddingLeft: paddingLeft + (imageSourceObj ? 0 : 4),
+      // For images: use zero padding so image fills container exactly
+      // For text: add padding for readability
+      paddingTop: imageSourceObj ? 0 : (paddingTop + 4),
+      paddingRight: imageSourceObj ? 0 : (paddingRight + 4),
+      paddingBottom: imageSourceObj ? 0 : (paddingBottom + 4),
+      paddingLeft: imageSourceObj ? 0 : (paddingLeft + 4),
       position: 'relative',
       flexDirection: 'column'
     }}>
@@ -170,16 +214,27 @@ export default function CustomDataDisplay({
             src={imageSourceObj.uri}
             alt={label || 'Custom image'}
             style={{
-              flex: 1,
-              width: objectFit === 'none' ? 'auto' : '100%',
-              height: objectFit === 'none' ? 'auto' : '100%',
-              objectFit: objectFit, // Use the passed objectFit value
-              display: 'block',
-              ...(objectFit === 'none' && {
-                // For native resolution, center the image in the container
+              ...(objectFit === 'none' ? {
+                // Native resolution - let container anchor determine positioning
                 maxWidth: '100%',
-                maxHeight: '100%'
-              })
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto'
+              } : {
+                // Fill modes - image fills container completely
+                width: '100%',
+                height: '100%'
+              }),
+              objectFit: objectFit,
+              display: 'block'
+            }}
+            onLoad={(e) => {
+              // Capture image natural dimensions for native resolution mode
+              const img = e.target as HTMLImageElement;
+              setImageDimensions({
+                width: img.naturalWidth,
+                height: img.naturalHeight
+              });
             }}
             onError={(e) => {
               console.error('Failed to load image:', imageSourceObj.uri);

@@ -16,7 +16,7 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
       return JSON.stringify(layout, null, 2);
     }
 
-    // Generate React Native layout with percentage values (same as layout builder uses)
+    // Generate React Native layout with pixel values
     return `export const ${layout.sport}Layout = {
   name: '${layout.name}',
   sport: '${layout.sport}',
@@ -28,8 +28,8 @@ ${layout.components.map((comp, index) => {
   return `    // ${comp.type}${comp.team ? ` (${comp.team})` : ''} - Layer ${comp.layer || 0}
     {
       type: '${comp.type}',${comp.team ? `\n      team: '${comp.team}',` : ''}
-      position: { x: ${comp.position.x}, y: ${comp.position.y} }, // ${comp.position.x}% x, ${comp.position.y}% y
-      size: { width: ${comp.size.width}, height: ${comp.size.height} }, // ${comp.size.width}% width, ${comp.size.height}% height${comp.layer !== undefined ? `,\n      layer: ${comp.layer},` : ','}
+      position: { x: ${comp.position.x}, y: ${comp.position.y} }, // ${comp.position.x}px x, ${comp.position.y}px y
+      size: { width: ${comp.size.width}, height: ${comp.size.height} }, // ${comp.size.width}px width, ${comp.size.height}px height${comp.layer !== undefined ? `,\n      layer: ${comp.layer},` : ','}
       props: ${propsStr},
       id: '${comp.id || comp.type + '_' + (comp.team || 'main')}'
     }${index < layout.components.length - 1 ? ',' : ''}`;

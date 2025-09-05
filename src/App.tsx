@@ -15,39 +15,39 @@ const basketballLayout = {
     {
       type: 'teamName' as const,
       team: 'home' as const,
-      position: { x: 5, y: 5 },
-      size: { width: 40, height: 15 },
+      position: { x: 96, y: 54 },        // 96px x, 54px y
+      size: { width: 768, height: 162 },  // 768px width, 162px height
       props: { fontSize: 24 },
       id: 'home_team_name'
     },
     {
       type: 'teamName' as const,
       team: 'away' as const,
-      position: { x: 55, y: 5 },
-      size: { width: 40, height: 15 },
+      position: { x: 1056, y: 54 },       // 1056px x, 54px y
+      size: { width: 768, height: 162 },  // 768px width, 162px height
       props: { fontSize: 24 },
       id: 'away_team_name'
     },
     {
       type: 'score' as const,
       team: 'home' as const,
-      position: { x: 10, y: 25 },
-      size: { width: 30, height: 25 },
+      position: { x: 192, y: 270 },       // 192px x, 270px y
+      size: { width: 576, height: 270 },  // 576px width, 270px height
       props: { fontSize: 48 },
       id: 'home_score'
     },
     {
       type: 'score' as const,
       team: 'away' as const,
-      position: { x: 60, y: 25 },
-      size: { width: 30, height: 25 },
+      position: { x: 1152, y: 270 },      // 1152px x, 270px y
+      size: { width: 576, height: 270 },  // 576px width, 270px height
       props: { fontSize: 48 },
       id: 'away_score'
     },
     {
       type: 'clock' as const,
-      position: { x: 35, y: 60 },
-      size: { width: 30, height: 20 },
+      position: { x: 672, y: 648 },       // 672px x, 648px y
+      size: { width: 576, height: 216 },  // 576px width, 216px height
       props: { fontSize: 32 },
       id: 'game_clock'
     }
@@ -63,16 +63,16 @@ const volleyballLayout = {
     {
       type: 'teamName' as const,
       team: 'home' as const,
-      position: { x: 5, y: 10 },
-      size: { width: 40, height: 15 },
+      position: { x: 96, y: 108 },        // 96px x, 108px y
+      size: { width: 768, height: 162 },  // 768px width, 162px height
       props: { fontSize: 24 },
       id: 'home_team_name'
     },
     {
       type: 'teamName' as const,
       team: 'away' as const,
-      position: { x: 55, y: 10 },
-      size: { width: 40, height: 15 },
+      position: { x: 1056, y: 108 },      // 1056px x, 108px y
+      size: { width: 768, height: 162 },  // 768px width, 162px height
       props: { fontSize: 24 },
       id: 'away_team_name'
     }
@@ -88,16 +88,16 @@ const soccerLayout = {
     {
       type: 'teamName' as const,
       team: 'home' as const,
-      position: { x: 5, y: 15 },
-      size: { width: 35, height: 18 },
+      position: { x: 96, y: 162 },        // 96px x, 162px y
+      size: { width: 672, height: 194 },  // 672px width, 194px height
       props: { fontSize: 28 },
       id: 'home_team_name'
     },
     {
       type: 'teamName' as const,
       team: 'away' as const,
-      position: { x: 60, y: 15 },
-      size: { width: 35, height: 18 },
+      position: { x: 1152, y: 162 },      // 1152px x, 162px y
+      size: { width: 672, height: 194 },  // 672px width, 194px height
       props: { fontSize: 28 },
       id: 'away_team_name'
     }
@@ -247,7 +247,7 @@ function App() {
       const newComponent: ComponentConfig = {
         id: `${type}_${Date.now()}`,
         type,
-        position: customPosition || { x: 10, y: 10 }, // 10% from left, 10% from top
+        position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
         layer: highestLayer + 1,
         props: getDefaultProps(type),
@@ -335,8 +335,8 @@ function App() {
           ...original,
           id: `${original.type}_${Date.now()}`,
           position: {
-            x: original.position.x + 2, // 2% offset
-            y: original.position.y + 2  // 2% offset
+            x: original.position.x + 40, // 40px offset
+            y: original.position.y + 40  // 40px offset
           }
         };
         
@@ -512,18 +512,18 @@ function App() {
 }
 
 function getDefaultSize(type: ComponentConfig['type']) {
-  // Return percentage-based sizes (0-100% of canvas width/height)
+  // Return pixel-based sizes for 1920x1080 base resolution
   const sizes = {
-    teamName: { width: 25, height: 12 }, // 25% width, 12% height
-    score: { width: 15, height: 18 },    // 15% width, 18% height
-    clock: { width: 20, height: 15 },    // 20% width, 15% height
-    period: { width: 12, height: 15 },   // 12% width, 15% height
-    fouls: { width: 10, height: 12 },    // 10% width, 12% height
-    timeouts: { width: 20, height: 8 },  // 20% width, 8% height
-    bonus: { width: 8, height: 12 },     // 8% width, 12% height
-    custom: { width: 10, height: 10 }    // 10% width, 10% height
+    teamName: { width: 480, height: 130 },  // 480px width, 130px height
+    score: { width: 288, height: 194 },     // 288px width, 194px height
+    clock: { width: 384, height: 162 },     // 384px width, 162px height
+    period: { width: 230, height: 162 },    // 230px width, 162px height
+    fouls: { width: 192, height: 130 },     // 192px width, 130px height
+    timeouts: { width: 384, height: 86 },   // 384px width, 86px height
+    bonus: { width: 154, height: 130 },     // 154px width, 130px height
+    custom: { width: 192, height: 108 }     // 192px width, 108px height
   };
-  return sizes[type] || { width: 10, height: 10 };
+  return sizes[type] || { width: 192, height: 108 };
 }
 
 function getDefaultProps(type: ComponentConfig['type']) {
