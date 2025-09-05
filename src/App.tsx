@@ -146,9 +146,26 @@ function App() {
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
   
-  // Undo/Redo system - keep track of last 5 actions each
+  // Undo/Redo system - keep track of last 50 actions each
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
   const [redoHistory, setRedoHistory] = useState<UndoAction[]>([]);
+  
+  // Component naming counter system
+  const [componentCounters, setComponentCounters] = useState<Record<string, number>>({});
+  
+  // Generate unique component name
+  const generateComponentId = useCallback((type: ComponentConfig['type']) => {
+    const currentCount = componentCounters[type] || 0;
+    const nextCount = currentCount + 1;
+    
+    // Update counter
+    setComponentCounters(prev => ({
+      ...prev,
+      [type]: nextCount
+    }));
+    
+    return `${type}_${nextCount}`;
+  }, [componentCounters]);
 
   // Save state for undo - optimized to avoid deep cloning
   const saveStateForUndo = useCallback((actionType: UndoAction['type'], description: string, currentLayout: LayoutConfig) => {
@@ -159,8 +176,8 @@ function App() {
         previousLayout: structuredClone(currentLayout) // More efficient than JSON parse/stringify
       };
       
-      // Keep only last 5 actions
-      const newHistory = [newAction, ...prev].slice(0, 5);
+      // Keep only last 50 actions
+      const newHistory = [newAction, ...prev].slice(0, 50);
       return newHistory;
     });
     
@@ -183,7 +200,7 @@ function App() {
           previousLayout: structuredClone(currentLayout) // More efficient cloning
         };
         
-        setRedoHistory(prevRedo => [currentRedoAction, ...prevRedo].slice(0, 5)); // Keep last 5 redo actions
+        setRedoHistory(prevRedo => [currentRedoAction, ...prevRedo].slice(0, 50)); // Keep last 50 redo actions
         setSelectedComponents([]); // Clear selection after undo
         return lastAction.previousLayout;
       });
@@ -207,7 +224,7 @@ function App() {
           previousLayout: structuredClone(currentLayout) // More efficient cloning
         };
         
-        setUndoHistory(prevUndo => [currentUndoAction, ...prevUndo].slice(0, 5)); // Keep last 5 undo actions
+        setUndoHistory(prevUndo => [currentUndoAction, ...prevUndo].slice(0, 50)); // Keep last 50 undo actions
         setSelectedComponents([]); // Clear selection after redo
         return lastRedoAction.previousLayout;
       });
@@ -244,8 +261,10 @@ function App() {
       // Save current state for undo
       saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
       
+      const componentId = generateComponentId(type);
       const newComponent: ComponentConfig = {
-        id: `${type}_${Date.now()}`,
+        id: componentId,
+        name: componentId, // Use the generated ID as the display name
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
@@ -259,7 +278,7 @@ function App() {
         components: [...prev.components, newComponent]
       };
     });
-  }, [highestLayer, saveStateForUndo]);
+  }, [highestLayer, saveStateForUndo, generateComponentId]);
 
   // Add a ref to track if we're currently dragging to batch position updates
   const isDraggingRef = React.useRef(false);
@@ -331,9 +350,11 @@ function App() {
       if (original) {
         saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, prev);
         
+        const duplicateId = generateComponentId(original.type);
         const duplicate: ComponentConfig = {
           ...original,
-          id: `${original.type}_${Date.now()}`,
+          id: duplicateId,
+          name: duplicateId, // Use the generated ID as the display name
           position: {
             x: original.position.x + 40, // 40px offset
             y: original.position.y + 40  // 40px offset
@@ -347,7 +368,7 @@ function App() {
       }
       return prev;
     });
-  }, [saveStateForUndo]);
+  }, [saveStateForUndo, generateComponentId]);
 
   // Memoize preset mappings to avoid recreation
   const presetMappings = useMemo(() => ({

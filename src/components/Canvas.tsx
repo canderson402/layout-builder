@@ -61,6 +61,7 @@ export default function Canvas({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
   
+  
   // Throttle drag updates for better performance
   const lastUpdateTime = useRef(0);
   const THROTTLE_MS = 16; // ~60fps
@@ -128,6 +129,9 @@ export default function Canvas({
   // Use manual zoom level (10% to 200%)
   const scale = zoomLevel / 100;
 
+  // Track the last selected component ID for cycling
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+
   const handleMouseDown = useCallback((e: React.MouseEvent, component: ComponentConfig) => {
     // Allow middle mouse button to bubble up to canvas for panning
     if (e.button === 1) {
@@ -151,6 +155,54 @@ export default function Canvas({
     setDragStartPos({ x: canvasX, y: canvasY });
     setHasDraggedFarEnough(false);
     
+    // Find all components at this click position
+    const componentsAtPosition = layout.components
+      .filter(c => c.visible !== false)
+      .filter(c => {
+        const left = c.position.x;
+        const right = c.position.x + c.size.width;
+        const top = c.position.y;
+        const bottom = c.position.y + c.size.height;
+        return canvasX >= left && canvasX <= right && canvasY >= top && canvasY <= bottom;
+      })
+      .sort((a, b) => (b.layer || 0) - (a.layer || 0)); // Sort by layer, highest first
+    
+    // Check if we should cycle through stacked components
+    if (componentsAtPosition.length > 1 && !isCtrlClick && !isDragging && !isResizing) {
+      console.log('Found stacked components:', componentsAtPosition.map(c => c.id));
+      console.log('Last selected ID:', lastSelectedId);
+      
+      // Find the currently selected component in the stack
+      const currentIndex = componentsAtPosition.findIndex(c => c.id === lastSelectedId);
+      console.log('Current index:', currentIndex);
+      
+      let nextComponent: ComponentConfig;
+      if (currentIndex === -1 || currentIndex === componentsAtPosition.length - 1) {
+        // If no component was selected or we're at the end, start from the beginning
+        nextComponent = componentsAtPosition[0];
+      } else {
+        // Select the next component in the stack
+        nextComponent = componentsAtPosition[currentIndex + 1];
+      }
+      
+      console.log('Selecting next component:', nextComponent.id);
+      
+      // Select the next component
+      handleComponentSelect(nextComponent.id, false);
+      setDraggedComponent(nextComponent);
+      setLastSelectedId(nextComponent.id);
+      
+      // Set drag offset for the newly selected component
+      setDragOffset({
+        x: canvasX - nextComponent.position.x,
+        y: canvasY - nextComponent.position.y
+      });
+      return;
+    }
+    
+    // Single component or normal selection
+    setLastSelectedId(component.id);
+    
     // Handle selection logic
     if (isCtrlClick) {
       // Ctrl+click: toggle this component in the selection
@@ -170,7 +222,7 @@ export default function Canvas({
       // We'll decide in mouse move whether to select or start creating
       setDraggedComponent(component);
     }
-  }, [handleComponentSelect, setDraggedComponent, layout.dimensions, scale, selectedComponents]);
+  }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!canvasRef.current) return;
@@ -193,6 +245,7 @@ export default function Canvas({
       return; // Don't process other mouse movements while panning
     }
     
+    
     // Check if we've moved far enough to start an operation
     if (draggedComponent && !isDragging && !isCreating && !isResizing) {
       const deltaX = Math.abs(canvasX - dragStartPos.x);
@@ -210,12 +263,13 @@ export default function Canvas({
           // Notify PropertyPanel to pause expensive rendering
           window.dispatchEvent(new CustomEvent('canvas-drag-start'));
         } else {
-          // Start creating new component inside unselected component
-          setIsCreating(true);
-          setCreateStart({ x: dragStartPos.x, y: dragStartPos.y });
-          setCreateEnd({ x: canvasX, y: canvasY });
-          setDraggedComponent(null); // Clear this since we're creating, not dragging
-          return;
+          // Select the unselected component and start dragging it
+          handleComponentSelect(draggedComponent.id, false);
+          onStartDragOperation(); // Save initial state for undo
+          setIsDragging(true);
+          setHasDraggedFarEnough(true);
+          // Notify PropertyPanel to pause expensive rendering
+          window.dispatchEvent(new CustomEvent('canvas-drag-start'));
         }
       }
     }
@@ -300,12 +354,13 @@ export default function Canvas({
     }
   }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, scale, showGrid, isPanning, isCreating, panStart, viewportOffset]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
     if (isPanning) {
       setIsPanning(false);
       return;
     }
+    
     
     // Handle case where we clicked on unselected component but didn't drag (should just select)
     if (draggedComponent && !isDragging && !isCreating && !hasDraggedFarEnough) {
@@ -372,7 +427,7 @@ export default function Canvas({
     setResizeHandle('');
     setDraggedComponent(null);
     setHasDraggedFarEnough(false);
-  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning]);
+  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef]);
 
   // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number) => {
@@ -481,6 +536,9 @@ export default function Canvas({
       const canvasX = (e.clientX - rect.left) / scale;
       const canvasY = (e.clientY - rect.top) / scale;
       
+      // Reset last selected ID when clicking on empty canvas
+      setLastSelectedId(null);
+      
       // Check if we're clicking inside an unselected component
       const componentAtPoint = getComponentAtPoint(canvasX, canvasY);
       
@@ -514,7 +572,7 @@ export default function Canvas({
         e.stopPropagation();
       }
     }
-  }, [onSelectComponents, scale, getComponentAtPoint, selectedComponents]);
+  }, [onSelectComponents, scale, getComponentAtPoint, selectedComponents, setLastSelectedId]);
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
     // Check if Cmd (Mac) or Ctrl (Windows/Linux) is held
@@ -677,8 +735,49 @@ export default function Canvas({
                   e.stopPropagation();
                   onDuplicateComponent(component.id);
                 }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  
+                  // Create duplicate immediately at the button's position
+                  const rect = canvasRef.current!.getBoundingClientRect();
+                  const buttonX = (e.clientX - rect.left) / scale;
+                  const buttonY = (e.clientY - rect.top) / scale;
+                  
+                  // Create the duplicate
+                  onStartDragOperation();
+                  onDuplicateComponent(component.id);
+                  
+                  // Set up drag state for the new component (it will be the last one added)
+                  setTimeout(() => {
+                    const components = layoutRef.current.components;
+                    const newComponent = components[components.length - 1];
+                    if (newComponent) {
+                      // Move the duplicate to where the button was clicked
+                      const newPosition = {
+                        x: buttonX - newComponent.size.width / 2,
+                        y: buttonY - newComponent.size.height / 2
+                      };
+                      
+                      // Update position immediately
+                      onUpdateComponent(newComponent.id, {
+                        position: newPosition,
+                        layer: Math.max(...components.map(c => c.layer || 0)) + 1
+                      });
+                      
+                      // Select the new component and start dragging it
+                      onSelectComponents([newComponent.id]);
+                      setDraggedComponent({ ...newComponent, position: newPosition });
+                      setIsDragging(true);
+                      setDragOffset({
+                        x: newComponent.size.width / 2,
+                        y: newComponent.size.height / 2
+                      });
+                    }
+                  }, 10);
+                }}
                 className="control-button duplicate"
-                title="Duplicate"
+                title="Duplicate (drag to position)"
               >
                 📋
               </button>
@@ -816,7 +915,7 @@ export default function Canvas({
             cursor: isPanning ? 'grabbing' : 'default'
           }}
         onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onMouseUp={(e) => handleMouseUp(e)}
         onMouseDown={handleCanvasMouseDown}
         onWheel={handleCanvasWheel}
       >
@@ -952,7 +1051,7 @@ export default function Canvas({
         </div>
       </div>
     </div>
-    </div>
+  </div>
   );
 }
 
