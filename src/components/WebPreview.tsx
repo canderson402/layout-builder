@@ -17,13 +17,13 @@ interface WebPreviewProps {
 const mockGameData = {
   homeTeam: {
     name: 'HOME TEAM',
-    score: 87,
+    score: 1,
     color: '#c41e3a',
     fouls: 7,
   },
   awayTeam: {
     name: 'AWAY TEAM',
-    score: 92,
+    score: 0,
     color: '#003f7f',
     fouls: 5,
   },
@@ -188,7 +188,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
         position: 'relative',
       }}
     >
-      {[...layout.components]
+      {[...(layout.components || [])]
         .filter(component => component.visible !== false) // Only show visible components
         .sort((a, b) => (a.layer || 0) - (b.layer || 0))
         .map((component, index) => renderComponent(component, index))}

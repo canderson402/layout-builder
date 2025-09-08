@@ -19,7 +19,7 @@ export default function LayerPanel({
   const [editingName, setEditingName] = useState<string>('');
 
   // Sort components by layer (highest layer first for visual stacking order)
-  const sortedComponents = [...layout.components].sort((a, b) => (b.layer || 0) - (a.layer || 0));
+  const sortedComponents = [...(layout.components || [])].sort((a, b) => (b.layer || 0) - (a.layer || 0));
 
   // Group components by layer
   const componentsByLayer: { [layer: number]: ComponentConfig[] } = {};
@@ -107,7 +107,7 @@ export default function LayerPanel({
   };
 
   const toggleComponentVisibility = (componentId: string) => {
-    const component = layout.components.find(c => c.id === componentId);
+    const component = (layout.components || []).find(c => c.id === componentId);
     if (component) {
       onUpdateComponent(componentId, { visible: !(component.visible ?? true) });
     }
@@ -144,7 +144,7 @@ export default function LayerPanel({
       <div className="layer-header">
         <h3>Layers</h3>
         <div className="layer-info">
-          {layout.components.length} component{layout.components.length !== 1 ? 's' : ''}
+          {(layout.components || []).length} component{(layout.components || []).length !== 1 ? 's' : ''}
         </div>
       </div>
       

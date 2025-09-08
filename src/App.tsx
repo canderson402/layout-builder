@@ -253,7 +253,7 @@ function App() {
 
   // Memoize highest layer calculation to avoid recomputing on every render
   const highestLayer = useMemo(() => 
-    layout.components.reduce((max, comp) => Math.max(max, comp.layer || 0), 0)
+    (layout.components || []).reduce((max, comp) => Math.max(max, comp.layer || 0), 0)
   , [layout.components]);
 
   const addComponent = useCallback((type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => {
@@ -275,7 +275,7 @@ function App() {
 
       return {
         ...prev,
-        components: [...prev.components, newComponent]
+        components: [...(prev.components || []), newComponent]
       };
     });
   }, [highestLayer, saveStateForUndo, generateComponentId]);
@@ -287,7 +287,7 @@ function App() {
   const updateComponent = useCallback((id: string, updates: Partial<ComponentConfig>) => {
     // Removed expensive console.log with stack trace - major performance issue
     setLayout(prev => {
-      const component = prev.components.find(c => c.id === id);
+      const component = (prev.components || []).find(c => c.id === id);
       if (component) {
         // Check if this is a position/size update (drag/resize operation)
         const isPropertyUpdate = Object.keys(updates).some(key => !['position', 'size'].includes(key));
@@ -300,7 +300,7 @@ function App() {
       
       return {
         ...prev,
-        components: prev.components.map(comp => 
+        components: (prev.components || []).map(comp => 
           comp.id === id ? { ...comp, ...updates } : comp
         )
       };
@@ -330,7 +330,7 @@ function App() {
 
   const deleteComponent = useCallback((id: string) => {
     setLayout(prev => {
-      const component = prev.components.find(c => c.id === id);
+      const component = (prev.components || []).find(c => c.id === id);
       if (component) {
         saveStateForUndo('DELETE_COMPONENT', `Delete ${component.type} component`, prev);
       }
@@ -339,14 +339,14 @@ function App() {
       
       return {
         ...prev,
-        components: prev.components.filter(comp => comp.id !== id)
+        components: (prev.components || []).filter(comp => comp.id !== id)
       };
     });
   }, [saveStateForUndo]);
 
   const duplicateComponent = useCallback((id: string) => {
     setLayout(prev => {
-      const original = prev.components.find(comp => comp.id === id);
+      const original = (prev.components || []).find(comp => comp.id === id);
       if (original) {
         saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, prev);
         
@@ -363,7 +363,7 @@ function App() {
         
         return {
           ...prev,
-          components: [...prev.components, duplicate]
+          components: [...(prev.components || []), duplicate]
         };
       }
       return prev;
@@ -504,6 +504,7 @@ function App() {
           onAddComponent={addComponent}
           onStartDragOperation={startDragOperation}
           onEndDragOperation={endDragOperation}
+          onUpdateLayout={setLayout}
         />
         
         <MemoizedPropertyPanel
@@ -557,7 +558,7 @@ function getDefaultProps(type: ComponentConfig['type']) {
     timeouts: { maxTimeouts: 5, textColor: '#ffffff', textAlign: 'center' },
     bonus: { fontSize: 16, textColor: '#ffffff', textAlign: 'center' },
     custom: { 
-      dataPath: '',
+      dataPath: 'none',
       label: '',
       fontSize: 24,
       format: 'text',

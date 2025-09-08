@@ -15,12 +15,21 @@ interface CanvasProps {
   onAddComponent: (type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => void;
   onStartDragOperation: () => void;
   onEndDragOperation: (description: string) => void;
+  onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
 }
 
 // Pixel-based grid settings
 const DEFAULT_GRID_SIZE = 20;
 const SNAP_THRESHOLD = 5;
 const GRID_SIZE_OPTIONS = [5, 10, 20]; // Grid spacing options in pixels
+
+// Common resolution presets
+const RESOLUTION_PRESETS = [
+  { name: 'HD 720p', width: 1280, height: 720 },
+  { name: '1080p', width: 1920, height: 1080 },
+  { name: '4K', width: 3840, height: 2160 },
+  { name: 'Custom', width: 0, height: 0 } // Special case for custom input
+];
 
 export default function Canvas({
   layout,
@@ -33,7 +42,8 @@ export default function Canvas({
   setDraggedComponent,
   onAddComponent,
   onStartDragOperation,
-  onEndDragOperation
+  onEndDragOperation,
+  onUpdateLayout
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);
@@ -131,6 +141,57 @@ export default function Canvas({
 
   // Track the last selected component ID for cycling
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [componentsAtClickPosition, setComponentsAtClickPosition] = useState<ComponentConfig[]>([]);
+  
+  // Resolution management state
+  const [selectedPreset, setSelectedPreset] = useState(() => {
+    const currentPreset = RESOLUTION_PRESETS.find(p => 
+      p.width === layout.dimensions.width && p.height === layout.dimensions.height
+    );
+    return currentPreset?.name || 'Custom';
+  });
+  const [customWidth, setCustomWidth] = useState(layout.dimensions.width.toString());
+  const [customHeight, setCustomHeight] = useState(layout.dimensions.height.toString());
+  
+  // Handle resolution changes
+  const handleResolutionChange = useCallback((presetName: string) => {
+    setSelectedPreset(presetName);
+    
+    if (presetName !== 'Custom') {
+      const preset = RESOLUTION_PRESETS.find(p => p.name === presetName);
+      if (preset) {
+        onUpdateLayout({
+          dimensions: {
+            width: preset.width,
+            height: preset.height
+          }
+        });
+        setCustomWidth(preset.width.toString());
+        setCustomHeight(preset.height.toString());
+      }
+    }
+  }, [onUpdateLayout]);
+  
+  // Handle custom resolution input
+  const handleCustomResolution = useCallback(() => {
+    const width = parseInt(customWidth);
+    const height = parseInt(customHeight);
+    
+    if (width > 0 && height > 0 && !isNaN(width) && !isNaN(height)) {
+      onUpdateLayout({
+        dimensions: {
+          width,
+          height
+        }
+      });
+      
+      // Check if this matches a preset
+      const matchingPreset = RESOLUTION_PRESETS.find(p => 
+        p.width === width && p.height === height
+      );
+      setSelectedPreset(matchingPreset?.name || 'Custom');
+    }
+  }, [customWidth, customHeight, onUpdateLayout]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, component: ComponentConfig) => {
     // Allow middle mouse button to bubble up to canvas for panning
@@ -156,7 +217,7 @@ export default function Canvas({
     setHasDraggedFarEnough(false);
     
     // Find all components at this click position
-    const componentsAtPosition = layout.components
+    const componentsAtPosition = (layout.components || [])
       .filter(c => c.visible !== false)
       .filter(c => {
         const left = c.position.x;
@@ -167,60 +228,24 @@ export default function Canvas({
       })
       .sort((a, b) => (b.layer || 0) - (a.layer || 0)); // Sort by layer, highest first
     
-    // Check if we should cycle through stacked components
-    if (componentsAtPosition.length > 1 && !isCtrlClick && !isDragging && !isResizing) {
-      console.log('Found stacked components:', componentsAtPosition.map(c => c.id));
-      console.log('Last selected ID:', lastSelectedId);
-      
-      // Find the currently selected component in the stack
-      const currentIndex = componentsAtPosition.findIndex(c => c.id === lastSelectedId);
-      console.log('Current index:', currentIndex);
-      
-      let nextComponent: ComponentConfig;
-      if (currentIndex === -1 || currentIndex === componentsAtPosition.length - 1) {
-        // If no component was selected or we're at the end, start from the beginning
-        nextComponent = componentsAtPosition[0];
-      } else {
-        // Select the next component in the stack
-        nextComponent = componentsAtPosition[currentIndex + 1];
-      }
-      
-      console.log('Selecting next component:', nextComponent.id);
-      
-      // Select the next component
-      handleComponentSelect(nextComponent.id, false);
-      setDraggedComponent(nextComponent);
-      setLastSelectedId(nextComponent.id);
-      
-      // Set drag offset for the newly selected component
-      setDragOffset({
-        x: canvasX - nextComponent.position.x,
-        y: canvasY - nextComponent.position.y
-      });
-      return;
-    }
+    // Store the components at this position for potential cycling on mouseUp
+    setComponentsAtClickPosition(componentsAtPosition);
     
-    // Single component or normal selection
-    setLastSelectedId(component.id);
+    // For now, just set up for potential drag with the topmost or currently selected component
+    const currentComponent = componentsAtPosition.find(c => selectedComponents.includes(c.id)) || componentsAtPosition[0] || component;
     
-    // Handle selection logic
+    // Set up for potential drag
+    setDraggedComponent(currentComponent);
+    setDragOffset({
+      x: canvasX - currentComponent.position.x,
+      y: canvasY - currentComponent.position.y
+    });
+    
+    // Handle ctrl+click immediately
     if (isCtrlClick) {
       // Ctrl+click: toggle this component in the selection
-      handleComponentSelect(component.id, true);
-      return;
-    } else if (isAlreadySelected) {
-      // Component is already selected - prepare for potential drag
-      setDraggedComponent(component);
-      
-      // Component position is already in pixels
-      setDragOffset({
-        x: canvasX - component.position.x,
-        y: canvasY - component.position.y
-      });
-    } else {
-      // Click on unselected component - prepare for potential creation
-      // We'll decide in mouse move whether to select or start creating
-      setDraggedComponent(component);
+      handleComponentSelect(currentComponent.id, true);
+      setLastSelectedId(currentComponent.id);
     }
   }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing]);
 
@@ -362,11 +387,32 @@ export default function Canvas({
     }
     
     
-    // Handle case where we clicked on unselected component but didn't drag (should just select)
+    // Handle case where we clicked but didn't drag (should either select or cycle)
     if (draggedComponent && !isDragging && !isCreating && !hasDraggedFarEnough) {
-      const isAlreadySelected = selectedComponents.includes(draggedComponent.id);
-      if (!isAlreadySelected) {
-        handleComponentSelect(draggedComponent.id, false);
+      // Check if we should cycle through overlapping components
+      if (componentsAtClickPosition.length > 1) {
+        // Multiple components at click position - cycle through them
+        const currentIndex = componentsAtClickPosition.findIndex(c => c.id === lastSelectedId);
+        
+        let nextComponent: ComponentConfig;
+        if (currentIndex === -1 || currentIndex === componentsAtClickPosition.length - 1) {
+          // If no component was selected or we're at the end, start from the beginning
+          nextComponent = componentsAtClickPosition[0];
+        } else {
+          // Select the next component in the stack
+          nextComponent = componentsAtClickPosition[currentIndex + 1];
+        }
+        
+        // Select the next component
+        handleComponentSelect(nextComponent.id, false);
+        setLastSelectedId(nextComponent.id);
+      } else {
+        // Single component - just select it if not already selected
+        const isAlreadySelected = selectedComponents.includes(draggedComponent.id);
+        if (!isAlreadySelected) {
+          handleComponentSelect(draggedComponent.id, false);
+          setLastSelectedId(draggedComponent.id);
+        }
       }
     }
     
@@ -407,14 +453,14 @@ export default function Canvas({
     
     // End drag operation for undo if we were dragging or resizing
     if (isDragging && draggedComponent) {
-      const component = layout.components.find(c => c.id === draggedComponent.id);
+      const component = (layout.components || []).find(c => c.id === draggedComponent.id);
       if (component) {
         onEndDragOperation(`Move ${component.type} component`);
       }
       // Notify PropertyPanel to resume normal rendering
       window.dispatchEvent(new CustomEvent('canvas-drag-end'));
     } else if (isResizing && draggedComponent) {
-      const component = layout.components.find(c => c.id === draggedComponent.id);
+      const component = (layout.components || []).find(c => c.id === draggedComponent.id);
       if (component) {
         onEndDragOperation(`Resize ${component.type} component`);
       }
@@ -427,7 +473,8 @@ export default function Canvas({
     setResizeHandle('');
     setDraggedComponent(null);
     setHasDraggedFarEnough(false);
-  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef]);
+    setComponentsAtClickPosition([]); // Clear the stored components
+  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
 
   // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number) => {
@@ -505,7 +552,7 @@ export default function Canvas({
 
   // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
-    return layout.components
+    return (layout.components || [])
       .filter(component => component.visible !== false) // Only check visible components
       .find(component => {
         // Positions and sizes are already in pixels
@@ -805,7 +852,71 @@ export default function Canvas({
     <div className="canvas-container">
       <div className="canvas-toolbar">
         <div className="canvas-info">
-          Canvas: {layout.dimensions.width} × {layout.dimensions.height}px (16:9)
+          Canvas: {layout.dimensions.width} × {layout.dimensions.height}px
+        </div>
+        <div className="resolution-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <select 
+            value={selectedPreset} 
+            onChange={(e) => handleResolutionChange(e.target.value)}
+            style={{
+              padding: '4px 8px',
+              fontSize: '12px',
+              borderRadius: '4px',
+              border: '1px solid #ccc',
+              backgroundColor: '#fff'
+            }}
+          >
+            {RESOLUTION_PRESETS.map(preset => (
+              <option key={preset.name} value={preset.name}>
+                {preset.name === 'Custom' ? preset.name : `${preset.name} (${preset.width}×${preset.height})`}
+              </option>
+            ))}
+          </select>
+          {selectedPreset === 'Custom' && (
+            <>
+              <input
+                type="number"
+                value={customWidth}
+                onChange={(e) => setCustomWidth(e.target.value)}
+                placeholder="Width"
+                style={{
+                  width: '60px',
+                  padding: '4px',
+                  fontSize: '12px',
+                  borderRadius: '4px',
+                  border: '1px solid #ccc'
+                }}
+              />
+              ×
+              <input
+                type="number"
+                value={customHeight}
+                onChange={(e) => setCustomHeight(e.target.value)}
+                placeholder="Height"
+                style={{
+                  width: '60px',
+                  padding: '4px',
+                  fontSize: '12px',
+                  borderRadius: '4px',
+                  border: '1px solid #ccc'
+                }}
+              />
+              <button
+                onClick={handleCustomResolution}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                  borderRadius: '4px',
+                  border: '1px solid #ccc',
+                  backgroundColor: '#f0f0f0',
+                  cursor: 'pointer'
+                }}
+                title="Apply custom resolution"
+              >
+                Apply
+              </button>
+            </>
+          )}
         </div>
         <div className="canvas-controls">
           <button 
@@ -1044,7 +1155,7 @@ export default function Canvas({
           )}
           
           {/* Overlay draggable handles - sorted by layer, only show visible components */}
-          {[...layout.components]
+          {[...(layout.components || [])]
             .filter(component => component.visible !== false) // Show components that are explicitly visible or undefined (default true)
             .sort((a, b) => (a.layer || 0) - (b.layer || 0))
             .map(component => getComponentHandle(component))}

@@ -23,7 +23,7 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
   backgroundColor: '${layout.backgroundColor}',
   dimensions: { width: ${layout.dimensions.width}, height: ${layout.dimensions.height} },
   components: [
-${layout.components.map((comp, index) => {
+${(layout.components || []).map((comp, index) => {
   const propsStr = JSON.stringify(comp.props, null, 2).replace(/^/gm, '      ').trim();
   return `    // ${comp.type}${comp.team ? ` (${comp.team})` : ''} - Layer ${comp.layer || 0}
     {
@@ -32,7 +32,7 @@ ${layout.components.map((comp, index) => {
       size: { width: ${comp.size.width}, height: ${comp.size.height} }, // ${comp.size.width}px width, ${comp.size.height}px height${comp.layer !== undefined ? `,\n      layer: ${comp.layer},` : ','}
       props: ${propsStr},
       id: '${comp.id || comp.type + '_' + (comp.team || 'main')}'
-    }${index < layout.components.length - 1 ? ',' : ''}`;
+    }${index < (layout.components || []).length - 1 ? ',' : ''}`;
 }).join('\n')}
   ]
 };`;

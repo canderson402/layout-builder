@@ -29,7 +29,7 @@ interface CustomDataDisplayProps {
 const mockData = {
   homeTeam: {
     name: 'HOME',
-    score: 87,
+    score: 1,
     fouls: 4,
     timeouts: 3,
     bonus: true,
@@ -37,7 +37,7 @@ const mockData = {
   },
   awayTeam: {
     name: 'AWAY',
-    score: 92,
+    score: 0,
     fouls: 6,
     timeouts: 2,
     bonus: false,
@@ -109,7 +109,7 @@ export default function CustomDataDisplay({
   };
 
   const formattedValue = formatValue(rawValue);
-  const displayText = !dataPath || dataPath.trim() === '' ? 'Select Data' : `${prefix}${formattedValue}${suffix}`;
+  const displayText = !dataPath || dataPath.trim() === '' || dataPath === 'none' ? '' : `${prefix}${formattedValue}${suffix}`;
 
   // Convert textAlign to flexbox alignment
   const getJustifyContent = () => {

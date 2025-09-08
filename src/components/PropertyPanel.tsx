@@ -34,7 +34,7 @@ function PropertyPanel({
   useEffect(() => {
     if (!isDragging) {
       const currentComponent = selectedComponents.length === 1 
-        ? layout.components.find(c => c.id === selectedComponents[0]) || null
+        ? (layout.components || []).find(c => c.id === selectedComponents[0]) || null
         : null;
       setFrozenComponent(currentComponent);
     }
@@ -547,11 +547,12 @@ function PropertyPanel({
               <div className="property-field">
                 <label>Data Path</label>
                 <select
-                  value={component.props?.dataPath || 'gameClock'}
+                  value={component.props?.dataPath || 'none'}
                   onChange={(e) => updateComponentWithScrollPreservation(component.id, {
                     props: { ...component.props, dataPath: e.target.value }
                   })}
                 >
+                  <option value="none">No Data (Display Only)</option>
                   <optgroup label="Game Info">
                     <option value="gameClock">Game Clock</option>
                     <option value="period">Period/Quarter</option>

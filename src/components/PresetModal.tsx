@@ -173,7 +173,7 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
                 <div className="layout-info">
                   <div><strong>Name:</strong> {layout.name}</div>
                   <div><strong>Sport:</strong> {layout.sport}</div>
-                  <div><strong>Components:</strong> {layout.components.length}</div>
+                  <div><strong>Components:</strong> {(layout.components || []).length}</div>
                   <div><strong>Dimensions:</strong> {layout.dimensions.width} × {layout.dimensions.height}</div>
                   <div><strong>Background:</strong> {layout.backgroundColor}</div>
                 </div>
@@ -222,7 +222,7 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
                         <h4>{preset.name}</h4>
                         <div className="preset-details">
                           <span>{preset.layout.sport}</span>
-                          <span>{preset.layout.components.length} components</span>
+                          <span>{(preset.layout.components || []).length} components</span>
                           <span>{preset.layout.dimensions.width}×{preset.layout.dimensions.height}</span>
                         </div>
                         <div className="preset-date">

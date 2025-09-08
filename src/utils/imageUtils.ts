@@ -12,6 +12,7 @@ export const loadAvailableImages = async (): Promise<string[]> => {
       'universal-stub.png',
       'face.png', 
       'clock-node.png',
+      'test_score.png',
       'logo.png',
       'background.jpg',
       'team-logo.png',
@@ -42,7 +43,7 @@ export const loadAvailableImages = async (): Promise<string[]> => {
   } catch (error) {
     console.error('Failed to load available images:', error);
     // Fallback to known existing images
-    const fallbackImages = ['universal-stub.png', 'face.png', 'clock-node.png'];
+    const fallbackImages = ['universal-stub.png', 'face.png', 'clock-node.png', 'test_score.png'];
     availableImages = fallbackImages;
     return fallbackImages;
   }
