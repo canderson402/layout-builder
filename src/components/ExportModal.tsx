@@ -8,35 +8,11 @@ interface ExportModalProps {
 }
 
 export default function ExportModal({ layout, onClose }: ExportModalProps) {
-  const [exportFormat, setExportFormat] = useState<'react-native' | 'json'>('react-native');
   const [copied, setCopied] = useState(false);
 
   const exportedCode = useMemo(() => {
-    if (exportFormat === 'json') {
-      return JSON.stringify(layout, null, 2);
-    }
-
-    // Generate React Native layout with pixel values
-    return `export const ${layout.sport}Layout = {
-  name: '${layout.name}',
-  sport: '${layout.sport}',
-  backgroundColor: '${layout.backgroundColor}',
-  dimensions: { width: ${layout.dimensions.width}, height: ${layout.dimensions.height} },
-  components: [
-${(layout.components || []).map((comp, index) => {
-  const propsStr = JSON.stringify(comp.props, null, 2).replace(/^/gm, '      ').trim();
-  return `    // ${comp.type}${comp.team ? ` (${comp.team})` : ''} - Layer ${comp.layer || 0}
-    {
-      type: '${comp.type}',${comp.team ? `\n      team: '${comp.team}',` : ''}
-      position: { x: ${comp.position.x}, y: ${comp.position.y} }, // ${comp.position.x}px x, ${comp.position.y}px y
-      size: { width: ${comp.size.width}, height: ${comp.size.height} }, // ${comp.size.width}px width, ${comp.size.height}px height${comp.layer !== undefined ? `,\n      layer: ${comp.layer},` : ','}
-      props: ${propsStr},
-      id: '${comp.id || comp.type + '_' + (comp.team || 'main')}'
-    }${index < (layout.components || []).length - 1 ? ',' : ''}`;
-}).join('\n')}
-  ]
-};`;
-  }, [layout, exportFormat]);
+    return JSON.stringify(layout, null, 2);
+  }, [layout]);
 
   const copyToClipboard = async () => {
     try {
@@ -49,9 +25,7 @@ ${(layout.components || []).map((comp, index) => {
   };
 
   const downloadFile = () => {
-    const filename = exportFormat === 'json' 
-      ? `${layout.name.toLowerCase().replace(/\s+/g, '-')}.json`
-      : `${layout.sport}Layout.ts`;
+    const filename = `${layout.name.toLowerCase().replace(/\s+/g, '-')}.json`;
     
     const blob = new Blob([exportedCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -71,32 +45,9 @@ ${(layout.components || []).map((comp, index) => {
         </div>
 
         <div className="modal-content">
-          <div className="export-options">
-            <label>
-              <input
-                type="radio"
-                value="react-native"
-                checked={exportFormat === 'react-native'}
-                onChange={(e) => setExportFormat(e.target.value as 'react-native')}
-              />
-              React Native Layout
-            </label>
-            <label>
-              <input
-                type="radio"
-                value="json"
-                checked={exportFormat === 'json'}
-                onChange={(e) => setExportFormat(e.target.value as 'json')}
-              />
-              JSON Format
-            </label>
-          </div>
-
           <div className="code-container">
             <div className="code-header">
-              <span className="code-title">
-                {exportFormat === 'react-native' ? 'TypeScript Code' : 'JSON Data'}
-              </span>
+              <span className="code-title">JSON Layout Data</span>
               <div className="code-actions">
                 <button 
                   onClick={copyToClipboard}
@@ -115,16 +66,12 @@ ${(layout.components || []).map((comp, index) => {
           </div>
 
           <div className="export-instructions">
-            <h3>Instructions:</h3>
+            <h3>How to use this JSON:</h3>
             <ol>
-              <li>Copy the generated code above</li>
-              <li>
-                {exportFormat === 'react-native' 
-                  ? 'Add it to your React Native app\'s scoreboardLayouts.ts file'
-                  : 'Save as a JSON file and import into your app'
-                }
-              </li>
-              <li>Use the layout with the DynamicScoreboard component</li>
+              <li>Copy the JSON layout data above</li>
+              <li>Use it in the "Load JSON" tab of the preset manager to reload this layout</li>
+              <li>Send it to your TV using the "Send to TV" button</li>
+              <li>Save as a JSON file for backup or sharing</li>
             </ol>
           </div>
         </div>

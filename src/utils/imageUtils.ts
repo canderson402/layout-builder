@@ -13,12 +13,7 @@ export const loadAvailableImages = async (): Promise<string[]> => {
       'face.png', 
       'clock-node.png',
       'test_score.png',
-      'logo.png',
-      'background.jpg',
-      'team-logo.png',
-      'sponsor.png',
-      'banner.png',
-      'header.jpg'
+      'wrapper-16x9-ATV.jpg'
     ];
     
     // Test each potential image to see if it exists

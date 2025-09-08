@@ -86,6 +86,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               paddingBottom={props.paddingBottom}
               paddingLeft={props.paddingLeft}
               {...props}
+              backgroundColor={props?.backgroundColor}
+              textColor={props?.textColor}
             />
           </TouchableWrapper>
         );
@@ -99,6 +101,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               width={width}
               height={height}
               {...props}
+              backgroundColor={props?.backgroundColor}
+              textColor={props?.textColor}
             />
           </TouchableWrapper>
         );
@@ -111,6 +115,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               width={width}
               height={height}
               {...props}
+              backgroundColor={props?.backgroundColor}
+              textColor={props?.textColor}
             />
           </TouchableWrapper>
         );
@@ -125,6 +131,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               width={width}
               height={height}
               {...props}
+              backgroundColor={props?.backgroundColor}
+              textColor={props?.textColor}
             />
           </TouchableWrapper>
         );
@@ -153,24 +161,29 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               imageUrl={props.imageUrl}
               objectFit={props.objectFit || 'fill'}
               imageAnchor={props.imageAnchor || 'center'}
+              useTeamColor={config.useTeamColor}
+              teamColorSide={config.teamColorSide}
             />
           </TouchableWrapper>
         );
 
       default:
         // For other component types, show a placeholder
+        const placeholderBgColor = props?.backgroundColor || 'rgba(100, 100, 100, 0.5)';
+        const placeholderTextColor = props?.textColor || '#fff';
+        
         return (
           <div 
             key={index} 
             style={{
               ...baseStyle,
-              backgroundColor: 'rgba(100, 100, 100, 0.5)',
+              backgroundColor: placeholderBgColor,
               justifyContent: 'center',
               alignItems: 'center',
               display: 'flex'
             }}
           >
-            <Text style={{ color: '#fff', fontSize: 12, textAlign: 'center' }}>
+            <Text style={{ color: placeholderTextColor, fontSize: 12, textAlign: 'center' }}>
               {type}
               {team && ` (${team})`}
             </Text>

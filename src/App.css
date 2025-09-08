@@ -26,6 +26,12 @@
   font-weight: bold;
 }
 
+.layout-name-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .layout-name-input {
   padding: 8px 12px;
   background: #3a3a3a;
@@ -39,13 +45,32 @@
   outline: 2px solid #4CAF50;
 }
 
+.quick-save-button {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.quick-save-button:hover {
+  background: #45a049;
+}
+
 .header-right {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.sport-select,
 .device-select {
   padding: 8px 12px;
   background: #3a3a3a;
@@ -123,6 +148,100 @@
 
 .preset-button:hover {
   background: #1976D2;
+}
+
+.tv-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid #444;
+  min-width: 400px; /* Fixed width to prevent menu bar shifts */
+  flex-shrink: 0; /* Prevent shrinking */
+}
+
+.tv-ip-input {
+  padding: 8px 12px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 180px;
+}
+
+.tv-ip-input:focus {
+  outline: 2px solid #FF9800;
+  border-color: #FF9800;
+}
+
+.tv-ip-input::placeholder {
+  color: #999;
+}
+
+.send-tv-button {
+  padding: 10px 20px;
+  background: #FF9800;
+  color: white;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+}
+
+.send-tv-button:hover:not(:disabled) {
+  background: #F57C00;
+}
+
+.send-tv-button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.tv-select {
+  padding: 8px 12px;
+  background: #3a3a3a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 140px;
+  cursor: pointer;
+}
+
+.tv-select:focus {
+  outline: 2px solid #FF9800;
+  border-color: #FF9800;
+}
+
+.scan-tv-button {
+  background: #2196F3;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+}
+
+.scan-tv-button:hover:not(:disabled) {
+  background: #1976D2;
+}
+
+.scan-tv-button:disabled {
+  background: #333;
+  cursor: not-allowed;
 }
 
 .app-body {

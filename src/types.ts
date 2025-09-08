@@ -11,9 +11,11 @@ export interface ComponentConfig {
   layer?: number; // z-index for stacking order (higher values appear on top)
   props?: any;
   team?: 'home' | 'away' | 'both';
-  id: string;
-  name?: string; // Custom name for the component
+  id: string; // Hidden UUID identifier
+  displayName?: string; // Human-readable name shown in UI
   visible?: boolean; // Whether the component is visible (default: true)
+  useTeamColor?: boolean; // Whether to use team colors instead of custom colors
+  teamColorSide?: 'home' | 'away'; // Which team's color to use
 }
 
 export interface LayoutConfig {

@@ -46,38 +46,25 @@ export default function LayerPanel({
   };
 
   const getComponentDisplayName = (component: ComponentConfig) => {
-    // Use custom name if available, otherwise fall back to default naming
-    if (component.name) {
-      return component.name;
+    // Use displayName if available, otherwise fall back to simple type
+    if (component.displayName) {
+      return component.displayName;
     }
     
-    const typeNames = {
-      teamName: 'Team Name',
-      score: 'Score',
-      clock: 'Clock',
-      period: 'Period',
-      fouls: 'Fouls',
-      timeouts: 'Timeouts',
-      bonus: 'Bonus',
-      custom: 'Custom'
-    };
-    
-    const baseName = typeNames[component.type] || component.type;
-    const teamSuffix = component.team ? ` (${component.team})` : '';
-    return `${baseName}${teamSuffix}`;
+    return component.type;
   };
 
   const startEditingName = (component: ComponentConfig) => {
     setEditingNameId(component.id);
-    setEditingName(component.name || getComponentDisplayName(component));
+    setEditingName(component.displayName || getComponentDisplayName(component));
   };
 
   const saveComponentName = (componentId: string) => {
     if (editingName.trim()) {
-      onUpdateComponent(componentId, { name: editingName.trim() });
+      onUpdateComponent(componentId, { displayName: editingName.trim() });
     } else {
       // If name is empty, remove the custom name (fall back to default)
-      onUpdateComponent(componentId, { name: undefined });
+      onUpdateComponent(componentId, { displayName: undefined });
     }
     setEditingNameId(null);
     setEditingName('');

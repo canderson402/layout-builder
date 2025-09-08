@@ -806,10 +806,9 @@ export default function Canvas({
                         y: buttonY - newComponent.size.height / 2
                       };
                       
-                      // Update position immediately
+                      // Update position immediately (preserve original layer)
                       onUpdateComponent(newComponent.id, {
-                        position: newPosition,
-                        layer: Math.max(...components.map(c => c.layer || 0)) + 1
+                        position: newPosition
                       });
                       
                       // Select the new component and start dragging it

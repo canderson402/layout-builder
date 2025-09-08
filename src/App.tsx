@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useMemo, useReducer } from 'react';
+import React, { useState, useCallback, useMemo, useReducer, useEffect } from 'react';
 import { ComponentConfig, LayoutConfig } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
+import { tvDiscoveryService, DiscoveredTV } from './services/tvDiscovery';
 // Import from shared layouts - for now we'll define them locally until we can resolve the path
 const basketballLayout = {
   name: 'Basketball Standard',
@@ -151,21 +152,19 @@ function App() {
   const [redoHistory, setRedoHistory] = useState<UndoAction[]>([]);
   
   // Component naming counter system
-  const [componentCounters, setComponentCounters] = useState<Record<string, number>>({});
   
-  // Generate unique component name
+  // TV endpoint controls
+  const [tvIpAddress, setTvIpAddress] = useState('192.168.1.100'); // Default IP
+  const [isSendingToTv, setIsSendingToTv] = useState(false);
+  const [discoveredTVs, setDiscoveredTVs] = useState<DiscoveredTV[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [selectedTvOption, setSelectedTvOption] = useState('custom');
+  
+  // Generate unique component ID using UUID
   const generateComponentId = useCallback((type: ComponentConfig['type']) => {
-    const currentCount = componentCounters[type] || 0;
-    const nextCount = currentCount + 1;
-    
-    // Update counter
-    setComponentCounters(prev => ({
-      ...prev,
-      [type]: nextCount
-    }));
-    
-    return `${type}_${nextCount}`;
-  }, [componentCounters]);
+    const uuid = crypto.randomUUID();
+    return `${type}_${uuid}`;
+  }, []);
 
   // Save state for undo - optimized to avoid deep cloning
   const saveStateForUndo = useCallback((actionType: UndoAction['type'], description: string, currentLayout: LayoutConfig) => {
@@ -233,6 +232,137 @@ function App() {
     });
   }, []);
 
+  // Send layout to TV endpoint
+  const sendLayoutToTv = useCallback(async () => {
+    if (!tvIpAddress.trim()) {
+      alert('Please enter a valid TV IP address');
+      return;
+    }
+
+    setIsSendingToTv(true);
+    try {
+      // Remove port if already included in IP address, then add :3080
+      const cleanIp = tvIpAddress.replace(/:.*$/, '');
+      const response = await fetch(`http://${cleanIp}:3080/layout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(layout),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error sending layout to TV:', error);
+      alert(`Failed to send layout to TV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSendingToTv(false);
+    }
+  }, [layout, tvIpAddress]);
+
+  // Quick save preset function
+  const quickSavePreset = useCallback(() => {
+    const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
+    const nameToUse = layout.name || 'Untitled Layout';
+    
+    // Get existing presets
+    const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
+    const savedPresets = saved ? JSON.parse(saved) : [];
+    
+    const newPreset = {
+      id: `preset_${Date.now()}`,
+      name: nameToUse,
+      layout: { ...layout },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Check if preset with same name exists
+    const existingIndex = savedPresets.findIndex((p: any) => p.name === newPreset.name);
+    let updatedPresets;
+
+    if (existingIndex >= 0) {
+      // Update existing preset
+      updatedPresets = [...savedPresets];
+      updatedPresets[existingIndex] = { 
+        ...newPreset, 
+        id: savedPresets[existingIndex].id, 
+        createdAt: savedPresets[existingIndex].createdAt 
+      };
+    } else {
+      // Add new preset
+      updatedPresets = [...savedPresets, newPreset];
+    }
+
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
+    
+    // Show brief feedback
+    const action = existingIndex >= 0 ? 'updated' : 'saved';
+    alert(`Preset "${nameToUse}" ${action} successfully!`);
+  }, [layout]);
+
+  // TV Discovery functions
+  const scanForTVs = useCallback(async () => {
+    setIsScanning(true);
+    try {
+      const tvs = await tvDiscoveryService.discoverTVs();
+      setDiscoveredTVs(tvs);
+    } catch (error) {
+      console.error('Failed to scan for TVs:', error);
+    } finally {
+      setIsScanning(false);
+    }
+  }, []);
+
+  const handleTvSelectionChange = useCallback((value: string) => {
+    setSelectedTvOption(value);
+    
+    if (value !== 'custom') {
+      // Find the selected TV and set its IP
+      const selectedTV = discoveredTVs.find(tv => `${tv.ip}:${tv.port}` === value);
+      if (selectedTV) {
+        setTvIpAddress(selectedTV.ip);
+      }
+    }
+  }, [discoveredTVs]);
+
+  // Auto-scan for TVs when component mounts
+  useEffect(() => {
+    // Subscribe to auto-selection of first discovered TV
+    const handleAutoSelect = (tv: DiscoveredTV) => {
+      setSelectedTvOption(`${tv.ip}:${tv.port}`);
+      setTvIpAddress(tv.ip);
+      console.log(`🎯 Auto-selected TV: ${tv.name} (${tv.ip})`);
+    };
+
+    const setupTVDiscovery = () => {
+      // Subscribe to TV discovery updates
+      tvDiscoveryService.subscribe(setDiscoveredTVs);
+      tvDiscoveryService.onAutoSelect(handleAutoSelect);
+      
+      // Make tvDiscoveryService available globally for manual TV addition
+      (window as any).addTV = (ip: string, name?: string) => {
+        tvDiscoveryService.addManualTV(name || `TV (${ip})`, ip);
+        console.log(`📺 Added TV at ${ip} to discovery list`);
+      };
+      
+      // Initial scan after a short delay
+      setTimeout(() => {
+        scanForTVs();
+      }, 1000);
+    };
+
+    setupTVDiscovery();
+
+    return () => {
+      tvDiscoveryService.unsubscribe(setDiscoveredTVs);
+      tvDiscoveryService.offAutoSelect(handleAutoSelect);
+      delete (window as any).addTV;
+    };
+  }, [scanForTVs]);
+
   // Listen for canvas undo/redo events
   React.useEffect(() => {
     const handleCanvasUndo = () => {
@@ -264,7 +394,7 @@ function App() {
       const componentId = generateComponentId(type);
       const newComponent: ComponentConfig = {
         id: componentId,
-        name: componentId, // Use the generated ID as the display name
+        displayName: getDefaultDisplayName(type), // Human-readable display name
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
@@ -370,25 +500,7 @@ function App() {
     });
   }, [saveStateForUndo, generateComponentId]);
 
-  // Memoize preset mappings to avoid recreation
-  const presetMappings = useMemo(() => ({
-    'basketball': basketballLayout,
-    'volleyball': volleyballLayout,
-    'soccer': soccerLayout
-  }), []);
 
-  const loadPresetLayout = useCallback((presetName: string) => {
-    setLayout(prev => {
-      saveStateForUndo('LOAD_PRESET', `Load ${presetName} preset`, prev);
-      
-      const preset = presetMappings[presetName as keyof typeof presetMappings];
-      if (preset) {
-        setSelectedComponents([]);
-        return preset;
-      }
-      return prev;
-    });
-  }, [presetMappings, saveStateForUndo]);
 
   const loadCustomPreset = useCallback((customLayout: LayoutConfig) => {
     setLayout(prev => {
@@ -403,13 +515,18 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1>Scoreboard Layout Builder</h1>
-          <input
-            type="text"
-            value={layout.name}
-            onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
-            className="layout-name-input"
-            placeholder="Layout Name"
-          />
+          <div className="layout-name-section">
+            <input
+              type="text"
+              value={layout.name}
+              onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
+              className="layout-name-input"
+              placeholder="Layout Name"
+            />
+            <button className="quick-save-button" onClick={quickSavePreset}>
+              Save
+            </button>
+          </div>
         </div>
         <div className="header-right">
           <button
@@ -428,38 +545,12 @@ function App() {
           >
             ↷ Redo {redoHistory.length > 0 && `(${redoHistory.length})`}
           </button>
-          <select
-            onChange={(e) => {
-              if (e.target.value) {
-                loadPresetLayout(e.target.value);
-                e.target.value = ''; // Reset selection
-              }
-            }}
-            className="sport-select"
-          >
-            <option value="">Load Preset Layout...</option>
-            <option value="basketball">Basketball Standard</option>
-            <option value="volleyball">Volleyball Standard</option>
-            <option value="soccer">Soccer Standard</option>
-          </select>
           <button
             onClick={() => setShowPresetModal(true)}
             className="preset-button"
           >
             Manage Presets
           </button>
-          <select
-            value={layout.sport}
-            onChange={(e) => setLayout(prev => ({ ...prev, sport: e.target.value }))}
-            className="sport-select"
-          >
-            <option value="basketball">Basketball</option>
-            <option value="volleyball">Volleyball</option>
-            <option value="soccer">Soccer</option>
-            <option value="football">Football</option>
-            <option value="hockey">Hockey</option>
-            <option value="custom">Custom Sport</option>
-          </select>
           <select
             value={Object.keys(DEVICE_PRESETS).find(key => 
               DEVICE_PRESETS[key as keyof typeof DEVICE_PRESETS].width === layout.dimensions.width && 
@@ -481,6 +572,48 @@ function App() {
           >
             Export Layout
           </button>
+          
+          <div className="tv-controls">
+            <select
+              value={selectedTvOption}
+              onChange={(e) => handleTvSelectionChange(e.target.value)}
+              className="tv-select"
+            >
+              <option key="custom-ip" value="custom">Custom IP</option>
+              {discoveredTVs.map((tv) => (
+                <option key={tv.id} value={`${tv.ip}:${tv.port}`}>
+                  {tv.name}
+                </option>
+              ))}
+            </select>
+            
+            {selectedTvOption === 'custom' && (
+              <input
+                type="text"
+                value={tvIpAddress}
+                onChange={(e) => setTvIpAddress(e.target.value)}
+                placeholder="TV IP Address (e.g. 192.168.1.100)"
+                className="tv-ip-input"
+              />
+            )}
+            
+            <button
+              onClick={scanForTVs}
+              disabled={isScanning}
+              className="scan-tv-button"
+              title="Scan for TVs on network"
+            >
+              {isScanning ? '🔄' : '🔍'}
+            </button>
+            
+            <button
+              onClick={sendLayoutToTv}
+              disabled={isSendingToTv}
+              className="send-tv-button"
+            >
+              {isSendingToTv ? 'Sending...' : 'Send to TV'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -577,6 +710,11 @@ function getDefaultProps(type: ComponentConfig['type']) {
     }
   };
   return props[type] || {};
+}
+
+function getDefaultDisplayName(type: ComponentConfig['type']) {
+  // Just return the type as a simple display name
+  return type;
 }
 
 function needsTeam(type: ComponentConfig['type']): boolean {

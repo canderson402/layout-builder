@@ -23,6 +23,8 @@ interface CustomDataDisplayProps {
   imageUrl?: string;
   objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
   imageAnchor?: 'top-left' | 'top-right' | 'center' | 'bottom-left' | 'bottom-right';
+  useTeamColor?: boolean;
+  teamColorSide?: 'home' | 'away';
 }
 
 // Mock data for preview in layout builder
@@ -33,7 +35,8 @@ const mockData = {
     fouls: 4,
     timeouts: 3,
     bonus: true,
-    possession: true
+    possession: true,
+    color: '#c41e3a'
   },
   awayTeam: {
     name: 'AWAY',
@@ -41,7 +44,8 @@ const mockData = {
     fouls: 6,
     timeouts: 2,
     bonus: false,
-    possession: false
+    possession: false,
+    color: '#003f7f'
   },
   gameClock: '5:42',
   period: 4,
@@ -49,7 +53,9 @@ const mockData = {
   quarter: 4,
   half: 2,
   set: 3,
-  isOvertime: false
+  isOvertime: false,
+  home_team_color: '#c41e3a',
+  away_team_color: '#003f7f'
 };
 
 export default function CustomDataDisplay({
@@ -73,11 +79,40 @@ export default function CustomDataDisplay({
   imagePath,
   imageUrl,
   objectFit = 'fill',
-  imageAnchor = 'center'
+  imageAnchor = 'center',
+  useTeamColor = false,
+  teamColorSide = 'home'
 }: CustomDataDisplayProps) {
   
   // State to track image natural dimensions for native resolution mode
   const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
+  
+  // Helper function to ensure proper hex color format and handle black/empty colors
+  const formatColor = (color: string | undefined): string | undefined => {
+    if (!color) return undefined;
+    const colorStr = color.toString().trim();
+    if (!colorStr) return undefined;
+    
+    const formatted = colorStr.startsWith('#') ? colorStr : `#${colorStr}`;
+    
+    // Don't use black as team color - it's likely an unset/default value
+    if (formatted === '#000000' || formatted === '#000') {
+      return undefined;
+    }
+    
+    return formatted;
+  };
+
+  // Determine effective colors based on team color settings
+  // Only use team colors if we have real game data (not mock data from layout builder)
+  const hasRealGameData = gameData && gameData !== mockData && (gameData.home_team_color || gameData.away_team_color);
+  
+  const teamColor = useTeamColor && teamColorSide && hasRealGameData ?
+    formatColor(teamColorSide === 'home' ? gameData.home_team_color : gameData.away_team_color) :
+    undefined;
+  
+  const effectiveBackgroundColor = teamColor || backgroundColor;
+  const effectiveTextColor = teamColor ? '#ffffff' : textColor;
   
   // Helper function to get nested data using dot notation
   const getNestedData = (obj: any, path: string) => {
@@ -159,23 +194,12 @@ export default function CustomDataDisplay({
   };
 
   const anchorAlignment = getAnchorAlignment();
-  
-  // Debug logging
-  if (imageSourceObj) {
-    console.log('CustomDataDisplay anchor debug:', {
-      imageAnchor,
-      anchorAlignment,
-      objectFit,
-      containerWidth,
-      containerHeight
-    });
-  }
 
   return (
     <View style={{
       width: containerWidth,
       height: containerHeight,
-      backgroundColor,
+      backgroundColor: effectiveBackgroundColor,
       justifyContent: imageSourceObj ? anchorAlignment.justifyContent : 'center',
       alignItems: imageSourceObj ? anchorAlignment.alignItems : 'center',
       borderWidth: imageSourceObj ? 0 : 1, // No border for images
@@ -202,7 +226,7 @@ export default function CustomDataDisplay({
             }}>
               <Text style={{
                 fontSize: fontSize * 0.6,
-                color: textColor,
+                color: effectiveTextColor,
                 fontWeight: 'bold',
                 textTransform: 'uppercase'
               }}>
@@ -254,7 +278,7 @@ export default function CustomDataDisplay({
             }}>
               <Text style={{
                 fontSize: fontSize * 0.6,
-                color: textColor,
+                color: effectiveTextColor,
                 fontWeight: 'bold',
                 textTransform: 'uppercase',
                 marginBottom: 2

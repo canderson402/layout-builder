@@ -326,10 +326,23 @@ function PropertyPanel({
   return (
     <div className="property-panel">
       <div className="property-header">
-        <h3>{component.type} Properties</h3>
+        <h3>{component.displayName || component.type} Properties</h3>
         {component.team && (
           <span className="team-badge">{component.team}</span>
         )}
+      </div>
+      
+      {/* Display Name Field */}
+      <div className="property-section">
+        <label>Display Name:</label>
+        <input
+          type="text"
+          value={component.displayName || ''}
+          onChange={(e) => updateComponentWithScrollPreservation(component.id, { 
+            displayName: e.target.value 
+          })}
+          placeholder={`${component.type} component`}
+        />
       </div>
       
       <div 
@@ -633,6 +646,36 @@ function PropertyPanel({
                   </>
                 )}
               </div>
+
+              {/* Team Color Controls */}
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component?.useTeamColor || false}
+                    onChange={(e) => component && updateComponentWithScrollPreservation(component.id, {
+                      useTeamColor: e.target.checked,
+                      teamColorSide: component.teamColorSide || 'home'
+                    })}
+                  />
+                  Use Team Color
+                </label>
+              </div>
+
+              {component?.useTeamColor && (
+                <div className="property-field">
+                  <label>Team Color Side</label>
+                  <select
+                    value={component?.teamColorSide || 'home'}
+                    onChange={(e) => component && updateComponentWithScrollPreservation(component.id, {
+                      teamColorSide: e.target.value as 'home' | 'away'
+                    })}
+                  >
+                    <option value="home">Home</option>
+                    <option value="away">Away</option>
+                  </select>
+                </div>
+              )}
 
               <h5>Image</h5>
               <div className="property-field">

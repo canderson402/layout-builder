@@ -21,7 +21,8 @@ const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
 function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const [presetName, setPresetName] = useState(layout.name || 'My Layout');
-  const [activeTab, setActiveTab] = useState<'save' | 'load'>('save');
+  const [activeTab, setActiveTab] = useState<'save' | 'load' | 'json'>('save');
+  const [jsonInput, setJsonInput] = useState('');
 
   // Load saved presets from localStorage on component mount
   useEffect(() => {
@@ -77,7 +78,12 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
   const loadPreset = (preset: SavedPreset) => {
     const confirmed = window.confirm(`Load preset "${preset.name}"? This will replace your current layout.`);
     if (confirmed) {
-      onLoadPreset(preset.layout);
+      // Load the preset layout but use the preset name as the layout name
+      const layoutWithPresetName = {
+        ...preset.layout,
+        name: preset.name
+      };
+      onLoadPreset(layoutWithPresetName);
       onClose();
     }
   };
@@ -130,6 +136,39 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
     event.target.value = '';
   };
 
+
+  const loadFromJson = () => {
+    if (!jsonInput.trim()) {
+      alert('Please enter JSON layout data');
+      return;
+    }
+
+    try {
+      const layoutData = JSON.parse(jsonInput.trim());
+      
+      // Basic validation
+      if (!layoutData || typeof layoutData !== 'object') {
+        throw new Error('Invalid JSON format');
+      }
+      
+      if (!layoutData.name || !layoutData.dimensions || !Array.isArray(layoutData.components)) {
+        throw new Error('Missing required fields: name, dimensions, or components');
+      }
+
+      const confirmed = window.confirm(`Load layout "${layoutData.name}"? This will replace your current layout.`);
+      if (confirmed) {
+        // Ensure the layout name from JSON is preserved
+        onLoadPreset({
+          ...layoutData,
+          name: layoutData.name
+        });
+        onClose();
+      }
+    } catch (error) {
+      alert(`Failed to load JSON layout: ${error instanceof Error ? error.message : 'Invalid JSON format'}`);
+    }
+  };
+
   return (
     <div className="preset-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="preset-modal">
@@ -150,6 +189,12 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
             onClick={() => setActiveTab('load')}
           >
             Load Preset ({savedPresets.length})
+          </button>
+          <button 
+            className={`tab ${activeTab === 'json' ? 'active' : ''}`}
+            onClick={() => setActiveTab('json')}
+          >
+            Load JSON
           </button>
         </div>
 
@@ -247,6 +292,34 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'json' && (
+            <div className="json-input-section">
+              <div className="input-group">
+                <label>Paste JSON Layout:</label>
+                <textarea
+                  value={jsonInput}
+                  onChange={(e) => setJsonInput(e.target.value)}
+                  placeholder="Paste your JSON layout here..."
+                  className="json-textarea"
+                  rows={12}
+                  autoFocus
+                />
+              </div>
+          
+              <div className="modal-actions">
+                <button onClick={loadFromJson} className="load-button">
+                  Load Layout
+                </button>
+                <button onClick={() => setJsonInput('')} className="clear-button">
+                  Clear
+                </button>
+                <button onClick={onClose} className="cancel-button">
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>

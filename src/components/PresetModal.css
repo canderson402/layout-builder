@@ -31,6 +31,7 @@
   border-bottom: 1px solid #404040;
 }
 
+
 .preset-modal-header h2 {
   margin: 0;
   color: #fff;
@@ -304,4 +305,60 @@
 
 .cancel-button:hover {
   background: #555;
+}
+
+.json-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.json-textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 12px;
+  background: #2a2a2a;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.json-textarea:focus {
+  outline: 2px solid #4CAF50;
+  border-color: #4CAF50;
+}
+
+.json-textarea::placeholder {
+  color: #999;
+  font-family: sans-serif;
+}
+
+.json-help {
+  background: #333;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #4CAF50;
+}
+
+.json-help p {
+  margin: 0 0 8px 0;
+  color: #ccc;
+  font-size: 14px;
+}
+
+.json-help p:last-child {
+  margin-bottom: 0;
+}
+
+.clear-button {
+  background: #666;
+  color: white;
+}
+
+.clear-button:hover {
+  background: #777;
 }
