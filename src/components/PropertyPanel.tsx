@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
-import { loadAvailableImages, getAvailableImages, getImagePath } from '../utils/imageUtils';
+import { loadAvailableImages, getAvailableImages, getImagePath, AVAILABLE_SPORTS, Sport } from '../utils/imageUtils';
 import ColorPicker from './ColorPicker';
 import './PropertyPanel.css';
 
@@ -30,6 +30,7 @@ function PropertyPanel({
   // State for dynamically loaded images
   const [availableImages, setAvailableImages] = useState<string[]>([]);
   const [imagesLoading, setImagesLoading] = useState(true);
+  const [selectedSport, setSelectedSport] = useState<Sport>('general');
   
   // Create a frozen component reference that doesn't change during drag operations
   const [frozenComponent, setFrozenComponent] = useState<ComponentConfig | null>(null);
@@ -47,11 +48,12 @@ function PropertyPanel({
     }
   }, [layout.components, selectedComponents, isDragging]);
 
-  // Load available images on mount
+  // Load available images on mount and when sport changes
   useEffect(() => {
     const loadImages = async () => {
+      setImagesLoading(true);
       try {
-        const images = await loadAvailableImages();
+        const images = await loadAvailableImages(selectedSport);
         setAvailableImages(images);
       } catch (error) {
         console.error('Failed to load images:', error);
@@ -63,7 +65,7 @@ function PropertyPanel({
     };
 
     loadImages();
-  }, []);
+  }, [selectedSport]);
   
   // Use frozen component during drag, live component otherwise
   const component = isDragging ? frozenComponent : (
@@ -794,6 +796,16 @@ function PropertyPanel({
 
               <h5>Image</h5>
               <div className="property-field">
+                <label>Sport Category</label>
+                <select
+                  value={selectedSport}
+                  onChange={(e) => setSelectedSport(e.target.value as Sport)}
+                >
+                  <option value="general">General</option>
+                  <option value="basketball">Basketball</option>
+                </select>
+              </div>
+              <div className="property-field">
                 <label>Image Source</label>
                 <select
                   value={getStateValue('imageSource', 'none')}
@@ -816,7 +828,7 @@ function PropertyPanel({
                       {imagesLoading ? 'Loading images...' : 'Select an image...'}
                     </option>
                     {availableImages.map((filename) => (
-                      <option key={filename} value={getImagePath(filename)}>
+                      <option key={filename} value={getImagePath(filename, selectedSport)}>
                         {filename}
                       </option>
                     ))}
@@ -826,7 +838,7 @@ function PropertyPanel({
                     onClick={async () => {
                       setImagesLoading(true);
                       try {
-                        const images = await loadAvailableImages();
+                        const images = await loadAvailableImages(selectedSport);
                         setAvailableImages(images);
                       } catch (error) {
                         console.error('Failed to reload images:', error);
