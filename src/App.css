@@ -150,6 +150,21 @@
   background: #1976D2;
 }
 
+.add-component-button {
+  background: #009688;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.add-component-button:hover {
+  background: #00796B;
+}
+
 .tv-controls {
   display: flex;
   align-items: center;

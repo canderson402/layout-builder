@@ -1177,7 +1177,8 @@ function getComponentColor(component: ComponentConfig): string {
     fouls: '#F44336',
     timeouts: '#607D8B',
     bonus: '#FFEB3B',
-    custom: '#795548'
+    custom: '#795548',
+    dynamicList: '#009688'
   };
   return colors[component.type] || '#666';
 }

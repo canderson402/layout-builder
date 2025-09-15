@@ -1509,6 +1509,211 @@ function PropertyPanel({
           </>
         )}
 
+        {component.type === 'dynamicList' && (
+          <>
+            {/* DYNAMIC LIST SECTION */}
+            <PropertySection title="DYNAMIC LIST DATA" sectionKey="dynamic-list-data">
+              <div className="property-field">
+                <label>Total Count Path</label>
+                <select
+                  value={component.props?.totalCountPath || 'none'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, totalCountPath: e.target.value === 'none' ? undefined : e.target.value }
+                  })}
+                >
+                  <option value="none">Use Static Value</option>
+                  <option value="maxTimeouts">Max Timeouts</option>
+                  <option value="maxFouls">Max Fouls</option>
+                  <option value="gameUpdate.timeouts_allowed">Timeouts Allowed (Game Rules)</option>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Active Count Path</label>
+                <select
+                  value={component.props?.activeCountPath || 'none'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, activeCountPath: e.target.value === 'none' ? undefined : e.target.value }
+                  })}
+                >
+                  <option value="none">Use Static Value</option>
+                  <optgroup label="Home Team">
+                    <option value="homeTeam.timeouts">Home Timeouts</option>
+                    <option value="homeTeam.fouls">Home Fouls</option>
+                  </optgroup>
+                  <optgroup label="Away Team">
+                    <option value="awayTeam.timeouts">Away Timeouts</option>
+                    <option value="awayTeam.fouls">Away Fouls</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Total Count (Static)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={component.props?.totalCount || 5}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, totalCount: parseInt(e.target.value) }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>Active Count (Static)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={component.props?.activeCount || 2}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, activeCount: parseInt(e.target.value) }
+                  })}
+                />
+              </div>
+            </PropertySection>
+
+            {/* DYNAMIC LIST STYLING */}
+            <PropertySection title="ACTIVE ITEMS" sectionKey="dynamic-list-active">
+              <div className="property-field">
+                <ColorPicker
+                  label="Active Background"
+                  value={component.props?.activeBackgroundColor || '#4CAF50'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, activeBackgroundColor: color }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <ColorPicker
+                  label="Active Text Color"
+                  value={component.props?.activeTextColor || '#ffffff'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, activeTextColor: color }
+                  })}
+                />
+              </div>
+            </PropertySection>
+
+            <PropertySection title="INACTIVE ITEMS" sectionKey="dynamic-list-inactive">
+              <div className="property-field">
+                <ColorPicker
+                  label="Inactive Background"
+                  value={component.props?.inactiveBackgroundColor || '#666666'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, inactiveBackgroundColor: color }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <ColorPicker
+                  label="Inactive Text Color"
+                  value={component.props?.inactiveTextColor || '#ffffff'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, inactiveTextColor: color }
+                  })}
+                />
+              </div>
+            </PropertySection>
+
+            <PropertySection title="SHARED BORDERS" sectionKey="dynamic-list-borders">
+              <div className="property-field">
+                <label>Border Width (All Items)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  value={component.props?.borderWidth || 0}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, borderWidth: parseInt(e.target.value) }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <ColorPicker
+                  label="Border Color (All Items)"
+                  value={component.props?.borderColor || '#ffffff'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, borderColor: color }
+                  })}
+                />
+              </div>
+            </PropertySection>
+
+            <PropertySection title="LAYOUT" sectionKey="dynamic-list-layout">
+              <div className="property-field">
+                <label>Direction</label>
+                <select
+                  value={component.props?.direction || 'horizontal'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, direction: e.target.value }
+                  })}
+                >
+                  <option value="horizontal">Horizontal</option>
+                  <option value="vertical">Vertical</option>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Item Spacing</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={component.props?.itemSpacing || 4}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, itemSpacing: parseInt(e.target.value) }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>Border Radius</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={component.props?.borderRadius || 4}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, borderRadius: parseInt(e.target.value) }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.showNumbers || false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, showNumbers: e.target.checked }
+                    })}
+                  />
+                  Show Numbers
+                </label>
+              </div>
+
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.reverseOrder || false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, reverseOrder: e.target.checked }
+                    })}
+                  />
+                  Reverse Order (for timeouts)
+                </label>
+              </div>
+            </PropertySection>
+          </>
+        )}
+
       </div>
     </div>
   );

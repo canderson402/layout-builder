@@ -584,6 +584,13 @@ function App() {
           >
             Manage Presets
           </button>
+          <button
+            onClick={() => addComponent('dynamicList')}
+            className="add-component-button"
+            title="Add Dynamic List (timeouts, fouls, etc.)"
+          >
+            + Dynamic List
+          </button>
           <select
             value={Object.keys(DEVICE_PRESETS).find(key => 
               DEVICE_PRESETS[key as keyof typeof DEVICE_PRESETS].width === layout.dimensions.width && 
@@ -712,7 +719,8 @@ function getDefaultSize(type: ComponentConfig['type']) {
     fouls: { width: 192, height: 130 },     // 192px width, 130px height
     timeouts: { width: 384, height: 86 },   // 384px width, 86px height
     bonus: { width: 154, height: 130 },     // 154px width, 130px height
-    custom: { width: 192, height: 108 }     // 192px width, 108px height
+    custom: { width: 192, height: 108 },    // 192px width, 108px height
+    dynamicList: { width: 300, height: 60 } // 300px width, 60px height
   };
   return sizes[type] || { width: 192, height: 108 };
 }
@@ -743,6 +751,25 @@ function getDefaultProps(type: ComponentConfig['type']) {
       borderTopRightRadius: 0,
       borderBottomLeftRadius: 0,
       borderBottomRightRadius: 0
+    },
+    dynamicList: {
+      totalCount: 5,
+      activeCount: 2,
+      activeBackgroundColor: '#4CAF50',
+      activeTextColor: '#ffffff',
+      activeBorderWidth: 0,
+      activeBorderColor: '#ffffff',
+      inactiveBackgroundColor: '#666666',
+      inactiveTextColor: '#ffffff',
+      inactiveBorderWidth: 0,
+      inactiveBorderColor: '#ffffff',
+      direction: 'horizontal',
+      itemSpacing: 4,
+      borderRadius: 4,
+      showNumbers: false,
+      reverseOrder: false,
+      borderWidth: 0,
+      borderColor: '#ffffff'
     }
   };
   return props[type] || {};

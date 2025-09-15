@@ -6,6 +6,7 @@ import ScoreBox from '../shared/components/ScoreBox';
 import ClockDisplay from '../shared/components/ClockDisplay';
 import FoulsDisplay from '../shared/components/FoulsDisplay';
 import CustomDataDisplay from '../shared/components/CustomDataDisplay';
+import DynamicList from '../shared/components/DynamicList';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
@@ -60,6 +61,36 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
     );
 
     switch (type) {
+      case 'dynamicList':
+        return (
+          <TouchableWrapper key={index}>
+            <DynamicList
+              totalCountPath={props.totalCountPath}
+              activeCountPath={props.activeCountPath}
+              totalCount={props.totalCount}
+              activeCount={props.activeCount}
+              activeBackgroundColor={props.activeBackgroundColor}
+              activeTextColor={props.activeTextColor}
+              activeBorderColor={props.activeBorderColor}
+              activeBorderWidth={props.activeBorderWidth}
+              inactiveBackgroundColor={props.inactiveBackgroundColor}
+              inactiveTextColor={props.inactiveTextColor}
+              inactiveBorderColor={props.inactiveBorderColor}
+              inactiveBorderWidth={props.inactiveBorderWidth}
+              direction={props.direction}
+              itemSpacing={props.itemSpacing}
+              borderRadius={props.borderRadius}
+              showNumbers={props.showNumbers}
+              reverseOrder={props.reverseOrder}
+              borderWidth={props.borderWidth}
+              borderColor={props.borderColor}
+              width={width}
+              height={height}
+              gameData={effectiveGameData}
+            />
+          </TouchableWrapper>
+        );
+
       case 'custom':
         return (
           <TouchableWrapper key={index}>
