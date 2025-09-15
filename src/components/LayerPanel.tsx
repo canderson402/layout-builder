@@ -7,19 +7,63 @@ interface LayerPanelProps {
   selectedComponents: string[];
   onSelectComponents: (ids: string[]) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
+  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }) => void;
 }
 
 export default function LayerPanel({
   layout,
   selectedComponents,
   onSelectComponents,
-  onUpdateComponent
+  onUpdateComponent,
+  onAddComponent
 }: LayerPanelProps) {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
+  const [pendingToggleComponent, setPendingToggleComponent] = useState<boolean>(false);
 
   // Sort components by layer (highest layer first for visual stacking order)
   const sortedComponents = [...(layout.components || [])].sort((a, b) => (b.layer || 0) - (a.layer || 0));
+
+  // Handle applying toggle properties to newly created component
+  React.useEffect(() => {
+    if (pendingToggleComponent && layout.components.length > 0) {
+      const newestComponent = layout.components[layout.components.length - 1];
+      if (newestComponent && !newestComponent.props?.canToggle) {
+        onUpdateComponent(newestComponent.id, {
+          props: {
+            ...newestComponent.props,
+            dataPath: 'none',
+            label: '',
+            fontSize: 24,
+            format: 'text',
+            prefix: '',
+            suffix: '',
+            backgroundColor: '#E74C3C',
+            textColor: '#ffffff',
+            textAlign: 'center',
+            borderWidth: 0,
+            borderColor: '#ffffff',
+            borderStyle: 'solid',
+            borderTopLeftRadius: 0,
+            borderTopRightRadius: 0,
+            borderBottomLeftRadius: 0,
+            borderBottomRightRadius: 0,
+            canToggle: true,
+            toggleState: false,
+            state1Props: {
+              backgroundColor: '#E74C3C',
+              textColor: '#ffffff'
+            },
+            state2Props: {
+              backgroundColor: '#4CAF50',
+              textColor: '#ffffff'
+            }
+          }
+        });
+        setPendingToggleComponent(false);
+      }
+    }
+  }, [layout.components.length, pendingToggleComponent, onUpdateComponent]);
 
   // Group components by layer
   const componentsByLayer: { [layer: number]: ComponentConfig[] } = {};
@@ -279,6 +323,118 @@ export default function LayerPanel({
             </div>
           ))
         )}
+      </div>
+
+      {/* Component Menu */}
+      <div className="component-menu">
+        <div className="component-menu-header">
+          <h4>Quick Add Components</h4>
+        </div>
+        <div className="component-menu-grid">
+          <button
+            className="component-menu-item"
+            onClick={() => {
+              // Create a basic component with blue background
+              onAddComponent('custom', undefined, { width: 500, height: 500 });
+            }}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', JSON.stringify({
+                type: 'preset-component',
+                componentType: 'custom',
+                size: { width: 500, height: 500 },
+                props: {
+                  dataPath: 'none',
+                  label: 'Basic Component',
+                  fontSize: 24,
+                  format: 'text',
+                  prefix: '',
+                  suffix: '',
+                  backgroundColor: '#9B59B6',
+                  textColor: '#ffffff',
+                  textAlign: 'center',
+                  borderWidth: 0,
+                  borderColor: '#ffffff',
+                  borderStyle: 'solid',
+                  borderTopLeftRadius: 0,
+                  borderTopRightRadius: 0,
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0
+                }
+              }));
+            }}
+            title="Basic Component (500x500px, blue background)"
+          >
+            <div className="component-menu-icon"></div>
+            <div className="component-menu-label">Basic</div>
+          </button>
+
+          <button
+            className="component-menu-item"
+            onClick={() => {
+              // Set flag to indicate we're creating a toggle component
+              setPendingToggleComponent(true);
+              // Create a toggle component with preset toggle configuration
+              onAddComponent('custom', undefined, { width: 500, height: 500 });
+            }}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', JSON.stringify({
+                type: 'preset-component',
+                componentType: 'custom',
+                size: { width: 500, height: 500 },
+                props: {
+                  dataPath: 'none',
+                  label: '',
+                  fontSize: 24,
+                  format: 'text',
+                  prefix: '',
+                  suffix: '',
+                  backgroundColor: '#E74C3C',
+                  textColor: '#ffffff',
+                  textAlign: 'center',
+                  borderWidth: 0,
+                  borderColor: '#ffffff',
+                  borderStyle: 'solid',
+                  borderTopLeftRadius: 0,
+                  borderTopRightRadius: 0,
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0,
+                  canToggle: true,
+                  toggleState: false,
+                  state1Props: {
+                    backgroundColor: '#E74C3C',
+                    textColor: '#ffffff'
+                  },
+                  state2Props: {
+                    backgroundColor: '#4CAF50',
+                    textColor: '#ffffff'
+                  }
+                }
+              }));
+            }}
+            title="Toggle Component (500x500px, blue background, pre-configured toggle)"
+          >
+            <div className="component-menu-icon"></div>
+            <div className="component-menu-label">Toggle</div>
+          </button>
+
+          <button
+            className="component-menu-item"
+            onClick={() => onAddComponent('dynamicList')}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', JSON.stringify({
+                type: 'preset-component',
+                componentType: 'dynamicList'
+              }));
+            }}
+            title="Dynamic List (timeouts, fouls, etc.)"
+          >
+            <div className="component-menu-icon"></div>
+            <div className="component-menu-label">Dynamic List</div>
+          </button>
+        </div>
       </div>
     </div>
   );

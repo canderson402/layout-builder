@@ -335,115 +335,6 @@ function PropertyPanel({
           <div className="no-selection">
             Select a component to edit its properties
           </div>
-
-          {/* Game Data Controls */}
-          {gameData && onUpdateGameData && (
-            <div className="property-section">
-              <div className="section-header">
-                <h4>LIVE DATA CONTROLS</h4>
-                <p style={{ fontSize: '12px', opacity: 0.7, margin: '4px 0 8px 0' }}>
-                  Toggle boolean values to test components with toggle states
-                </p>
-              </div>
-
-              <div className="property-field">
-                <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Home Team</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.homeTeam.bonus}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        homeTeam: { ...gameData.homeTeam, bonus: e.target.checked }
-                      })}
-                    />
-                    Bonus
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.homeTeam.doubleBonus}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        homeTeam: { ...gameData.homeTeam, doubleBonus: e.target.checked }
-                      })}
-                    />
-                    Double Bonus
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.homeTeam.possession}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        homeTeam: { ...gameData.homeTeam, possession: e.target.checked },
-                        awayTeam: { ...gameData.awayTeam, possession: !e.target.checked }
-                      })}
-                    />
-                    Possession
-                  </label>
-                </div>
-              </div>
-
-              <div className="property-field">
-                <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Away Team</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.awayTeam.bonus}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        awayTeam: { ...gameData.awayTeam, bonus: e.target.checked }
-                      })}
-                    />
-                    Bonus
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.awayTeam.doubleBonus}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        awayTeam: { ...gameData.awayTeam, doubleBonus: e.target.checked }
-                      })}
-                    />
-                    Double Bonus
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.awayTeam.possession}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        awayTeam: { ...gameData.awayTeam, possession: e.target.checked },
-                        homeTeam: { ...gameData.homeTeam, possession: !e.target.checked }
-                      })}
-                    />
-                    Possession
-                  </label>
-                </div>
-              </div>
-
-              <div className="property-field">
-                <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Game State</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={gameData.isOvertime}
-                      onChange={(e) => onUpdateGameData({
-                        ...gameData,
-                        isOvertime: e.target.checked
-                      })}
-                    />
-                    Overtime
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -914,7 +805,7 @@ function PropertyPanel({
                 </select>
               </div>
 
-              {component.props?.imageSource === 'local' && (
+              {getStateValue('imageSource', 'none') === 'local' && (
                 <div className="property-field">
                   <label>Select Image</label>
                   <select
@@ -960,7 +851,7 @@ function PropertyPanel({
                 </div>
               )}
 
-              {component.props?.imageSource === 'url' && (
+              {getStateValue('imageSource', 'none') === 'url' && (
                 <div className="property-field">
                   <label>Image URL</label>
                   <input
@@ -1085,17 +976,17 @@ function PropertyPanel({
                 </div>
               )}
 
-              {(component.props?.imageSource === 'local' && component.props?.imagePath) || 
-               (component.props?.imageSource === 'url' && component.props?.imageUrl) ? (
+              {(getStateValue('imageSource', 'none') === 'local' && getStateValue('imagePath', '')) ||
+               (getStateValue('imageSource', 'none') === 'url' && getStateValue('imageUrl', '')) ? (
                 <div className="property-field">
                   <label>Size Control</label>
                   <div className="image-size-buttons">
                     <button
                       className="native-resolution-btn"
                       onClick={() => {
-                        const imageUrl = component.props?.imageSource === 'local' 
-                          ? component.props?.imagePath 
-                          : component.props?.imageUrl;
+                        const imageUrl = getStateValue('imageSource', 'none') === 'local'
+                          ? getStateValue('imagePath', '')
+                          : getStateValue('imageUrl', '');
                         
                         if (imageUrl) {
                           // Create a temporary image to get dimensions
@@ -1134,9 +1025,9 @@ function PropertyPanel({
                     <button
                       className="crop-to-content-btn"
                       onClick={() => {
-                        const imageUrl = component.props?.imageSource === 'local' 
-                          ? component.props?.imagePath 
-                          : component.props?.imageUrl;
+                        const imageUrl = getStateValue('imageSource', 'none') === 'local'
+                          ? getStateValue('imagePath', '')
+                          : getStateValue('imageUrl', '');
                         
                         if (imageUrl) {
                           // Create a temporary image to get dimensions

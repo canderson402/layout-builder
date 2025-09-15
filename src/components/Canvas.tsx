@@ -1030,6 +1030,43 @@ export default function Canvas({
         onMouseUp={(e) => handleMouseUp(e)}
         onMouseDown={handleCanvasMouseDown}
         onWheel={handleCanvasWheel}
+        onDragOver={(e) => {
+          e.preventDefault(); // Allow drop
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          try {
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            if (data.type === 'preset-component') {
+              // Get canvas coordinates
+              const canvasRect = canvasRef.current?.getBoundingClientRect();
+              if (canvasRect) {
+                const x = (e.clientX - canvasRect.left) / scale;
+                const y = (e.clientY - canvasRect.top) / scale;
+
+                // Create component at drop position
+                onAddComponent(
+                  data.componentType,
+                  { x: x - (data.size?.width || 250) / 2, y: y - (data.size?.height || 250) / 2 },
+                  data.size
+                );
+
+                // If we have preset props, update the newly created component
+                if (data.props) {
+                  requestAnimationFrame(() => {
+                    const components = layout.components;
+                    const newComponent = components[components.length - 1];
+                    if (newComponent) {
+                      onUpdateComponent(newComponent.id, { props: data.props });
+                    }
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Failed to parse drop data:', err);
+          }
+        }}
       >
         <div
           style={{

@@ -431,7 +431,7 @@ function App() {
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
-        layer: highestLayer + 1,
+        layer: 0,
         props: getDefaultProps(type),
         team: needsTeam(type) ? 'home' : undefined
       };
@@ -663,6 +663,7 @@ function App() {
           selectedComponents={selectedComponents}
           onSelectComponents={setSelectedComponents}
           onUpdateComponent={updateComponent}
+          onAddComponent={addComponent}
         />
         
         <MemoizedCanvas
@@ -741,7 +742,7 @@ function getDefaultProps(type: ComponentConfig['type']) {
       format: 'text',
       prefix: '',
       suffix: '',
-      backgroundColor: '#000000',
+      backgroundColor: '#9B59B6',
       textColor: '#ffffff',
       textAlign: 'center',
       borderWidth: 0,
