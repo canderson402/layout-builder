@@ -140,6 +140,39 @@ function App() {
     dimensions: DEFAULT_DIMENSIONS
   });
 
+  // Game data state for live preview
+  const [gameData, setGameData] = useState({
+    homeTeam: {
+      name: 'HOME',
+      score: 1,
+      fouls: 4,
+      timeouts: 3,
+      bonus: true,
+      doubleBonus: false,
+      possession: false,
+      color: '#c41e3a'
+    },
+    awayTeam: {
+      name: 'AWAY',
+      score: 0,
+      fouls: 6,
+      timeouts: 2,
+      bonus: false,
+      doubleBonus: true,
+      possession: true,
+      color: '#003f7f'
+    },
+    gameClock: '5:42',
+    period: 4,
+    shotClock: 14,
+    quarter: 4,
+    half: 2,
+    set: 3,
+    isOvertime: false,
+    home_team_color: '#c41e3a',
+    away_team_color: '#003f7f'
+  });
+
   // Remove expensive console.log - causes performance issues
 
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
@@ -638,6 +671,7 @@ function App() {
           onStartDragOperation={startDragOperation}
           onEndDragOperation={endDragOperation}
           onUpdateLayout={setLayout}
+          gameData={gameData}
         />
         
         <MemoizedPropertyPanel
@@ -645,6 +679,8 @@ function App() {
           selectedComponents={selectedComponents}
           onUpdateComponent={updateComponent}
           onUpdateLayout={setLayout}
+          gameData={gameData}
+          onUpdateGameData={setGameData}
         />
       </div>
 

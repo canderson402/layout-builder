@@ -16,6 +16,7 @@ interface CanvasProps {
   onStartDragOperation: () => void;
   onEndDragOperation: (description: string) => void;
   onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
+  gameData?: any;
 }
 
 // Pixel-based grid settings
@@ -43,7 +44,8 @@ export default function Canvas({
   onAddComponent,
   onStartDragOperation,
   onEndDragOperation,
-  onUpdateLayout
+  onUpdateLayout,
+  gameData
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);
@@ -1131,10 +1133,11 @@ export default function Canvas({
             </>
           )}
 
-          <WebPreview 
+          <WebPreview
             layout={layout}
             selectedComponents={selectedComponents}
             onSelectComponents={onSelectComponents}
+            gameData={gameData}
           />
           {/* Creation rectangle overlay */}
           {isCreating && (

@@ -11,6 +11,7 @@ interface WebPreviewProps {
   layout: LayoutConfig;
   selectedComponents: string[];
   onSelectComponents: (ids: string[]) => void;
+  gameData?: any;
 }
 
 // Mock game data for preview
@@ -31,7 +32,9 @@ const mockGameData = {
   period: 4,
 };
 
-function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPreviewProps) {
+function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }: WebPreviewProps) {
+  // Use provided gameData or fall back to mockGameData
+  const effectiveGameData = gameData || mockGameData;
   const renderComponent = (config: ComponentConfig, index: number) => {
     const { type, position, size, props, team, id } = config;
     
@@ -62,6 +65,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
           <TouchableWrapper key={index}>
             <CustomDataDisplay
               dataPath={props.dataPath || ''}
+              gameData={effectiveGameData}
               label={props.label}
               backgroundColor={props.backgroundColor}
               textColor={props.textColor}
@@ -83,6 +87,11 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
               imageAnchor={props.imageAnchor || 'center'}
               useTeamColor={config.useTeamColor}
               teamColorSide={config.teamColorSide}
+              canToggle={props.canToggle}
+              toggleState={props.toggleState}
+              state1Props={props.state1Props}
+              state2Props={props.state2Props}
+              autoToggle={props.autoToggle}
             />
           </TouchableWrapper>
         );

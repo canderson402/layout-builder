@@ -296,6 +296,7 @@ export default function PropertyPanel({
                   <option value="homeTeam.fouls">Home Fouls</option>
                   <option value="homeTeam.timeouts">Home Timeouts</option>
                   <option value="homeTeam.bonus">Home Bonus</option>
+                  <option value="homeTeam.doubleBonus">Home Double Bonus</option>
                   <option value="homeTeam.possession">Home Possession</option>
                 </optgroup>
                 <optgroup label="Away Team">
@@ -304,6 +305,7 @@ export default function PropertyPanel({
                   <option value="awayTeam.fouls">Away Fouls</option>
                   <option value="awayTeam.timeouts">Away Timeouts</option>
                   <option value="awayTeam.bonus">Away Bonus</option>
+                  <option value="awayTeam.doubleBonus">Away Double Bonus</option>
                   <option value="awayTeam.possession">Away Possession</option>
                 </optgroup>
               </select>

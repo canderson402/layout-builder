@@ -9,6 +9,8 @@ interface PropertyPanelProps {
   selectedComponents: string[];
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onUpdateLayout: (layout: LayoutConfig) => void;
+  gameData?: any;
+  onUpdateGameData?: (gameData: any) => void;
 }
 
 
@@ -18,7 +20,9 @@ function PropertyPanel({
   layout,
   selectedComponents,
   onUpdateComponent,
-  onUpdateLayout: _onUpdateLayout // Prefix with underscore to indicate intentionally unused
+  onUpdateLayout,
+  gameData,
+  onUpdateGameData
 }: PropertyPanelProps) {
   // Skip heavy computation during drag operations to improve performance
   const [isDragging, setIsDragging] = useState(false);
@@ -29,6 +33,9 @@ function PropertyPanel({
   
   // Create a frozen component reference that doesn't change during drag operations
   const [frozenComponent, setFrozenComponent] = useState<ComponentConfig | null>(null);
+  
+  // State for tracking which state properties we're editing (1 or 2)
+  const [editingState, setEditingState] = useState<1 | 2>(1);
   
   // Update frozen component only when not dragging
   useEffect(() => {
@@ -244,6 +251,48 @@ function PropertyPanel({
     onUpdateComponent(id, updates);
   }, [onUpdateComponent]);
   
+  // Helper function to update properties based on current editing state
+  const updateStateProps = useCallback((field: string, value: any) => {
+    if (!component || !componentId) return;
+    
+    if (component.props?.canToggle) {
+      // Store in state-specific properties
+      const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+      const currentStateProps = component.props[stateKey] || {};
+      
+      updateComponentWithScrollPreservation(componentId, {
+        props: {
+          ...component.props,
+          [stateKey]: {
+            ...currentStateProps,
+            [field]: value
+          }
+        }
+      });
+    } else {
+      // Regular property update
+      updateComponentWithScrollPreservation(componentId, {
+        props: {
+          ...component.props,
+          [field]: value
+        }
+      });
+    }
+  }, [component, componentId, editingState, updateComponentWithScrollPreservation]);
+  
+  // Helper to get the current property value based on editing state
+  const getStateValue = useCallback((field: string, defaultValue?: any) => {
+    if (!component?.props) return defaultValue;
+    
+    if (component.props?.canToggle) {
+      const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+      const stateProps = component.props[stateKey] || {};
+      return stateProps[field] !== undefined ? stateProps[field] : (component.props[field] || defaultValue);
+    }
+    
+    return component.props[field] || defaultValue;
+  }, [component, editingState]);
+  
   const toggleSection = (section: string) => {
     const newCollapsed = new Set(collapsedSections);
     if (newCollapsed.has(section)) {
@@ -286,6 +335,115 @@ function PropertyPanel({
           <div className="no-selection">
             Select a component to edit its properties
           </div>
+
+          {/* Game Data Controls */}
+          {gameData && onUpdateGameData && (
+            <div className="property-section">
+              <div className="section-header">
+                <h4>LIVE DATA CONTROLS</h4>
+                <p style={{ fontSize: '12px', opacity: 0.7, margin: '4px 0 8px 0' }}>
+                  Toggle boolean values to test components with toggle states
+                </p>
+              </div>
+
+              <div className="property-field">
+                <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Home Team</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.homeTeam.bonus}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        homeTeam: { ...gameData.homeTeam, bonus: e.target.checked }
+                      })}
+                    />
+                    Bonus
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.homeTeam.doubleBonus}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        homeTeam: { ...gameData.homeTeam, doubleBonus: e.target.checked }
+                      })}
+                    />
+                    Double Bonus
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.homeTeam.possession}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        homeTeam: { ...gameData.homeTeam, possession: e.target.checked },
+                        awayTeam: { ...gameData.awayTeam, possession: !e.target.checked }
+                      })}
+                    />
+                    Possession
+                  </label>
+                </div>
+              </div>
+
+              <div className="property-field">
+                <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Away Team</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.awayTeam.bonus}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        awayTeam: { ...gameData.awayTeam, bonus: e.target.checked }
+                      })}
+                    />
+                    Bonus
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.awayTeam.doubleBonus}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        awayTeam: { ...gameData.awayTeam, doubleBonus: e.target.checked }
+                      })}
+                    />
+                    Double Bonus
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.awayTeam.possession}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        awayTeam: { ...gameData.awayTeam, possession: e.target.checked },
+                        homeTeam: { ...gameData.homeTeam, possession: !e.target.checked }
+                      })}
+                    />
+                    Possession
+                  </label>
+                </div>
+              </div>
+
+              <div className="property-field">
+                <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Game State</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={gameData.isOvertime}
+                      onChange={(e) => onUpdateGameData({
+                        ...gameData,
+                        isOvertime: e.target.checked
+                      })}
+                    />
+                    Overtime
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -331,6 +489,67 @@ function PropertyPanel({
           <span className="team-badge">{component.team}</span>
         )}
       </div>
+      
+      {/* State Selector for toggleable components */}
+      {component.props?.canToggle && (
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          padding: '8px',
+          backgroundColor: '#2a2a2a',
+          borderBottom: '1px solid #444'
+        }}>
+          <button
+            onClick={() => setEditingState(1)}
+            style={{
+              flex: 1,
+              padding: '8px',
+              backgroundColor: editingState === 1 ? '#4CAF50' : '#333',
+              color: 'white',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: editingState === 1 ? 'bold' : 'normal'
+            }}
+          >
+            Edit State 1
+          </button>
+          <button
+            onClick={() => setEditingState(2)}
+            style={{
+              flex: 1,
+              padding: '8px',
+              backgroundColor: editingState === 2 ? '#4CAF50' : '#333',
+              color: 'white',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: editingState === 2 ? 'bold' : 'normal'
+            }}
+          >
+            Edit State 2
+          </button>
+          <button
+            onClick={() => updateComponentWithScrollPreservation(component.id, {
+              props: { 
+                ...component.props, 
+                toggleState: !component.props?.toggleState 
+              }
+            })}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: component.props?.toggleState ? '#FF9800' : '#607D8B',
+              color: 'white',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            {component.props?.toggleState ? 'ON' : 'OFF'}
+          </button>
+        </div>
+      )}
       
       {/* Display Name Field */}
       <div className="property-section">
@@ -445,9 +664,8 @@ function PropertyPanel({
             <label>Font Size</label>
             <input
               type="number"
-              defaultValue={component?.props?.fontSize || 24}
-              onChange={(e) => handleNumberChange('fontSize', e.target.value)}
-              onBlur={(e) => handleNumberBlur('fontSize', e.target.value)}
+              value={getStateValue('fontSize', 24)}
+              onChange={(e) => updateStateProps('fontSize', parseInt(e.target.value) || 24)}
             />
           </div>
           
@@ -460,10 +678,8 @@ function PropertyPanel({
             <div className="property-field">
               <ColorPicker
                 label="Text Color"
-                value={component?.props?.textColor || '#ffffff'}
-                onChange={(color) => component && updateComponentWithScrollPreservation(component.id, {
-                  props: { ...component.props, textColor: color }
-                })}
+                value={getStateValue('textColor', '#ffffff')}
+                onChange={(color) => updateStateProps('textColor', color)}
               />
             </div>
           )}
@@ -471,10 +687,8 @@ function PropertyPanel({
           <div className="property-field">
             <label>Text Alignment</label>
             <select
-              value={component.props?.textAlign || 'center'}
-              onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                props: { ...component.props, textAlign: e.target.value }
-              })}
+              value={getStateValue('textAlign', 'center')}
+              onChange={(e) => updateStateProps('textAlign', e.target.value)}
             >
               <option value="left">Left</option>
               <option value="center">Center</option>
@@ -482,15 +696,13 @@ function PropertyPanel({
             </select>
           </div>
 
-          {component.props?.label !== undefined && (
+          {getStateValue('label', undefined) !== undefined && (
             <div className="property-field">
               <label>Label</label>
               <input
                 type="text"
-                key={`${component?.id}-label`}
-                defaultValue={component.props?.label || ''}
-                onChange={handleTextChange}
-                onBlur={(e) => handleTextBlur('label', e.target.value)}
+                value={getStateValue('label', '')}
+                onChange={(e) => updateStateProps('label', e.target.value)}
               />
             </div>
           )}
@@ -501,22 +713,18 @@ function PropertyPanel({
                 <label>Prefix</label>
                 <input
                   type="text"
-                  key={`${component?.id}-prefix`}
-                  defaultValue={component?.props?.prefix || ''}
+                  value={getStateValue('prefix', '')}
                   placeholder="e.g., '$', '#'"
-                  onChange={handleTextChange}
-                  onBlur={(e) => handleTextBlur('prefix', e.target.value)}
+                  onChange={(e) => updateStateProps('prefix', e.target.value)}
                 />
               </div>
               <div className="property-field">
                 <label>Suffix</label>
                 <input
                   type="text"
-                  key={`${component?.id}-suffix`}
-                  defaultValue={component?.props?.suffix || ''}
+                  value={getStateValue('suffix', '')}
                   placeholder="e.g., 'pts', '%'"
-                  onChange={handleTextChange}
-                  onBlur={(e) => handleTextBlur('suffix', e.target.value)}
+                  onChange={(e) => updateStateProps('suffix', e.target.value)}
                 />
               </div>
             </div>
@@ -581,6 +789,7 @@ function PropertyPanel({
                     <option value="homeTeam.fouls">Home Fouls</option>
                     <option value="homeTeam.timeouts">Home Timeouts</option>
                     <option value="homeTeam.bonus">Home Bonus</option>
+                    <option value="homeTeam.doubleBonus">Home Double Bonus</option>
                     <option value="homeTeam.possession">Home Possession</option>
                   </optgroup>
                   <optgroup label="Away Team">
@@ -589,19 +798,17 @@ function PropertyPanel({
                     <option value="awayTeam.fouls">Away Fouls</option>
                     <option value="awayTeam.timeouts">Away Timeouts</option>
                     <option value="awayTeam.bonus">Away Bonus</option>
+                    <option value="awayTeam.doubleBonus">Away Double Bonus</option>
                     <option value="awayTeam.possession">Away Possession</option>
                   </optgroup>
                 </select>
               </div>
 
-
               <div className="property-field">
                 <label>Format Type</label>
                 <select
-                  value={component.props?.format || 'text'}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, format: e.target.value }
-                  })}
+                  value={getStateValue('format', 'text')}
+                  onChange={(e) => updateStateProps('format', e.target.value)}
                 >
                   <option value="text">Text</option>
                   <option value="number">Number</option>
@@ -609,7 +816,6 @@ function PropertyPanel({
                   <option value="boolean">Yes/No</option>
                 </select>
               </div>
-
 
               <div className="property-grid">
                 {isDragging ? (
@@ -628,24 +834,42 @@ function PropertyPanel({
                     <div className="property-field">
                       <ColorPicker
                         label="Background Color"
-                        value={component?.props?.backgroundColor || '#000000'}
-                        onChange={(color) => component && updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, backgroundColor: color }
-                        })}
+                        value={getStateValue('backgroundColor', '#000000')}
+                        onChange={(color) => updateStateProps('backgroundColor', color)}
                       />
                     </div>
                     <div className="property-field">
                       <ColorPicker
                         label="Text Color"
-                        value={component?.props?.textColor || '#ffffff'}
-                        onChange={(color) => component && updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, textColor: color }
-                        })}
+                        value={getStateValue('textColor', '#ffffff')}
+                        onChange={(color) => updateStateProps('textColor', color)}
                       />
                     </div>
                   </>
                 )}
               </div>
+
+              {/* Toggle Controls */}
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component?.props?.canToggle || false}
+                    onChange={(e) => component && updateComponentWithScrollPreservation(component.id, {
+                      props: {
+                        ...component.props,
+                        canToggle: e.target.checked,
+                        toggleState: false, // Initialize toggle state to off
+                        // Initialize state properties if not present
+                        state1Props: component.props?.state1Props || {},
+                        state2Props: component.props?.state2Props || {}
+                      }
+                    })}
+                  />
+                  Can Toggle
+                </label>
+              </div>
+
 
               {/* Team Color Controls */}
               <div className="property-field">
@@ -681,10 +905,8 @@ function PropertyPanel({
               <div className="property-field">
                 <label>Image Source</label>
                 <select
-                  value={component.props?.imageSource || 'none'}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, imageSource: e.target.value }
-                  })}
+                  value={getStateValue('imageSource', 'none')}
+                  onChange={(e) => updateStateProps('imageSource', e.target.value)}
                 >
                   <option value="none">No Image</option>
                   <option value="local">Local Image</option>
@@ -696,10 +918,8 @@ function PropertyPanel({
                 <div className="property-field">
                   <label>Select Image</label>
                   <select
-                    value={component.props?.imagePath || ''}
-                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                      props: { ...component.props, imagePath: e.target.value }
-                    })}
+                    value={getStateValue('imagePath', '')}
+                    onChange={(e) => updateStateProps('imagePath', e.target.value)}
                   >
                     <option value="">
                       {imagesLoading ? 'Loading images...' : 'Select an image...'}
@@ -746,10 +966,9 @@ function PropertyPanel({
                   <input
                     type="url"
                     key={`${component?.id}-imageUrl`}
-                    defaultValue={component?.props?.imageUrl || ''}
+                    value={getStateValue('imageUrl', '')}
                     placeholder="https://example.com/image.jpg"
-                    onChange={handleTextChange}
-                    onBlur={(e) => handleTextBlur('imageUrl', e.target.value)}
+                    onChange={(e) => updateStateProps('imageUrl', e.target.value)}
                   />
                 </div>
               )}
@@ -974,9 +1193,8 @@ function PropertyPanel({
                     type="number"
                     min="0"
                     max="20"
-                    defaultValue={component ? (component.props?.borderWidth || 0) : 0}
-                    onChange={(e) => handleNumberChange('borderWidth', e.target.value)}
-                    onBlur={(e) => handleNumberBlur('borderWidth', e.target.value)}
+                    value={getStateValue('borderWidth', 0)}
+                    onChange={(e) => updateStateProps('borderWidth', parseInt(e.target.value) || 0)}
                   />
                 </div>
                 {isDragging ? (
@@ -988,10 +1206,8 @@ function PropertyPanel({
                   <div className="property-field">
                     <ColorPicker
                       label="Border Color"
-                      value={component?.props?.borderColor || '#ffffff'}
-                      onChange={(color) => component && updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, borderColor: color }
-                      })}
+                      value={getStateValue('borderColor', '#ffffff')}
+                      onChange={(color) => updateStateProps('borderColor', color)}
                     />
                   </div>
                 )}
@@ -1001,52 +1217,44 @@ function PropertyPanel({
               <div className="border-sides-grid">
                 <div className="border-side-control">
                   <button
-                    className={`border-toggle ${(component.props?.borderTopWidth !== undefined ? component.props?.borderTopWidth : (component.props?.borderWidth || 1)) !== 0 ? 'active' : ''}`}
-                    onClick={() => updateComponentWithScrollPreservation(component.id, {
-                      props: { 
-                        ...component.props, 
-                        borderTopWidth: (component.props?.borderTopWidth !== undefined ? component.props?.borderTopWidth : (component.props?.borderWidth || 1)) !== 0 ? 0 : (component.props?.borderWidth || 1)
-                      }
-                    })}
+                    className={`border-toggle ${(getStateValue('borderTopWidth', getStateValue('borderWidth', 1))) !== 0 ? 'active' : ''}`}
+                    onClick={() => {
+                      const currentValue = getStateValue('borderTopWidth', getStateValue('borderWidth', 1));
+                      updateStateProps('borderTopWidth', currentValue !== 0 ? 0 : (getStateValue('borderWidth', 1)));
+                    }}
                   >
                     Top
                   </button>
                 </div>
                 <div className="border-side-control">
                   <button
-                    className={`border-toggle ${(component.props?.borderBottomWidth !== undefined ? component.props?.borderBottomWidth : (component.props?.borderWidth || 1)) !== 0 ? 'active' : ''}`}
-                    onClick={() => updateComponentWithScrollPreservation(component.id, {
-                      props: { 
-                        ...component.props, 
-                        borderBottomWidth: (component.props?.borderBottomWidth !== undefined ? component.props?.borderBottomWidth : (component.props?.borderWidth || 1)) !== 0 ? 0 : (component.props?.borderWidth || 1)
-                      }
-                    })}
+                    className={`border-toggle ${(getStateValue('borderBottomWidth', getStateValue('borderWidth', 1))) !== 0 ? 'active' : ''}`}
+                    onClick={() => {
+                      const currentValue = getStateValue('borderBottomWidth', getStateValue('borderWidth', 1));
+                      updateStateProps('borderBottomWidth', currentValue !== 0 ? 0 : (getStateValue('borderWidth', 1)));
+                    }}
                   >
                     Bottom
                   </button>
                 </div>
                 <div className="border-side-control">
                   <button
-                    className={`border-toggle ${(component.props?.borderLeftWidth !== undefined ? component.props?.borderLeftWidth : (component.props?.borderWidth || 1)) !== 0 ? 'active' : ''}`}
-                    onClick={() => updateComponentWithScrollPreservation(component.id, {
-                      props: { 
-                        ...component.props, 
-                        borderLeftWidth: (component.props?.borderLeftWidth !== undefined ? component.props?.borderLeftWidth : (component.props?.borderWidth || 1)) !== 0 ? 0 : (component.props?.borderWidth || 1)
-                      }
-                    })}
+                    className={`border-toggle ${(getStateValue('borderLeftWidth', getStateValue('borderWidth', 1))) !== 0 ? 'active' : ''}`}
+                    onClick={() => {
+                      const currentValue = getStateValue('borderLeftWidth', getStateValue('borderWidth', 1));
+                      updateStateProps('borderLeftWidth', currentValue !== 0 ? 0 : (getStateValue('borderWidth', 1)));
+                    }}
                   >
                     Left
                   </button>
                 </div>
                 <div className="border-side-control">
                   <button
-                    className={`border-toggle ${(component.props?.borderRightWidth !== undefined ? component.props?.borderRightWidth : (component.props?.borderWidth || 1)) !== 0 ? 'active' : ''}`}
-                    onClick={() => updateComponentWithScrollPreservation(component.id, {
-                      props: { 
-                        ...component.props, 
-                        borderRightWidth: (component.props?.borderRightWidth !== undefined ? component.props?.borderRightWidth : (component.props?.borderWidth || 1)) !== 0 ? 0 : (component.props?.borderWidth || 1)
-                      }
-                    })}
+                    className={`border-toggle ${(getStateValue('borderRightWidth', getStateValue('borderWidth', 1))) !== 0 ? 'active' : ''}`}
+                    onClick={() => {
+                      const currentValue = getStateValue('borderRightWidth', getStateValue('borderWidth', 1));
+                      updateStateProps('borderRightWidth', currentValue !== 0 ? 0 : (getStateValue('borderWidth', 1)));
+                    }}
                   >
                     Right
                   </button>
@@ -1056,10 +1264,8 @@ function PropertyPanel({
               <div className="property-field">
                 <label>Border Style</label>
                 <select
-                  value={component.props?.borderStyle || 'solid'}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, borderStyle: e.target.value }
-                  })}
+                  value={getStateValue('borderStyle', 'solid')}
+                  onChange={(e) => updateStateProps('borderStyle', e.target.value)}
                 >
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
@@ -1079,32 +1285,20 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       className="radius-quick-button minus"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingTop: Math.max(0, (component.props?.paddingTop || 0) - 10)
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingTop', Math.max(0, (getStateValue('paddingTop', 0)) - 10))}
                     >
                       -10
                     </button>
                     <input
                       type="number"
-                      value={component.props?.paddingTop || 0}
+                      value={getStateValue('paddingTop', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, paddingTop: Math.max(0, parseInt(e.target.value) || 0) }
-                      })}
+                      onChange={(e) => updateStateProps('paddingTop', Math.max(0, parseInt(e.target.value) || 0))}
                     />
                     <button
                       className="radius-quick-button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingTop: (component.props?.paddingTop || 0) + 10
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingTop', (getStateValue('paddingTop', 0)) + 10)}
                     >
                       +10
                     </button>
@@ -1115,32 +1309,20 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       className="radius-quick-button minus"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingRight: Math.max(0, (component.props?.paddingRight || 0) - 10)
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingRight', Math.max(0, (getStateValue('paddingRight', 0)) - 10))}
                     >
                       -10
                     </button>
                     <input
                       type="number"
-                      value={component.props?.paddingRight || 0}
+                      value={getStateValue('paddingRight', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, paddingRight: Math.max(0, parseInt(e.target.value) || 0) }
-                      })}
+                      onChange={(e) => updateStateProps('paddingRight', Math.max(0, parseInt(e.target.value) || 0))}
                     />
                     <button
                       className="radius-quick-button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingRight: (component.props?.paddingRight || 0) + 10
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingRight', (getStateValue('paddingRight', 0)) + 10)}
                     >
                       +10
                     </button>
@@ -1151,32 +1333,20 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       className="radius-quick-button minus"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingBottom: Math.max(0, (component.props?.paddingBottom || 0) - 10)
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingBottom', Math.max(0, (getStateValue('paddingBottom', 0)) - 10))}
                     >
                       -10
                     </button>
                     <input
                       type="number"
-                      value={component.props?.paddingBottom || 0}
+                      value={getStateValue('paddingBottom', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, paddingBottom: Math.max(0, parseInt(e.target.value) || 0) }
-                      })}
+                      onChange={(e) => updateStateProps('paddingBottom', Math.max(0, parseInt(e.target.value) || 0))}
                     />
                     <button
                       className="radius-quick-button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingBottom: (component.props?.paddingBottom || 0) + 10
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingBottom', (getStateValue('paddingBottom', 0)) + 10)}
                     >
                       +10
                     </button>
@@ -1187,32 +1357,20 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       className="radius-quick-button minus"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingLeft: Math.max(0, (component.props?.paddingLeft || 0) - 10)
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingLeft', Math.max(0, (getStateValue('paddingLeft', 0)) - 10))}
                     >
                       -10
                     </button>
                     <input
                       type="number"
-                      value={component.props?.paddingLeft || 0}
+                      value={getStateValue('paddingLeft', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, paddingLeft: Math.max(0, parseInt(e.target.value) || 0) }
-                      })}
+                      onChange={(e) => updateStateProps('paddingLeft', Math.max(0, parseInt(e.target.value) || 0))}
                     />
                     <button
                       className="radius-quick-button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { 
-                          ...component.props, 
-                          paddingLeft: (component.props?.paddingLeft || 0) + 10
-                        }
-                      })}
+                      onClick={() => updateStateProps('paddingLeft', (getStateValue('paddingLeft', 0)) + 10)}
                     >
                       +10
                     </button>
@@ -1227,10 +1385,8 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderTopLeftRadius || 0;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderTopLeftRadius: Math.max(0, currentValue - 25) }
-                        });
+                        const currentValue = getStateValue('borderTopLeftRadius', 0);
+                        updateStateProps('borderTopLeftRadius', Math.max(0, currentValue - 25));
                       }}
                       className="radius-quick-button minus"
                     >
@@ -1238,20 +1394,16 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={component.props?.borderTopLeftRadius || 0}
+                      value={getStateValue('borderTopLeftRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, borderTopLeftRadius: parseInt(e.target.value) || 0 }
-                      })}
+                      onChange={(e) => updateStateProps('borderTopLeftRadius', parseInt(e.target.value) || 0)}
                     />
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderTopLeftRadius || 0;
+                        const currentValue = getStateValue('borderTopLeftRadius', 0);
                         const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderTopLeftRadius: nextValue }
-                        });
+                        updateStateProps('borderTopLeftRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
@@ -1264,10 +1416,8 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderTopRightRadius || 0;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderTopRightRadius: Math.max(0, currentValue - 25) }
-                        });
+                        const currentValue = getStateValue('borderTopRightRadius', 0);
+                        updateStateProps('borderTopRightRadius', Math.max(0, currentValue - 25));
                       }}
                       className="radius-quick-button minus"
                     >
@@ -1275,20 +1425,16 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={component.props?.borderTopRightRadius || 0}
+                      value={getStateValue('borderTopRightRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, borderTopRightRadius: parseInt(e.target.value) || 0 }
-                      })}
+                      onChange={(e) => updateStateProps('borderTopRightRadius', parseInt(e.target.value) || 0)}
                     />
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderTopRightRadius || 0;
+                        const currentValue = getStateValue('borderTopRightRadius', 0);
                         const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderTopRightRadius: nextValue }
-                        });
+                        updateStateProps('borderTopRightRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
@@ -1301,10 +1447,8 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderBottomLeftRadius || 0;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderBottomLeftRadius: Math.max(0, currentValue - 25) }
-                        });
+                        const currentValue = getStateValue('borderBottomLeftRadius', 0);
+                        updateStateProps('borderBottomLeftRadius', Math.max(0, currentValue - 25));
                       }}
                       className="radius-quick-button minus"
                     >
@@ -1312,20 +1456,16 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={component.props?.borderBottomLeftRadius || 0}
+                      value={getStateValue('borderBottomLeftRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, borderBottomLeftRadius: parseInt(e.target.value) || 0 }
-                      })}
+                      onChange={(e) => updateStateProps('borderBottomLeftRadius', parseInt(e.target.value) || 0)}
                     />
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderBottomLeftRadius || 0;
+                        const currentValue = getStateValue('borderBottomLeftRadius', 0);
                         const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderBottomLeftRadius: nextValue }
-                        });
+                        updateStateProps('borderBottomLeftRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
@@ -1338,10 +1478,8 @@ function PropertyPanel({
                   <div className="radius-input-group">
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderBottomRightRadius || 0;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderBottomRightRadius: Math.max(0, currentValue - 25) }
-                        });
+                        const currentValue = getStateValue('borderBottomRightRadius', 0);
+                        updateStateProps('borderBottomRightRadius', Math.max(0, currentValue - 25));
                       }}
                       className="radius-quick-button minus"
                     >
@@ -1349,20 +1487,16 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={component.props?.borderBottomRightRadius || 0}
+                      value={getStateValue('borderBottomRightRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, borderBottomRightRadius: parseInt(e.target.value) || 0 }
-                      })}
+                      onChange={(e) => updateStateProps('borderBottomRightRadius', parseInt(e.target.value) || 0)}
                     />
                     <button
                       onClick={() => {
-                        const currentValue = component.props?.borderBottomRightRadius || 0;
+                        const currentValue = getStateValue('borderBottomRightRadius', 0);
                         const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, borderBottomRightRadius: nextValue }
-                        });
+                        updateStateProps('borderBottomRightRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >

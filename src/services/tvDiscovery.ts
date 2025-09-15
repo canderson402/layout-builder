@@ -117,8 +117,15 @@ class TVDiscoveryService {
         currentSubnetNum + 1,       // Next subnet (e.g., 32)
       ].filter(num => num >= 0 && num <= 255);
       
-      // Check common device IPs on these subnets
-      const commonOffsets = [1, 2, 100, 101, 200, 201, 234, 235, 254];
+      // Check common device IPs on these subnets - expanded range for better discovery
+      const commonOffsets = [
+        1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35,
+        50, 51, 52, 53, 54, 55, 60, 61, 62, 63, 64, 65, 70, 71, 72, 73, 74, 75,
+        100, 101, 102, 103, 104, 105, 110, 111, 112, 113, 114, 115, 120, 121, 122, 123, 124, 125,
+        150, 151, 152, 153, 154, 155, 160, 161, 162, 163, 164, 165, 170, 171, 172, 173, 174, 175,
+        200, 201, 202, 203, 204, 205, 210, 211, 212, 213, 214, 215, 220, 221, 222, 223, 224, 225,
+        230, 231, 232, 233, 234, 235, 240, 241, 242, 243, 244, 245, 250, 251, 252, 253, 254
+      ];
       
       for (const subnetNum of subnetsToScan) {
         const subnet = `${baseSubnet}.${subnetNum}`;
