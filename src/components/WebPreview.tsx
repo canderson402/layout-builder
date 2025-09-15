@@ -47,19 +47,6 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
       top,
       width,
       height,
-      boxSizing: 'border-box' as const,  // Include border in width/height
-      borderTopWidth: props?.borderTopWidth !== undefined ? props.borderTopWidth : (props?.borderWidth || 1),
-      borderRightWidth: props?.borderRightWidth !== undefined ? props.borderRightWidth : (props?.borderWidth || 1),
-      borderBottomWidth: props?.borderBottomWidth !== undefined ? props.borderBottomWidth : (props?.borderWidth || 1),
-      borderLeftWidth: props?.borderLeftWidth !== undefined ? props.borderLeftWidth : (props?.borderWidth || 1),
-      borderStyle: props?.borderStyle || 'solid',
-      borderColor: props?.borderColor || 'rgba(255, 255, 255, 0.3)',
-      boxShadow: selectedComponents.includes(id) ? '0 0 0 3px #4CAF50' : 'none',
-      borderTopLeftRadius: props?.borderTopLeftRadius || 0,
-      borderTopRightRadius: props?.borderTopRightRadius || 0,
-      borderBottomLeftRadius: props?.borderBottomLeftRadius || 0,
-      borderBottomRightRadius: props?.borderBottomRightRadius || 0,
-      overflow: 'hidden' as const,  // Ensure background respects border radius
       zIndex: config.layer || 0,  // Ensure proper layering
     };
 
@@ -70,73 +57,6 @@ function WebPreview({ layout, selectedComponents, onSelectComponents }: WebPrevi
     );
 
     switch (type) {
-      case 'teamName':
-        const teamData = team === 'home' ? mockGameData.homeTeam : mockGameData.awayTeam;
-        return (
-          <TouchableWrapper key={index}>
-            <TeamNameBox
-              teamName={teamData.name}
-              teamColor={teamData.color}
-              position={team === 'home' ? 'left' : 'right'}
-              width={width}
-              height={height}
-              textAlign={props.textAlign}
-              paddingTop={props.paddingTop}
-              paddingRight={props.paddingRight}
-              paddingBottom={props.paddingBottom}
-              paddingLeft={props.paddingLeft}
-              {...props}
-              backgroundColor={props?.backgroundColor}
-              textColor={props?.textColor}
-            />
-          </TouchableWrapper>
-        );
-        
-      case 'score':
-        const scoreData = team === 'home' ? mockGameData.homeTeam : mockGameData.awayTeam;
-        return (
-          <TouchableWrapper key={index}>
-            <ScoreBox
-              score={scoreData.score}
-              width={width}
-              height={height}
-              {...props}
-              backgroundColor={props?.backgroundColor}
-              textColor={props?.textColor}
-            />
-          </TouchableWrapper>
-        );
-        
-      case 'clock':
-        return (
-          <TouchableWrapper key={index}>
-            <ClockDisplay
-              time={mockGameData.gameClock}
-              width={width}
-              height={height}
-              {...props}
-              backgroundColor={props?.backgroundColor}
-              textColor={props?.textColor}
-            />
-          </TouchableWrapper>
-        );
-        
-      case 'fouls':
-        const foulsData = team === 'home' ? mockGameData.homeTeam : mockGameData.awayTeam;
-        return (
-          <TouchableWrapper key={index}>
-            <FoulsDisplay
-              fouls={foulsData.fouls}
-              position={team === 'home' ? 'left' : 'right'}
-              width={width}
-              height={height}
-              {...props}
-              backgroundColor={props?.backgroundColor}
-              textColor={props?.textColor}
-            />
-          </TouchableWrapper>
-        );
-        
       case 'custom':
         return (
           <TouchableWrapper key={index}>
