@@ -225,9 +225,7 @@ export default function LayerPanel({
                       >
                         {(component.visible ?? true) ? '👁️' : '👁️‍🗨️'}
                       </button>
-                      <span className="component-icon">
-                        {getComponentIcon(component)}
-                      </span>
+
                       {editingNameId === component.id ? (
                         <input
                           type="text"
@@ -246,7 +244,7 @@ export default function LayerPanel({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        <span 
+                        <span
                           className="component-name"
                           onDoubleClick={(e) => {
                             e.stopPropagation();
@@ -258,32 +256,10 @@ export default function LayerPanel({
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="component-actions">
                       {editingNameId !== component.id && (
                         <>
-                          {component.props?.canToggle && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onUpdateComponent(component.id, {
-                                  props: {
-                                    ...component.props,
-                                    toggleState: !component.props?.toggleState
-                                  }
-                                });
-                              }}
-                              className="layer-action-btn"
-                              style={{
-                                backgroundColor: component.props?.toggleState ? '#4CAF50' : '#607D8B',
-                                fontSize: '10px',
-                                padding: '2px 4px'
-                              }}
-                              title={`Toggle state: ${component.props?.toggleState ? 'ON' : 'OFF'}`}
-                            >
-                              {component.props?.toggleState ? 'ON' : 'OFF'}
-                            </button>
-                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -314,6 +290,28 @@ export default function LayerPanel({
                           >
                             ↓
                           </button>
+                          {component.props?.canToggle && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onUpdateComponent(component.id, {
+                                  props: {
+                                    ...component.props,
+                                    toggleState: !component.props?.toggleState
+                                  }
+                                });
+                              }}
+                              className="layer-action-btn"
+                              style={{
+                                backgroundColor: component.props?.toggleState ? '#4CAF50' : '#607D8B',
+                                fontSize: '10px',
+                                padding: '2px 4px'
+                              }}
+                              title={`Toggle state: ${component.props?.toggleState ? 'ON' : 'OFF'}`}
+                            >
+                              {component.props?.toggleState ? 'ON' : 'OFF'}
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

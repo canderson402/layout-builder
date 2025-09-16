@@ -123,6 +123,17 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
               state1Props={props.state1Props}
               state2Props={props.state2Props}
               autoToggle={props.autoToggle}
+              borderWidth={props.borderWidth}
+              borderColor={props.borderColor}
+              borderStyle={props.borderStyle}
+              borderTopWidth={props.borderTopWidth}
+              borderRightWidth={props.borderRightWidth}
+              borderBottomWidth={props.borderBottomWidth}
+              borderLeftWidth={props.borderLeftWidth}
+              borderTopLeftRadius={props.borderTopLeftRadius}
+              borderTopRightRadius={props.borderTopRightRadius}
+              borderBottomLeftRadius={props.borderBottomLeftRadius}
+              borderBottomRightRadius={props.borderBottomRightRadius}
             />
           </TouchableWrapper>
         );

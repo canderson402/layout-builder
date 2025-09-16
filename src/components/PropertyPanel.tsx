@@ -199,6 +199,26 @@ function PropertyPanel({
       case 'borderWidth':
         updateBorderWidth(numValue);
         break;
+      // Common numeric props - handle these after updateComponentWithScrollPreservation is available
+      case 'maxTimeouts':
+      case 'itemSpacing':
+      case 'borderRadius':
+      case 'totalCount':
+      case 'activeCount':
+      case 'paddingTop':
+      case 'paddingRight':
+      case 'paddingBottom':
+      case 'paddingLeft':
+      case 'borderTopWidth':
+      case 'borderRightWidth':
+      case 'borderBottomWidth':
+      case 'borderLeftWidth':
+      case 'borderTopLeftRadius':
+      case 'borderTopRightRadius':
+      case 'borderBottomLeftRadius':
+      case 'borderBottomRightRadius':
+        // These will be handled by separate blur handlers for now
+        break;
     }
   }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth]);
 
@@ -242,17 +262,84 @@ function PropertyPanel({
     saveScrollPosition();
   };
   
-  // Restore scroll position only when component changes or after updates
+  // Restore scroll position when component changes or after prop updates
   useEffect(() => {
     restoreScrollPosition();
-  }, [componentId]); // Only restore when component changes
+  }, [componentId]); // Restore when component changes
+
+  // Also restore scroll position after component props change
+  useEffect(() => {
+    restoreScrollPosition();
+  }, [component]); // Restore when component props change
 
   // Wrapped update function that preserves scroll position
   const updateComponentWithScrollPreservation = useCallback((id: string, updates: Partial<ComponentConfig>) => {
     saveScrollPosition();
     onUpdateComponent(id, updates);
   }, [onUpdateComponent]);
-  
+
+  // Generic prop update functions
+  const updateProp = useCallback((propName: string, value: any) => {
+    if (component && componentId) {
+      updateComponentWithScrollPreservation(componentId, {
+        props: { ...component.props, [propName]: value }
+      });
+    }
+  }, [componentId, component, updateComponentWithScrollPreservation]);
+
+  // Text input handlers (for blur-only updates)
+  const handlePropTextChange = useCallback((field: string, value: string) => {
+    // No-op during typing to avoid interrupting user input
+  }, []);
+
+  const handlePropTextBlur = useCallback((field: string, value: string) => {
+    if (!component || !componentId) return;
+    updateProp(field, value);
+  }, [component, componentId, updateProp]);
+
+  // State props handlers (for blur-only updates)
+  const handleStatePropsChange = useCallback((field: string, value: any) => {
+    // No-op during typing to avoid interrupting user input
+  }, []);
+
+  const handleStatePropsBlur = useCallback((field: string, value: string) => {
+    if (!component || !componentId) return;
+
+    // Determine the appropriate value based on field type
+    let processedValue: any = value;
+    if (['fontSize', 'borderWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+         'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+         'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'].includes(field)) {
+      processedValue = parseInt(value) || 0;
+    }
+
+    if (component.props?.canToggle) {
+      // Store in state-specific properties
+      const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+      updateComponentWithScrollPreservation(componentId, {
+        props: {
+          ...component.props,
+          [stateKey]: {
+            ...component.props[stateKey],
+            [field]: processedValue
+          }
+        }
+      });
+    } else {
+      // Store directly in props
+      updateComponentWithScrollPreservation(componentId, {
+        props: { ...component.props, [field]: processedValue }
+      });
+    }
+  }, [component, componentId, editingState, updateComponentWithScrollPreservation]);
+
+  // Additional number handler for props that couldn't be handled in early handleNumberBlur
+  const handleLateNumberBlur = useCallback((field: string, value: string) => {
+    if (!component || !componentId) return;
+    const numValue = parseInt(value) || 0;
+    updateProp(field, numValue);
+  }, [component, componentId, updateProp]);
+
   // Helper function to update properties based on current editing state
   const updateStateProps = useCallback((field: string, value: any) => {
     if (!component || !componentId) return;
@@ -611,8 +698,9 @@ function PropertyPanel({
             <label>Font Size</label>
             <input
               type="number"
-              value={getStateValue('fontSize', 24)}
-              onChange={(e) => updateStateProps('fontSize', parseInt(e.target.value) || 24)}
+              defaultValue={getStateValue('fontSize', 24)}
+              onChange={(e) => handleStatePropsChange('fontSize', e.target.value)}
+              onBlur={(e) => handleStatePropsBlur('fontSize', e.target.value)}
             />
           </div>
           
@@ -648,8 +736,9 @@ function PropertyPanel({
               <label>Label</label>
               <input
                 type="text"
-                value={getStateValue('label', '')}
-                onChange={(e) => updateStateProps('label', e.target.value)}
+                defaultValue={getStateValue('label', '')}
+                onChange={(e) => handleStatePropsChange('label', e.target.value)}
+                onBlur={(e) => handleStatePropsBlur('label', e.target.value)}
               />
             </div>
           )}
@@ -660,18 +749,20 @@ function PropertyPanel({
                 <label>Prefix</label>
                 <input
                   type="text"
-                  value={getStateValue('prefix', '')}
+                  defaultValue={getStateValue('prefix', '')}
                   placeholder="e.g., '$', '#'"
-                  onChange={(e) => updateStateProps('prefix', e.target.value)}
+                  onChange={(e) => handleStatePropsChange('prefix', e.target.value)}
+                  onBlur={(e) => handleStatePropsBlur('prefix', e.target.value)}
                 />
               </div>
               <div className="property-field">
                 <label>Suffix</label>
                 <input
                   type="text"
-                  value={getStateValue('suffix', '')}
+                  defaultValue={getStateValue('suffix', '')}
                   placeholder="e.g., 'pts', '%'"
-                  onChange={(e) => updateStateProps('suffix', e.target.value)}
+                  onChange={(e) => handleStatePropsChange('suffix', e.target.value)}
+                  onBlur={(e) => handleStatePropsBlur('suffix', e.target.value)}
                 />
               </div>
             </div>
@@ -682,12 +773,11 @@ function PropertyPanel({
               <label>Max Timeouts</label>
               <input
                 type="number"
-                value={component.props.maxTimeouts}
+                defaultValue={component.props.maxTimeouts}
                 min="1"
                 max="10"
-                onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                  props: { ...component.props, maxTimeouts: parseInt(e.target.value) || 5 }
-                })}
+                onChange={(e) => handleNumberChange('maxTimeouts', e.target.value)}
+                onBlur={(e) => handleNumberBlur('maxTimeouts', e.target.value)}
               />
             </div>
           )}
@@ -923,9 +1013,10 @@ function PropertyPanel({
                   <input
                     type="url"
                     key={`${component?.id}-imageUrl`}
-                    value={getStateValue('imageUrl', '')}
+                    defaultValue={getStateValue('imageUrl', '')}
                     placeholder="https://example.com/image.jpg"
-                    onChange={(e) => updateStateProps('imageUrl', e.target.value)}
+                    onChange={(e) => handleStatePropsChange('imageUrl', e.target.value)}
+                    onBlur={(e) => handleStatePropsBlur('imageUrl', e.target.value)}
                   />
                 </div>
               )}
@@ -1150,8 +1241,9 @@ function PropertyPanel({
                     type="number"
                     min="0"
                     max="20"
-                    value={getStateValue('borderWidth', 0)}
-                    onChange={(e) => updateStateProps('borderWidth', parseInt(e.target.value) || 0)}
+                    defaultValue={getStateValue('borderWidth', 0)}
+                    onChange={(e) => handleStatePropsChange('borderWidth', e.target.value)}
+                    onBlur={(e) => handleStatePropsBlur('borderWidth', e.target.value)}
                   />
                 </div>
                 {isDragging ? (
@@ -1248,10 +1340,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('paddingTop', 0)}
+                      defaultValue={getStateValue('paddingTop', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('paddingTop', Math.max(0, parseInt(e.target.value) || 0))}
+                      onChange={(e) => handleStatePropsChange('paddingTop', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('paddingTop', e.target.value)}
                     />
                     <button
                       className="radius-quick-button"
@@ -1272,10 +1365,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('paddingRight', 0)}
+                      defaultValue={getStateValue('paddingRight', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('paddingRight', Math.max(0, parseInt(e.target.value) || 0))}
+                      onChange={(e) => handleStatePropsChange('paddingRight', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('paddingRight', e.target.value)}
                     />
                     <button
                       className="radius-quick-button"
@@ -1296,10 +1390,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('paddingBottom', 0)}
+                      defaultValue={getStateValue('paddingBottom', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('paddingBottom', Math.max(0, parseInt(e.target.value) || 0))}
+                      onChange={(e) => handleStatePropsChange('paddingBottom', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('paddingBottom', e.target.value)}
                     />
                     <button
                       className="radius-quick-button"
@@ -1320,10 +1415,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('paddingLeft', 0)}
+                      defaultValue={getStateValue('paddingLeft', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('paddingLeft', Math.max(0, parseInt(e.target.value) || 0))}
+                      onChange={(e) => handleStatePropsChange('paddingLeft', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('paddingLeft', e.target.value)}
                     />
                     <button
                       className="radius-quick-button"
@@ -1351,10 +1447,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('borderTopLeftRadius', 0)}
+                      defaultValue={getStateValue('borderTopLeftRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('borderTopLeftRadius', parseInt(e.target.value) || 0)}
+                      onChange={(e) => handleStatePropsChange('borderTopLeftRadius', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('borderTopLeftRadius', e.target.value)}
                     />
                     <button
                       onClick={() => {
@@ -1382,10 +1479,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('borderTopRightRadius', 0)}
+                      defaultValue={getStateValue('borderTopRightRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('borderTopRightRadius', parseInt(e.target.value) || 0)}
+                      onChange={(e) => handleStatePropsChange('borderTopRightRadius', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('borderTopRightRadius', e.target.value)}
                     />
                     <button
                       onClick={() => {
@@ -1413,10 +1511,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('borderBottomLeftRadius', 0)}
+                      defaultValue={getStateValue('borderBottomLeftRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('borderBottomLeftRadius', parseInt(e.target.value) || 0)}
+                      onChange={(e) => handleStatePropsChange('borderBottomLeftRadius', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('borderBottomLeftRadius', e.target.value)}
                     />
                     <button
                       onClick={() => {
@@ -1444,10 +1543,11 @@ function PropertyPanel({
                     </button>
                     <input
                       type="number"
-                      value={getStateValue('borderBottomRightRadius', 0)}
+                      defaultValue={getStateValue('borderBottomRightRadius', 0)}
                       min="0"
                       max="100"
-                      onChange={(e) => updateStateProps('borderBottomRightRadius', parseInt(e.target.value) || 0)}
+                      onChange={(e) => handleStatePropsChange('borderBottomRightRadius', e.target.value)}
+                      onBlur={(e) => handleStatePropsBlur('borderBottomRightRadius', e.target.value)}
                     />
                     <button
                       onClick={() => {
@@ -1511,10 +1611,9 @@ function PropertyPanel({
                   type="number"
                   min="1"
                   max="20"
-                  value={component.props?.totalCount || 5}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, totalCount: parseInt(e.target.value) }
-                  })}
+                  defaultValue={component.props?.totalCount || 5}
+                  onChange={(e) => handleNumberChange('totalCount', e.target.value)}
+                  onBlur={(e) => handleNumberBlur('totalCount', e.target.value)}
                 />
               </div>
 
@@ -1524,10 +1623,9 @@ function PropertyPanel({
                   type="number"
                   min="0"
                   max="20"
-                  value={component.props?.activeCount || 2}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, activeCount: parseInt(e.target.value) }
-                  })}
+                  defaultValue={component.props?.activeCount || 2}
+                  onChange={(e) => handleNumberChange('activeCount', e.target.value)}
+                  onBlur={(e) => handleNumberBlur('activeCount', e.target.value)}
                 />
               </div>
             </PropertySection>
@@ -1584,10 +1682,9 @@ function PropertyPanel({
                   type="number"
                   min="0"
                   max="10"
-                  value={component.props?.borderWidth || 0}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, borderWidth: parseInt(e.target.value) }
-                  })}
+                  defaultValue={component.props?.borderWidth || 0}
+                  onChange={(e) => handleNumberChange('borderWidth', e.target.value)}
+                  onBlur={(e) => handleNumberBlur('borderWidth', e.target.value)}
                 />
               </div>
 
@@ -1622,10 +1719,9 @@ function PropertyPanel({
                   type="number"
                   min="0"
                   max="20"
-                  value={component.props?.itemSpacing || 4}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, itemSpacing: parseInt(e.target.value) }
-                  })}
+                  defaultValue={component.props?.itemSpacing || 4}
+                  onChange={(e) => handleNumberChange('itemSpacing', e.target.value)}
+                  onBlur={(e) => handleNumberBlur('itemSpacing', e.target.value)}
                 />
               </div>
 
@@ -1635,10 +1731,9 @@ function PropertyPanel({
                   type="number"
                   min="0"
                   max="50"
-                  value={component.props?.borderRadius || 4}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, borderRadius: parseInt(e.target.value) }
-                  })}
+                  defaultValue={component.props?.borderRadius || 4}
+                  onChange={(e) => handleNumberChange('borderRadius', e.target.value)}
+                  onBlur={(e) => handleNumberBlur('borderRadius', e.target.value)}
                 />
               </div>
 
