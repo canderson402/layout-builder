@@ -313,12 +313,10 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
             alt={label || 'Custom image'}
             style={{
               ...(objectFit === 'none' ? {
-                // Native resolution with contain behavior - scale to fit within bounds
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: 'auto',
-                height: 'auto',
-                objectFit: 'contain'
+                // Native resolution mode - stretch to fill container like TV does
+                width: '100%',
+                height: '100%',
+                objectFit: 'fill'
               } : {
                 // Other modes - image fills container with specified object-fit
                 width: '100%',

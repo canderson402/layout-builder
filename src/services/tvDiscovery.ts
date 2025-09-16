@@ -146,9 +146,12 @@ class TVDiscoveryService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-      // Try to connect to the TV's layout endpoint
+      // Try to connect to the TV's layout endpoint with a minimal POST request
+      // The TV server only accepts POST for /layout, not OPTIONS/HEAD
       const response = await fetch(`http://${ip}:3080/layout`, {
-        method: 'OPTIONS',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true }),
         signal: controller.signal,
       });
 
@@ -194,9 +197,11 @@ class TVDiscoveryService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1500);
 
-      // First try the info endpoint which might return device details
+      // First try the info endpoint with POST (since the server may only accept POST)
       const infoResponse = await fetch(`http://${ip}:3080/info`, {
-        method: 'GET',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
         signal: controller.signal,
       });
 
@@ -234,7 +239,9 @@ class TVDiscoveryService {
       const timeoutId = setTimeout(() => controller.abort(), 1500);
 
       const response = await fetch(`http://${ip}:3080/`, {
-        method: 'GET',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
         signal: controller.signal,
       });
 
@@ -286,14 +293,17 @@ class TVDiscoveryService {
   private async getHostname(ip: string): Promise<string | null> {
     // Browser limitation: we can't do reverse DNS lookup directly
     // But we can try some heuristics based on the network and device behavior
-    
+
     try {
       // Try to determine device type based on HTTP headers or response patterns
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000);
 
+      // Use POST instead of HEAD since the server only accepts POST
       const headResponse = await fetch(`http://${ip}:3080/layout`, {
-        method: 'HEAD',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true }),
         signal: controller.signal,
       });
 
@@ -354,9 +364,11 @@ class TVDiscoveryService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-      // Try a simple GET request to see if we can identify the device
-      const response = await fetch(`http://${ip}:3080/`, {
-        method: 'GET',
+      // Try a POST request to see if we can identify the device
+      const response = await fetch(`http://${ip}:3080/layout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true }),
         signal: controller.signal,
       });
 

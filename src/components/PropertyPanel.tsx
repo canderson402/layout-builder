@@ -1479,7 +1479,7 @@ function PropertyPanel({
                   })}
                 >
                   <option value="none">Use Static Value</option>
-                  <option value="maxTimeouts">Max Timeouts</option>
+                  <option value="timeoutsAllowed">Timeouts Allowed</option>
                   <option value="maxFouls">Max Fouls</option>
                   <option value="gameUpdate.timeouts_allowed">Timeouts Allowed (Game Rules)</option>
                 </select>

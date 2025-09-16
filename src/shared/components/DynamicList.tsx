@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 
 interface DynamicListProps {
   // Data paths
-  totalCountPath?: string; // Path to total count (e.g., 'maxTimeouts')
+  totalCountPath?: string; // Path to total count (e.g., 'timeoutsAllowed')
   activeCountPath?: string; // Path to active/remaining count (e.g., 'homeTeam.timeouts')
 
   // Static values (fallback if no data paths)
@@ -39,7 +39,7 @@ interface DynamicListProps {
 
 // Mock data for preview in layout builder
 const mockData = {
-  maxTimeouts: 5,
+  timeoutsAllowed: 5,
   maxFouls: 7,
   homeTeam: {
     timeouts: 2,

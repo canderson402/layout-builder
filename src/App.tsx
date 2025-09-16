@@ -276,20 +276,229 @@ function App() {
     try {
       // Remove port if already included in IP address, then add :3080
       const cleanIp = tvIpAddress.replace(/:.*$/, '');
+
+      // Debug payload size and content
+      const layoutJson = JSON.stringify(layout);
+      const payloadSize = new Blob([layoutJson]).size;
+      console.log('📦 Layout payload size:', payloadSize, 'bytes');
+      console.log('📋 Layout components count:', layout.components?.length || 0);
+      console.log('📄 Layout structure:', {
+        name: layout.name,
+        dimensions: layout.dimensions,
+        componentCount: layout.components?.length || 0,
+        hasComponents: !!layout.components
+      });
+
+      // Validate JSON can be parsed back
+      try {
+        const testParse = JSON.parse(layoutJson);
+        console.log('✅ JSON validation passed');
+
+        // Check for required fields
+        if (!testParse.name || !testParse.components || !testParse.dimensions) {
+          console.warn('⚠️ Missing required fields:', {
+            hasName: !!testParse.name,
+            hasComponents: !!testParse.components,
+            hasDimensions: !!testParse.dimensions
+          });
+        }
+      } catch (jsonError) {
+        console.error('❌ JSON validation failed:', jsonError);
+        alert('Invalid layout data - JSON formatting error');
+        return;
+      }
+
+      // Warn if payload is very large
+      if (payloadSize > 1024 * 1024) { // 1MB
+        console.warn('⚠️ Large payload detected:', (payloadSize / 1024 / 1024).toFixed(2), 'MB');
+      }
+
+      // Log a sample of the JSON for debugging
+      console.log('📄 JSON sample (first 500 chars):', layoutJson.substring(0, 500));
+
+      // Binary search to find the breaking point efficiently
+      console.log('🔍 Binary search for maximum working component count...');
+
+      const totalComponents = layout.components?.length || 0;
+      let workingCount = 5; // We know 5 works
+      let failingCount = totalComponents;
+
+      while (workingCount + 1 < failingCount) {
+        const testCount = Math.floor((workingCount + failingCount) / 2);
+
+        const testLayout = {
+          name: layout.name,
+          sport: layout.sport,
+          components: layout.components?.slice(0, testCount) || [],
+          dimensions: layout.dimensions,
+          backgroundColor: layout.backgroundColor
+        };
+
+        const testJson = JSON.stringify(testLayout);
+        const testSize = new Blob([testJson]).size;
+        console.log(`🔍 Testing ${testCount} components (${testSize} bytes)`);
+
+        try {
+          const testResponse = await fetch(`http://${cleanIp}:3080/layout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: testJson,
+          });
+
+          if (testResponse.ok) {
+            console.log(`✅ ${testCount} components: SUCCESS`);
+            workingCount = testCount;
+          } else {
+            const errorText = await testResponse.text();
+            console.log(`❌ ${testCount} components: FAILED - ${testResponse.status} ${errorText}`);
+            failingCount = testCount;
+          }
+        } catch (testError) {
+          console.log(`❌ ${testCount} components: ERROR - ${testError}`);
+          failingCount = testCount;
+        }
+      }
+
+      console.log(`🎯 Maximum working: ${workingCount} components, Breaks at: ${failingCount} components`);
+      if (failingCount < totalComponents) {
+        console.log('🚨 Breaking component:', layout.components?.[failingCount - 1]);
+      }
+
+      console.log('🎯 Progressive test completed, trying to fix and send full layout...');
+
+      // Comprehensive JSON cleaning system to handle ALL Swift parsing issues
+      const cleanLayoutForServer = (layout: any) => {
+        return {
+          name: layout.name || "Layout",
+          components: (layout.components || []).map((component: any) => {
+            // Start with only the essential fields Swift expects
+            const cleanComponent: any = {
+              id: component.id,
+              type: component.type || "custom",
+              position: {
+                x: Number(component.position?.x || 0),
+                y: Number(component.position?.y || 0)
+              },
+              size: {
+                width: Number(component.size?.width || 100),
+                height: Number(component.size?.height || 50)
+              },
+              props: {}
+            };
+
+            // Add optional fields only if they exist and are valid
+            if (component.displayName && typeof component.displayName === 'string') {
+              cleanComponent.displayName = component.displayName;
+            }
+
+            if (typeof component.layer === 'number') {
+              cleanComponent.layer = component.layer;
+            }
+
+            if (typeof component.visible === 'boolean') {
+              cleanComponent.visible = component.visible;
+            }
+
+            // Comprehensively clean props - merge from all possible sources
+            const allProps = {
+              ...component.props,
+              // Move root-level team color fields into props
+              ...(component.useTeamColor !== undefined && { useTeamColor: component.useTeamColor }),
+              ...(component.teamColorSide !== undefined && { teamColorSide: component.teamColorSide })
+            };
+
+            // Clean and validate each prop
+            Object.keys(allProps).forEach(key => {
+              const value = allProps[key];
+
+              // Skip undefined, null, or empty objects
+              if (value === undefined || value === null) return;
+              if (typeof value === 'object' && Object.keys(value).length === 0) return;
+
+              // Convert problematic string values
+              if (value === "none" && (key === 'dataPath' || key === 'imagePath')) {
+                cleanComponent.props[key] = "";
+                return;
+              }
+
+              if (value === "none" && key === 'objectFit') {
+                cleanComponent.props[key] = "fill";
+                return;
+              }
+
+              // Clean strings
+              if (typeof value === 'string') {
+                const cleaned = value.trim();
+                if (cleaned.length > 0) {
+                  cleanComponent.props[key] = cleaned;
+                }
+                return;
+              }
+
+              // Keep numbers and booleans as-is
+              if (typeof value === 'number' || typeof value === 'boolean') {
+                cleanComponent.props[key] = value;
+                return;
+              }
+
+              // For objects, only include if they have content
+              if (typeof value === 'object' && Object.keys(value).length > 0) {
+                cleanComponent.props[key] = value;
+              }
+            });
+
+            return cleanComponent;
+          }),
+          dimensions: {
+            width: Number(layout.dimensions?.width || 1920),
+            height: Number(layout.dimensions?.height || 1080)
+          },
+          backgroundColor: layout.backgroundColor || "#000000"
+        };
+      };
+
+      const cleanedLayout = cleanLayoutForServer(layout);
+
+      const cleanedJson = JSON.stringify(cleanedLayout);
+      const cleanedSize = new Blob([cleanedJson]).size;
+      console.log('🧹 Cleaned layout size:', cleanedSize, 'bytes');
+
       const response = await fetch(`http://${cleanIp}:3080/layout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(layout),
+        body: cleanedJson,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Try to get more details from the response
+        let errorDetails = '';
+        try {
+          const responseText = await response.text();
+          if (responseText) {
+            errorDetails = ` - ${responseText}`;
+          }
+        } catch (e) {
+          // Ignore if we can't read response
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}${errorDetails}`);
       }
+
+      console.log('✅ Layout sent successfully to TV');
+      alert('Layout sent successfully to TV!');
     } catch (error) {
       console.error('Error sending layout to TV:', error);
-      alert(`Failed to send layout to TV: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Check if this is a network restriction error (common in Brave browser)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_ADDRESS_UNREACHABLE')) {
+        alert(`Failed to send layout to TV: Network blocked by browser.\n\nIf you're using Brave browser:\n1. Click the Brave shield icon in the address bar\n2. Turn off "Block fingerprinting"\n3. Reload the page and try again\n\nOr try using Chrome/Safari instead.`);
+      } else {
+        alert(`Failed to send layout to TV: ${errorMessage}`);
+      }
     } finally {
       setIsSendingToTv(false);
     }
