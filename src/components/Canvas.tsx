@@ -67,6 +67,7 @@ export default function Canvas({
   const [createEnd, setCreateEnd] = useState({ x: 0, y: 0 });
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [hasDraggedFarEnough, setHasDraggedFarEnough] = useState(false);
+  const [initialComponentPositions, setInitialComponentPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
   
   // Viewport panning state
   const [isPanning, setIsPanning] = useState(false);
@@ -287,6 +288,17 @@ export default function Canvas({
           onStartDragOperation(); // Save initial state for undo
           setIsDragging(true);
           setHasDraggedFarEnough(true);
+
+          // Store initial positions of all selected components
+          const positions = new Map<string, { x: number, y: number }>();
+          selectedComponentsRef.current.forEach(componentId => {
+            const component = layoutRef.current.components.find(c => c.id === componentId);
+            if (component) {
+              positions.set(componentId, { x: component.position.x, y: component.position.y });
+            }
+          });
+          setInitialComponentPositions(positions);
+
           // Notify PropertyPanel to pause expensive rendering
           window.dispatchEvent(new CustomEvent('canvas-drag-start'));
         } else {
@@ -295,6 +307,12 @@ export default function Canvas({
           onStartDragOperation(); // Save initial state for undo
           setIsDragging(true);
           setHasDraggedFarEnough(true);
+
+          // Store initial position of the single selected component
+          const positions = new Map<string, { x: number, y: number }>();
+          positions.set(draggedComponent.id, { x: draggedComponent.position.x, y: draggedComponent.position.y });
+          setInitialComponentPositions(positions);
+
           // Notify PropertyPanel to pause expensive rendering
           window.dispatchEvent(new CustomEvent('canvas-drag-start'));
         }
@@ -322,10 +340,11 @@ export default function Canvas({
       // Calculate raw mouse movement delta (before any snapping)
       const rawX = canvasX - dragOffset.x;
       const rawY = canvasY - dragOffset.y;
-      const originalX = draggedComponent.position.x;
-      const originalY = draggedComponent.position.y;
-      const rawDeltaX = rawX - originalX;
-      const rawDeltaY = rawY - originalY;
+
+      // Get the initial position of the primary component
+      const initialPrimaryPos = initialComponentPositions.get(draggedComponent.id) || draggedComponent.position;
+      const rawDeltaX = rawX - initialPrimaryPos.x;
+      const rawDeltaY = rawY - initialPrimaryPos.y;
 
       // Component size is already in pixels
       let compWidth = draggedComponent.size.width;
@@ -352,20 +371,22 @@ export default function Canvas({
         size: { width: compWidth, height: compHeight }
       });
 
-      // If multiple components are selected, move them all by the raw mouse delta
+      // If multiple components are selected, move them all by the same delta from their initial positions
       if (selectedComponentsRef.current.length > 1) {
         selectedComponentsRef.current.forEach(componentId => {
           if (componentId !== draggedComponent.id) {
-            const component = layoutRef.current.components.find(c => c.id === componentId);
-            if (component) {
-              // Position is already in pixels
-              const currentX = component.position.x;
-              const currentY = component.position.y;
-              
-              // Move by the raw mouse movement delta (not the snapped delta)
-              let movedX = currentX + rawDeltaX;
-              let movedY = currentY + rawDeltaY;
-              
+            const initialPos = initialComponentPositions.get(componentId);
+            if (initialPos) {
+              // Apply the same raw delta from the component's initial position
+              let movedX = initialPos.x + rawDeltaX;
+              let movedY = initialPos.y + rawDeltaY;
+
+              // Optionally snap non-primary components too if grid is enabled
+              if (showGrid) {
+                movedX = snapToGrid(movedX, 'width');
+                movedY = snapToGrid(movedY, 'height');
+              }
+
               onUpdateComponent(componentId, {
                 position: { x: movedX, y: movedY }
               });
@@ -476,13 +497,149 @@ export default function Canvas({
     setDraggedComponent(null);
     setHasDraggedFarEnough(false);
     setComponentsAtClickPosition([]); // Clear the stored components
+    setInitialComponentPositions(new Map()); // Clear initial positions
   }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
+
+  // Calculate bounding box for multiple selected components
+  const getMultiSelectBounds = useCallback(() => {
+    if (selectedComponents.length <= 1) return null;
+
+    const selectedComponentData = selectedComponents
+      .map(id => layout.components.find(c => c.id === id))
+      .filter((c): c is ComponentConfig => c !== undefined);
+
+    if (selectedComponentData.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    selectedComponentData.forEach(comp => {
+      const left = comp.position.x;
+      const top = comp.position.y;
+      const right = comp.position.x + comp.size.width;
+      const bottom = comp.position.y + comp.size.height;
+
+      minX = Math.min(minX, left);
+      minY = Math.min(minY, top);
+      maxX = Math.max(maxX, right);
+      maxY = Math.max(maxY, bottom);
+    });
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      components: selectedComponentData
+    };
+  }, [selectedComponents, layout.components]);
+
+  // Handle multi-component resize
+  const handleMultiResizeMouseDown = useCallback((e: React.MouseEvent, handle: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const bounds = getMultiSelectBounds();
+    if (!bounds) return;
+
+    onStartDragOperation(); // Save initial state for undo
+    setIsResizing(true);
+    setResizeHandle(handle);
+    // Set a dummy component for the resize logic
+    setDraggedComponent({
+      id: 'multi-select',
+      type: 'custom',
+      position: { x: bounds.x, y: bounds.y },
+      size: { width: bounds.width, height: bounds.height },
+      props: {}
+    } as ComponentConfig);
+  }, [getMultiSelectBounds, onStartDragOperation, setDraggedComponent]);
 
   // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number) => {
     if (!draggedComponent) return;
 
-    // Component values are already in pixels
+    // Check if this is a multi-component resize
+    if (draggedComponent.id === 'multi-select' && selectedComponents.length > 1) {
+      const bounds = getMultiSelectBounds();
+      if (!bounds) return;
+
+      // Calculate scale factors
+      const originalWidth = bounds.width;
+      const originalHeight = bounds.height;
+      const originalLeft = bounds.x;
+      const originalTop = bounds.y;
+
+      let newWidth = originalWidth;
+      let newHeight = originalHeight;
+      let newX = originalLeft;
+      let newY = originalTop;
+
+      const minSize = 20;
+
+      switch (resizeHandle) {
+        case 'se': // Bottom-right
+          newWidth = Math.max(minSize, canvasX - originalLeft);
+          newHeight = Math.max(minSize, canvasY - originalTop);
+          break;
+        case 'sw': // Bottom-left
+          newWidth = Math.max(minSize, originalLeft + originalWidth - canvasX);
+          newHeight = Math.max(minSize, canvasY - originalTop);
+          newX = canvasX;
+          break;
+        case 'ne': // Top-right
+          newWidth = Math.max(minSize, canvasX - originalLeft);
+          newHeight = Math.max(minSize, originalTop + originalHeight - canvasY);
+          newY = canvasY;
+          break;
+        case 'nw': // Top-left
+          newWidth = Math.max(minSize, originalLeft + originalWidth - canvasX);
+          newHeight = Math.max(minSize, originalTop + originalHeight - canvasY);
+          newX = canvasX;
+          newY = canvasY;
+          break;
+      }
+
+      // Calculate scale factors
+      const scaleX = newWidth / originalWidth;
+      const scaleY = newHeight / originalHeight;
+
+      // Apply scaling to all selected components
+      bounds.components.forEach(component => {
+        // Calculate relative position within the bounding box
+        const relativeX = (component.position.x - originalLeft) / originalWidth;
+        const relativeY = (component.position.y - originalTop) / originalHeight;
+        const relativeWidth = component.size.width / originalWidth;
+        const relativeHeight = component.size.height / originalHeight;
+
+        // Calculate new position and size
+        const newComponentX = newX + (relativeX * newWidth);
+        const newComponentY = newY + (relativeY * newHeight);
+        const newComponentWidth = Math.max(minSize, relativeWidth * newWidth);
+        const newComponentHeight = Math.max(minSize, relativeHeight * newHeight);
+
+        // Apply grid snapping if enabled
+        let finalX = newComponentX;
+        let finalY = newComponentY;
+        let finalWidth = newComponentWidth;
+        let finalHeight = newComponentHeight;
+
+        if (showGrid) {
+          finalX = snapToGrid(finalX, 'width');
+          finalY = snapToGrid(finalY, 'height');
+          finalWidth = snapToGrid(finalWidth, 'width');
+          finalHeight = snapToGrid(finalHeight, 'height');
+        }
+
+        onUpdateComponent(component.id, {
+          position: { x: finalX, y: finalY },
+          size: { width: finalWidth, height: finalHeight }
+        });
+      });
+
+      return;
+    }
+
+    // Single component resize logic (existing code)
     const currentLeft = draggedComponent.position.x;
     const currentTop = draggedComponent.position.y;
     const currentWidth = draggedComponent.size.width;
@@ -526,14 +683,12 @@ export default function Canvas({
       newY = snapToGrid(newY, 'height');
     }
 
-    // No boundary constraints - allow resizing off grid
-
     // Store pixel values directly
     onUpdateComponent(draggedComponent.id, {
       position: { x: newX, y: newY },
       size: { width: newWidth, height: newHeight }
     });
-  }, [draggedComponent, resizeHandle, snapToGrid, shouldSnap, onUpdateComponent, showGrid]);
+  }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, getMultiSelectBounds]);
 
   // Handle resize handle mouse down
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, handle: string, component: ComponentConfig) => {
@@ -753,25 +908,25 @@ export default function Canvas({
         onMouseDown={(e) => handleMouseDown(e, component)}
         className="canvas-handle"
       >
-        {selectedComponents.includes(component.id) && (
+        {selectedComponents.includes(component.id) && selectedComponents.length === 1 && (
           <>
-            {/* Resize handles */}
-            <div 
+            {/* Resize handles - only show for single selection */}
+            <div
               className="resize-handle resize-handle-nw"
               onMouseDown={(e) => handleResizeMouseDown(e, 'nw', component)}
               style={{ top: -4, left: -4 }}
             />
-            <div 
+            <div
               className="resize-handle resize-handle-ne"
               onMouseDown={(e) => handleResizeMouseDown(e, 'ne', component)}
               style={{ top: -4, right: -4 }}
             />
-            <div 
+            <div
               className="resize-handle resize-handle-sw"
               onMouseDown={(e) => handleResizeMouseDown(e, 'sw', component)}
               style={{ bottom: -4, left: -4 }}
             />
-            <div 
+            <div
               className="resize-handle resize-handle-se"
               onMouseDown={(e) => handleResizeMouseDown(e, 'se', component)}
               style={{ bottom: -4, right: -4 }}
@@ -1198,6 +1353,93 @@ export default function Canvas({
             .filter(component => component.visible !== false) // Show components that are explicitly visible or undefined (default true)
             .sort((a, b) => (a.layer || 0) - (b.layer || 0))
             .map(component => getComponentHandle(component))}
+
+          {/* Multi-select bounding box */}
+          {selectedComponents.length > 1 && (() => {
+            const bounds = getMultiSelectBounds();
+            if (!bounds) return null;
+
+            return (
+              <div
+                key="multi-select-bounds"
+                style={{
+                  position: 'absolute',
+                  left: bounds.x,
+                  top: bounds.y,
+                  width: bounds.width,
+                  height: bounds.height,
+                  border: '2px dashed #4CAF50',
+                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                  pointerEvents: 'none',
+                  zIndex: 100
+                }}
+              >
+                {/* Multi-select resize handles */}
+                <div
+                  className="resize-handle resize-handle-nw"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'nw')}
+                  style={{
+                    top: -4,
+                    left: -4,
+                    pointerEvents: 'auto',
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff'
+                  }}
+                />
+                <div
+                  className="resize-handle resize-handle-ne"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'ne')}
+                  style={{
+                    top: -4,
+                    right: -4,
+                    pointerEvents: 'auto',
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff'
+                  }}
+                />
+                <div
+                  className="resize-handle resize-handle-sw"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'sw')}
+                  style={{
+                    bottom: -4,
+                    left: -4,
+                    pointerEvents: 'auto',
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff'
+                  }}
+                />
+                <div
+                  className="resize-handle resize-handle-se"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'se')}
+                  style={{
+                    bottom: -4,
+                    right: -4,
+                    pointerEvents: 'auto',
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff'
+                  }}
+                />
+
+                {/* Multi-select info label */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: -24,
+                    left: 0,
+                    backgroundColor: '#4CAF50',
+                    color: 'white',
+                    padding: '2px 8px',
+                    fontSize: '12px',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {selectedComponents.length} selected
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

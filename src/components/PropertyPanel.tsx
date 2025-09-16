@@ -343,14 +343,68 @@ function PropertyPanel({
   }
 
   if (selectedComponents.length > 1) {
+    const multiComponents = selectedComponents
+      .map(id => layout.components.find(c => c.id === id))
+      .filter((c): c is ComponentConfig => c !== undefined);
+
     return (
       <div className="property-panel">
         <div className="property-header">
-          <h3>Properties</h3>
+          <h3>Multi-Select Properties</h3>
+          <span className="component-count">{selectedComponents.length} components</span>
         </div>
         <div className="property-content">
-          <div className="no-selection">
-            Multiple components selected ({selectedComponents.length})
+          <div className="multi-select-info">
+            <h4>Selected Components:</h4>
+            <div className="selected-components-list">
+              {multiComponents.map(component => (
+                <div key={component.id} className="selected-component-item">
+                  <span className="component-icon">
+                    {component.type === 'custom' ? '📦' :
+                     component.type === 'dynamicList' ? '📋' : '🏷️'}
+                  </span>
+                  <span className="component-name">
+                    {component.displayName || component.type}
+                  </span>
+                  <span className="component-type">({component.type})</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="multi-select-actions">
+              <h4>Multi-Select Actions:</h4>
+              <div className="action-buttons">
+                <button
+                  className="action-button"
+                  onClick={() => selectedComponents.forEach(id => onUpdateComponent(id, { layer: 0 }))}
+                  title="Move all selected components to layer 0"
+                >
+                  📍 Reset to Layer 0
+                </button>
+                <button
+                  className="action-button"
+                  onClick={() => {
+                    const maxLayer = Math.max(...layout.components.map(c => c.layer || 0));
+                    selectedComponents.forEach((id, index) =>
+                      onUpdateComponent(id, { layer: maxLayer + index + 1 })
+                    );
+                  }}
+                  title="Move all selected components to front"
+                >
+                  ⬆️ Bring to Front
+                </button>
+              </div>
+
+              <div className="multi-select-tips">
+                <h4>Tips:</h4>
+                <ul>
+                  <li>• Drag any selected component to move all together</li>
+                  <li>• Use the green handles around the group to scale all together</li>
+                  <li>• Press Delete to remove all selected components</li>
+                  <li>• Ctrl+D to duplicate all selected components</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </div>

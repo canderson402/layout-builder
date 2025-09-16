@@ -234,13 +234,11 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   };
 
   const imageSourceObj = getImageSource();
-  
-  // For native resolution mode, use image dimensions only if they match the current width/height
-  // If user manually resizes, respect their manual size to allow anchor positioning
-  const shouldAutoSize = objectFit === 'none' && imageDimensions && 
-    (width === imageDimensions.width && height === imageDimensions.height);
-  const containerWidth = shouldAutoSize ? imageDimensions.width : width;
-  const containerHeight = shouldAutoSize ? imageDimensions.height : height;
+
+  // For native resolution mode with contain behavior - always use container dimensions
+  // The image will scale to fit within the bounds while maintaining aspect ratio
+  const containerWidth = width;
+  const containerHeight = height;
 
   // Convert anchor point to flexbox alignment
   const getAnchorAlignment = () => {
@@ -315,17 +313,18 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
             alt={label || 'Custom image'}
             style={{
               ...(objectFit === 'none' ? {
-                // Native resolution - let container anchor determine positioning
+                // Native resolution with contain behavior - scale to fit within bounds
                 maxWidth: '100%',
                 maxHeight: '100%',
                 width: 'auto',
-                height: 'auto'
+                height: 'auto',
+                objectFit: 'contain'
               } : {
-                // Fill modes - image fills container completely
+                // Other modes - image fills container with specified object-fit
                 width: '100%',
-                height: '100%'
+                height: '100%',
+                objectFit: objectFit
               }),
-              objectFit: objectFit,
               display: 'block'
             }}
             onLoad={(e) => {
