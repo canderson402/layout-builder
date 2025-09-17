@@ -838,6 +838,9 @@ function PropertyPanel({
                     <option value="awayTeam.doubleBonus">Away Double Bonus</option>
                     <option value="awayTeam.possession">Away Possession</option>
                   </optgroup>
+                  <optgroup label="Sponsorship">
+                    <option value="user_sequences.banner">Banner Ads</option>
+                  </optgroup>
                 </select>
               </div>
 

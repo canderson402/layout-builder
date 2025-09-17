@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text } from 'react-native';
 
 interface CustomDataDisplayProps {
@@ -91,6 +91,58 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     teamColorSide = 'home',
     ...defaultProps
   } = props;
+
+  // Banner rotation state for layout builder preview
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Mock banner data for layout builder preview
+  const mockBannerData = {
+    entries: [
+      {
+        id: 1,
+        image: { url: 'https://via.placeholder.com/300x100/FF0000/FFFFFF?text=Banner+1' },
+        rotation_interval: 3
+      },
+      {
+        id: 2,
+        image: { url: 'https://via.placeholder.com/300x100/00FF00/FFFFFF?text=Banner+2' },
+        rotation_interval: 3
+      },
+      {
+        id: 3,
+        image: { url: 'https://via.placeholder.com/300x100/0000FF/FFFFFF?text=Banner+3' },
+        rotation_interval: 3
+      }
+    ]
+  };
+
+  // Banner rotation logic for layout builder
+  useEffect(() => {
+    if (dataPath === 'user_sequences.banner') {
+      const bannerEntries = mockBannerData.entries;
+
+      if (bannerEntries.length > 1) {
+        // Clear any existing timer
+        if (bannerTimerRef.current) {
+          clearInterval(bannerTimerRef.current);
+        }
+
+        // Use 3 second intervals for layout builder preview
+        bannerTimerRef.current = setInterval(() => {
+          setCurrentBannerIndex((prevIndex) =>
+            prevIndex >= bannerEntries.length - 1 ? 0 : prevIndex + 1
+          );
+        }, 3000);
+      }
+
+      return () => {
+        if (bannerTimerRef.current) {
+          clearInterval(bannerTimerRef.current);
+        }
+      };
+    }
+  }, [dataPath]);
 
   // Use provided gameData or fall back to mockData, prioritizing the dynamic data
   const effectiveGameData = gameData || mockData;
@@ -224,6 +276,16 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   // Get image source
   const getImageSource = () => {
+    // Handle banner ads
+    if (dataPath === 'user_sequences.banner') {
+      const bannerEntries = mockBannerData.entries;
+      if (bannerEntries.length > 0) {
+        const currentEntry = bannerEntries[currentBannerIndex] || bannerEntries[0];
+        return { uri: currentEntry.image?.url };
+      }
+      return null;
+    }
+
     if (imageSource === 'local' && imagePath) {
       return { uri: imagePath };
     }
