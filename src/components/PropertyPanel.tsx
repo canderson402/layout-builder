@@ -199,12 +199,18 @@ function PropertyPanel({
       case 'borderWidth':
         updateBorderWidth(numValue);
         break;
+      case 'totalCount':
+      case 'activeCount':
+        if (component && componentId) {
+          updateComponentWithScrollPreservation(componentId, {
+            props: { ...component.props, [field]: numValue }
+          });
+        }
+        break;
       // Common numeric props - handle these after updateComponentWithScrollPreservation is available
       case 'maxTimeouts':
       case 'itemSpacing':
       case 'borderRadius':
-      case 'totalCount':
-      case 'activeCount':
       case 'paddingTop':
       case 'paddingRight':
       case 'paddingBottom':
