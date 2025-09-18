@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useReducer, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { ComponentConfig, LayoutConfig } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
@@ -6,107 +6,8 @@ import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
 import { tvDiscoveryService, DiscoveredTV } from './services/tvDiscovery';
-// Import from shared layouts - for now we'll define them locally until we can resolve the path
-const basketballLayout = {
-  name: 'Basketball Standard',
-  sport: 'basketball',
-  backgroundColor: '#000000',
-  dimensions: { width: 1920, height: 1080 },
-  components: [
-    {
-      type: 'teamName' as const,
-      team: 'home' as const,
-      position: { x: 96, y: 54 },        // 96px x, 54px y
-      size: { width: 768, height: 162 },  // 768px width, 162px height
-      props: { fontSize: 24 },
-      id: 'home_team_name'
-    },
-    {
-      type: 'teamName' as const,
-      team: 'away' as const,
-      position: { x: 1056, y: 54 },       // 1056px x, 54px y
-      size: { width: 768, height: 162 },  // 768px width, 162px height
-      props: { fontSize: 24 },
-      id: 'away_team_name'
-    },
-    {
-      type: 'score' as const,
-      team: 'home' as const,
-      position: { x: 192, y: 270 },       // 192px x, 270px y
-      size: { width: 576, height: 270 },  // 576px width, 270px height
-      props: { fontSize: 48 },
-      id: 'home_score'
-    },
-    {
-      type: 'score' as const,
-      team: 'away' as const,
-      position: { x: 1152, y: 270 },      // 1152px x, 270px y
-      size: { width: 576, height: 270 },  // 576px width, 270px height
-      props: { fontSize: 48 },
-      id: 'away_score'
-    },
-    {
-      type: 'clock' as const,
-      position: { x: 672, y: 648 },       // 672px x, 648px y
-      size: { width: 576, height: 216 },  // 576px width, 216px height
-      props: { fontSize: 32 },
-      id: 'game_clock'
-    }
-  ]
-};
-
-const volleyballLayout = {
-  name: 'Volleyball Standard',
-  sport: 'volleyball', 
-  backgroundColor: '#000000',
-  dimensions: { width: 1920, height: 1080 },
-  components: [
-    {
-      type: 'teamName' as const,
-      team: 'home' as const,
-      position: { x: 96, y: 108 },        // 96px x, 108px y
-      size: { width: 768, height: 162 },  // 768px width, 162px height
-      props: { fontSize: 24 },
-      id: 'home_team_name'
-    },
-    {
-      type: 'teamName' as const,
-      team: 'away' as const,
-      position: { x: 1056, y: 108 },      // 1056px x, 108px y
-      size: { width: 768, height: 162 },  // 768px width, 162px height
-      props: { fontSize: 24 },
-      id: 'away_team_name'
-    }
-  ]
-};
-
-const soccerLayout = {
-  name: 'Soccer Standard',
-  sport: 'soccer',
-  backgroundColor: '#000000',
-  dimensions: { width: 1920, height: 1080 },
-  components: [
-    {
-      type: 'teamName' as const,
-      team: 'home' as const,
-      position: { x: 96, y: 162 },        // 96px x, 162px y
-      size: { width: 672, height: 194 },  // 672px width, 194px height
-      props: { fontSize: 28 },
-      id: 'home_team_name'
-    },
-    {
-      type: 'teamName' as const,
-      team: 'away' as const,
-      position: { x: 1152, y: 162 },      // 1152px x, 162px y
-      size: { width: 672, height: 194 },  // 672px width, 194px height
-      props: { fontSize: 28 },
-      id: 'away_team_name'
-    }
-  ]
-};
 import './App.css';
 
-// TV screen dimensions (16:9 aspect ratio) - Memoized to prevent object recreation
 const DEVICE_PRESETS = {
   '1080p TV (1920x1080)': { width: 1920, height: 1080 },
   '4K TV (3840x2160)': { width: 1920, height: 1080 }, // Scaled down for display
