@@ -213,7 +213,7 @@
 .color-picker-preview-text {
   font-size: 11px;
   color: #ccc;
-  font-family: monospace;
+  font-family: 'Roboto Mono', monospace;
   margin-left: 16px;
 }
 

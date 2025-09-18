@@ -50,6 +50,6 @@ const styles = StyleSheet.create({
   },
   clockText: {
     fontWeight: 'bold',
-    fontFamily: 'monospace',
+    fontFamily: 'Roboto Mono',
   },
 });

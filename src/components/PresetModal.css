@@ -321,7 +321,7 @@
   color: #fff;
   border: 1px solid #444;
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Roboto Mono', 'Monaco', 'Menlo', monospace;
   font-size: 13px;
   line-height: 1.4;
   resize: vertical;
@@ -334,7 +334,7 @@
 
 .json-textarea::placeholder {
   color: #999;
-  font-family: sans-serif;
+  font-family: 'Roboto', sans-serif;
 }
 
 .json-help {

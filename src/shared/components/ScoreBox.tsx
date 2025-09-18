@@ -48,6 +48,6 @@ const styles = StyleSheet.create({
   },
   scoreText: {
     fontWeight: 'bold',
-    fontFamily: 'monospace',
+    fontFamily: 'Roboto',
   },
 });

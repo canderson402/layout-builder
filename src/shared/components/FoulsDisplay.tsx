@@ -54,9 +54,10 @@ const styles = StyleSheet.create({
   label: {
     fontWeight: 'bold',
     textTransform: 'uppercase',
+    fontFamily: 'Roboto',
   },
   foulText: {
     fontWeight: 'bold',
-    fontFamily: 'monospace',
+    fontFamily: 'Roboto',
   },
 });
