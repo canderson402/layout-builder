@@ -819,6 +819,7 @@ function PropertyPanel({
                   <option value="none">No Data (Display Only)</option>
                   <optgroup label="Game Info">
                     <option value="gameClock">Game Clock</option>
+                    <option value="timeoutClock">Timeout Clock</option>
                     <option value="period">Period/Quarter</option>
                     <option value="shotClock">Shot Clock</option>
                     <option value="quarter">Quarter</option>
