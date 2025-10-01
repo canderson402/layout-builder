@@ -1,13 +1,14 @@
 // Utility functions for handling images in the layout builder
 
 // Sport-based image organization
-export const AVAILABLE_SPORTS = ['general', 'basketball'] as const;
+export const AVAILABLE_SPORTS = ['general', 'basketball', 'break'] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Cache for sport-specific images
 let sportImages: Record<Sport, string[]> = {
   general: [],
-  basketball: []
+  basketball: [],
+  break: []
 };
 
 // Function to dynamically discover images by sport
@@ -83,6 +84,34 @@ export const loadAvailableImages = async (sport: Sport = 'general'): Promise<str
 
       sportImages.basketball = foundImages;
       console.log(`Found ${foundImages.length} basketball images:`, foundImages);
+      return foundImages;
+    } else if (sport === 'break') {
+      // Break-specific images
+      const breakImages = [
+        '16x9-cd-ind-timeout.png',
+        '16x9-cd-score-base.png',
+        '16x9-cd-time-base.png',
+        '16x9-cd-time-tab.png'
+      ];
+
+      // Test each break image to see if it exists
+      const imagePromises = breakImages.map(async (filename) => {
+        try {
+          const response = await fetch(`/images/break/${filename}`, { method: 'HEAD' });
+          if (response.ok) {
+            return filename;
+          }
+        } catch (error) {
+          // Image doesn't exist
+        }
+        return null;
+      });
+
+      const results = await Promise.all(imagePromises);
+      const foundImages = results.filter((filename): filename is string => filename !== null);
+
+      sportImages.break = foundImages;
+      console.log(`Found ${foundImages.length} break images:`, foundImages);
       return foundImages;
     }
 

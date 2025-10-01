@@ -847,6 +847,7 @@ function PropertyPanel({
                   </optgroup>
                   <optgroup label="Sponsorship">
                     <option value="user_sequences.banner">Banner Ads</option>
+                    <option value="user_sequences.timeout">Timeout Ads</option>
                   </optgroup>
                 </select>
               </div>
@@ -972,21 +973,33 @@ function PropertyPanel({
               </div>
 
               {getStateValue('imageSource', 'none') === 'local' && (
-                <div className="property-field">
-                  <label>Select Image</label>
-                  <select
-                    value={getStateValue('imagePath', '')}
-                    onChange={(e) => updateStateProps('imagePath', e.target.value)}
-                  >
-                    <option value="">
-                      {imagesLoading ? 'Loading images...' : 'Select an image...'}
-                    </option>
-                    {availableImages.map((filename) => (
-                      <option key={filename} value={getImagePath(filename, selectedSport)}>
-                        {filename}
+                <>
+                  <div className="property-field">
+                    <label>Image Type</label>
+                    <select
+                      value={selectedSport}
+                      onChange={(e) => setSelectedSport(e.target.value as Sport)}
+                    >
+                      <option value="general">General</option>
+                      <option value="basketball">Basketball</option>
+                      <option value="break">Break</option>
+                    </select>
+                  </div>
+                  <div className="property-field">
+                    <label>Select Image</label>
+                    <select
+                      value={getStateValue('imagePath', '')}
+                      onChange={(e) => updateStateProps('imagePath', e.target.value)}
+                    >
+                      <option value="">
+                        {imagesLoading ? 'Loading images...' : 'Select an image...'}
                       </option>
-                    ))}
-                  </select>
+                      {availableImages.map((filename) => (
+                        <option key={filename} value={getImagePath(filename, selectedSport)}>
+                          {filename}
+                        </option>
+                      ))}
+                    </select>
                   <button
                     type="button"
                     onClick={async () => {
@@ -1015,6 +1028,7 @@ function PropertyPanel({
                     {imagesLoading ? 'Loading...' : 'Refresh Images'}
                   </button>
                 </div>
+                </>
               )}
 
               {getStateValue('imageSource', 'none') === 'url' && (
