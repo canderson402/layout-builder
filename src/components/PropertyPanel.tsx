@@ -821,11 +821,9 @@ function PropertyPanel({
                     <option value="gameClock">Game Clock</option>
                     <option value="timeoutClock">Timeout Clock</option>
                     <option value="period">Period/Quarter</option>
-                    <option value="shotClock">Shot Clock</option>
-                    <option value="quarter">Quarter</option>
-                    <option value="half">Half</option>
-                    <option value="set">Set</option>
                     <option value="isOvertime">Overtime</option>
+                    <option value="home_sets_won">Home Sets Won</option>
+                    <option value="away_sets_won">Away Sets Won</option>
                   </optgroup>
                   <optgroup label="Home Team">
                     <option value="homeTeam.name">Home Team Name</option>
@@ -958,6 +956,8 @@ function PropertyPanel({
                 >
                   <option value="general">General</option>
                   <option value="basketball">Basketball</option>
+                  <option value="break">Break</option>
+                  <option value="volleyball">Volleyball</option>
                 </select>
               </div>
               <div className="property-field">
@@ -983,6 +983,7 @@ function PropertyPanel({
                       <option value="general">General</option>
                       <option value="basketball">Basketball</option>
                       <option value="break">Break</option>
+                      <option value="volleyball">Volleyball</option>
                     </select>
                   </div>
                   <div className="property-field">

@@ -1,14 +1,15 @@
 // Utility functions for handling images in the layout builder
 
 // Sport-based image organization
-export const AVAILABLE_SPORTS = ['general', 'basketball', 'break'] as const;
+export const AVAILABLE_SPORTS = ['general', 'basketball', 'break', 'volleyball'] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Cache for sport-specific images
 let sportImages: Record<Sport, string[]> = {
   general: [],
   basketball: [],
-  break: []
+  break: [],
+  volleyball: []
 };
 
 // Function to dynamically discover images by sport
@@ -21,7 +22,8 @@ export const loadAvailableImages = async (sport: Sport = 'general'): Promise<str
         'face.png',
         'clock-node.png',
         'test_score.png',
-        'wrapper-16x9-ATV.jpg'
+        'wrapper-16x9-ATV.jpg',
+        'bb-sb-standard-frames-universal.png'
       ];
 
       // Test each potential image to see if it exists
@@ -112,6 +114,32 @@ export const loadAvailableImages = async (sport: Sport = 'general'): Promise<str
 
       sportImages.break = foundImages;
       console.log(`Found ${foundImages.length} break images:`, foundImages);
+      return foundImages;
+    } else if (sport === 'volleyball') {
+      // Volleyball-specific images
+      const volleyballImages = [
+        'vb-full-frames.png',
+        'vb-full-period-bg.png'
+      ];
+
+      // Test each volleyball image to see if it exists
+      const imagePromises = volleyballImages.map(async (filename) => {
+        try {
+          const response = await fetch(`/images/volleyball/${filename}`, { method: 'HEAD' });
+          if (response.ok) {
+            return filename;
+          }
+        } catch (error) {
+          // Image doesn't exist
+        }
+        return null;
+      });
+
+      const results = await Promise.all(imagePromises);
+      const foundImages = results.filter((filename): filename is string => filename !== null);
+
+      sportImages.volleyball = foundImages;
+      console.log(`Found ${foundImages.length} volleyball images:`, foundImages);
       return foundImages;
     }
 

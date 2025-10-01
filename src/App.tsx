@@ -70,6 +70,8 @@ function App() {
     half: 2,
     set: 3,
     isOvertime: false,
+     home_sets_won: 0,
+    away_sets_won: 0,
     home_team_color: '#c41e3a',
     away_team_color: '#003f7f'
   });
