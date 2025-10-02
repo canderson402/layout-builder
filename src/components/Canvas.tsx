@@ -79,6 +79,9 @@ export default function Canvas({
   const lastUpdateTime = useRef(0);
   const THROTTLE_MS = 16; // ~60fps
 
+  // Ref to store handleResize function to avoid initialization order issues
+  const handleResizeRef = useRef<((canvasX: number, canvasY: number, maintainAspectRatio?: boolean) => void) | null>(null);
+
   // Helper function to handle component selection with Ctrl/Cmd for multi-select
   const handleComponentSelect = useCallback((componentId: string, isCtrlClick: boolean = false) => {
     if (isCtrlClick) {
@@ -397,8 +400,11 @@ export default function Canvas({
     }
 
     if (isResizing) {
-      // Handle resizing logic here
-      handleResize(canvasX, canvasY);
+      // Handle resizing logic here - will call handleResize defined below
+      // Using a function ref to avoid dependency issues
+      if (handleResizeRef.current) {
+        handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
+      }
     }
   }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, scale, showGrid, isPanning, isCreating, panStart, viewportOffset]);
 
@@ -555,7 +561,7 @@ export default function Canvas({
   }, [getMultiSelectBounds, onStartDragOperation, setDraggedComponent]);
 
   // Handle resize logic
-  const handleResize = useCallback((canvasX: number, canvasY: number) => {
+  const handleResize = useCallback((canvasX: number, canvasY: number, maintainAspectRatio: boolean = false) => {
     if (!draggedComponent) return;
 
     // Check if this is a multi-component resize
@@ -645,6 +651,9 @@ export default function Canvas({
     const currentWidth = draggedComponent.size.width;
     const currentHeight = draggedComponent.size.height;
 
+    // Calculate original aspect ratio
+    const aspectRatio = currentWidth / currentHeight;
+
     let newWidth = currentWidth;
     let newHeight = currentHeight;
     let newX = currentLeft;
@@ -656,22 +665,42 @@ export default function Canvas({
       case 'se': // Bottom-right
         newWidth = Math.max(minSize, canvasX - currentLeft);
         newHeight = Math.max(minSize, canvasY - currentTop);
+        if (maintainAspectRatio) {
+          // Use width to determine height
+          newHeight = newWidth / aspectRatio;
+        }
         break;
       case 'sw': // Bottom-left
         newWidth = Math.max(minSize, currentLeft + currentWidth - canvasX);
         newHeight = Math.max(minSize, canvasY - currentTop);
+        if (maintainAspectRatio) {
+          // Use width to determine height
+          newHeight = newWidth / aspectRatio;
+        }
         newX = canvasX;
         break;
       case 'ne': // Top-right
         newWidth = Math.max(minSize, canvasX - currentLeft);
         newHeight = Math.max(minSize, currentTop + currentHeight - canvasY);
-        newY = canvasY;
+        if (maintainAspectRatio) {
+          // Use width to determine height, then adjust Y position
+          const calculatedHeight = newWidth / aspectRatio;
+          newY = currentTop + currentHeight - calculatedHeight;
+          newHeight = calculatedHeight;
+        }
+        newY = maintainAspectRatio ? newY : canvasY;
         break;
       case 'nw': // Top-left
         newWidth = Math.max(minSize, currentLeft + currentWidth - canvasX);
         newHeight = Math.max(minSize, currentTop + currentHeight - canvasY);
+        if (maintainAspectRatio) {
+          // Use width to determine height, then adjust both X and Y positions
+          const calculatedHeight = newWidth / aspectRatio;
+          newY = currentTop + currentHeight - calculatedHeight;
+          newHeight = calculatedHeight;
+        }
         newX = canvasX;
-        newY = canvasY;
+        newY = maintainAspectRatio ? newY : canvasY;
         break;
     }
 
@@ -689,6 +718,9 @@ export default function Canvas({
       size: { width: newWidth, height: newHeight }
     });
   }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, getMultiSelectBounds]);
+
+  // Update the ref whenever handleResize changes
+  handleResizeRef.current = handleResize;
 
   // Handle resize handle mouse down
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, handle: string, component: ComponentConfig) => {
