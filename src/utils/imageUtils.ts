@@ -1,7 +1,7 @@
 // Utility functions for handling images in the layout builder
 
 // Sport-based image organization
-export const AVAILABLE_SPORTS = ['general', 'basketball', 'break', 'volleyball'] as const;
+export const AVAILABLE_SPORTS = ['general', 'basketball', 'break', 'volleyball', 'wrestling'] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Cache for sport-specific images
@@ -9,7 +9,8 @@ let sportImages: Record<Sport, string[]> = {
   general: [],
   basketball: [],
   break: [],
-  volleyball: []
+  volleyball: [],
+  wrestling: []
 };
 
 // Function to dynamically discover images by sport
@@ -140,6 +141,35 @@ export const loadAvailableImages = async (sport: Sport = 'general'): Promise<str
 
       sportImages.volleyball = foundImages;
       console.log(`Found ${foundImages.length} volleyball images:`, foundImages);
+      return foundImages;
+    } else if (sport === 'wrestling') {
+      // Wrestling-specific images
+      const wrestlingImages = [
+        'wr-le-base.png',
+        'wr-le-score-color-left.png',
+        'wr-le-score-color-right.png',
+        'wr-le-team-color-left.png',
+        'wr-le-team-color-right.png'
+      ];
+
+      // Test each wrestling image to see if it exists
+      const imagePromises = wrestlingImages.map(async (filename) => {
+        try {
+          const response = await fetch(`/images/wrestling/${filename}`, { method: 'HEAD' });
+          if (response.ok) {
+            return filename;
+          }
+        } catch (error) {
+          // Image doesn't exist
+        }
+        return null;
+      });
+
+      const results = await Promise.all(imagePromises);
+      const foundImages = results.filter((filename): filename is string => filename !== null);
+
+      sportImages.wrestling = foundImages;
+      console.log(`Found ${foundImages.length} wrestling images:`, foundImages);
       return foundImages;
     }
 

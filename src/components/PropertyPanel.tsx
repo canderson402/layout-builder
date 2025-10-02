@@ -958,6 +958,7 @@ function PropertyPanel({
                   <option value="basketball">Basketball</option>
                   <option value="break">Break</option>
                   <option value="volleyball">Volleyball</option>
+                  <option value="wrestling">Wrestling</option>
                 </select>
               </div>
               <div className="property-field">
@@ -984,6 +985,7 @@ function PropertyPanel({
                       <option value="basketball">Basketball</option>
                       <option value="break">Break</option>
                       <option value="volleyball">Volleyball</option>
+                      <option value="wrestling">Wrestling</option>
                     </select>
                   </div>
                   <div className="property-field">
