@@ -116,6 +116,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
               imageUrl={props.imageUrl}
               objectFit={props.objectFit || 'fill'}
               imageAnchor={props.imageAnchor || 'center'}
+              imageTintColor={props.imageTintColor}
+              useImageTint={props.useImageTint}
               useTeamColor={config.useTeamColor}
               teamColorSide={config.teamColorSide}
               canToggle={props.canToggle}

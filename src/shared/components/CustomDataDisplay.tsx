@@ -23,6 +23,8 @@ interface CustomDataDisplayProps {
   imageUrl?: string;
   objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
   imageAnchor?: 'top-left' | 'top-right' | 'center' | 'bottom-left' | 'bottom-right';
+  imageTintColor?: string;
+  useImageTint?: boolean;
   borderWidth?: number;
   borderColor?: string;
   borderStyle?: string;
@@ -91,6 +93,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     autoToggle = true,
     useTeamColor = false,
     teamColorSide = 'home',
+    imageTintColor,
+    useImageTint = false,
     ...defaultProps
   } = props;
 
@@ -168,7 +172,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   // Merge the appropriate state props based on effective toggle state
   // Keep dataPath at base level, only merge visual/formatting properties
-  const baseProps = { dataPath, useTeamColor, teamColorSide };
+  const baseProps = { dataPath, useTeamColor, teamColorSide, imageTintColor, useImageTint };
   const visualProps = canToggle ?
     (effectiveToggleState ? { ...defaultProps, ...state2Props } : { ...defaultProps, ...state1Props }) :
     defaultProps;
@@ -193,6 +197,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     imageUrl,
     objectFit = 'fill',
     imageAnchor = 'center',
+    imageTintColor: effectiveImageTintColor,
+    useImageTint: effectiveUseImageTint = false,
     borderWidth = 0,
     borderColor = '#ffffff',
     borderStyle = 'solid',
@@ -226,16 +232,30 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   };
 
   // Determine effective colors based on team color settings
-  // Only use team colors if we have real game data (not mock data from layout builder)
+  // For tint, we want to use team colors even in preview (mockData)
+  // For background color, we only use team colors with real game data
   const hasRealGameData = effectiveGameData && effectiveGameData !== mockData && (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
+  const hasAnyTeamColorData = effectiveGameData && (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
 
-  const teamColor = useTeamColor && teamColorSide && hasRealGameData ?
+  // Only use team color for background if NOT using image tint
+  // This prevents team color from affecting both background and tint at the same time
+  const teamColorForBackground = useTeamColor && teamColorSide && hasRealGameData && !effectiveUseImageTint ?
     formatColor(teamColorSide === 'home' ? effectiveGameData.home_team_color : effectiveGameData.away_team_color) :
     undefined;
-  
+
+  // Only use team color for tint if image tint is enabled
+  const teamColorForTint = useTeamColor && teamColorSide && hasAnyTeamColorData && effectiveUseImageTint ?
+    formatColor(teamColorSide === 'home' ? effectiveGameData.home_team_color : effectiveGameData.away_team_color) :
+    undefined;
+
   // Use team color if available, otherwise use the active background/text colors
-  const effectiveBackgroundColor = teamColor || backgroundColor;
-  const effectiveTextColor = teamColor ? '#ffffff' : textColor;
+  const effectiveBackgroundColor = teamColorForBackground || backgroundColor;
+  const effectiveTextColor = teamColorForBackground ? '#ffffff' : textColor;
+
+  // Calculate effective tint color for image masking
+  const effectiveTintColor = effectiveUseImageTint ?
+    (teamColorForTint || formatColor(effectiveImageTintColor)) :
+    undefined;
 
   // Get the data value
   const rawValue = getNestedData(effectiveGameData, dataPath);
@@ -298,6 +318,17 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   };
 
   const imageSourceObj = getImageSource();
+
+  // Debug logging for tint
+  if (imageSourceObj && effectiveUseImageTint) {
+    console.log('Tint Debug (Web):', {
+      useImageTint: effectiveUseImageTint,
+      imageTintColor: effectiveImageTintColor,
+      teamColorForTint,
+      effectiveTintColor,
+      imagePath
+    });
+  }
 
   // For native resolution mode with contain behavior - always use container dimensions
   // The image will scale to fit within the bounds while maintaining aspect ratio
@@ -372,36 +403,53 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
               </Text>
             </View>
           )}
-          <img
-            src={imageSourceObj.uri}
-            alt={label || 'Custom image'}
-            style={{
-              ...(objectFit === 'none' ? {
-                // Native resolution mode - stretch to fill container like TV does
-                width: '100%',
-                height: '100%',
-                objectFit: 'fill'
-              } : {
-                // Other modes - image fills container with specified object-fit
-                width: '100%',
-                height: '100%',
-                objectFit: objectFit
-              }),
-              display: 'block'
-            }}
-            onLoad={(e) => {
-              // Capture image natural dimensions for native resolution mode
-              const img = e.target as HTMLImageElement;
-              setImageDimensions({
-                width: img.naturalWidth,
-                height: img.naturalHeight
-              });
-            }}
-            onError={(e) => {
-              console.error('Failed to load image:', imageSourceObj.uri);
-              e.currentTarget.style.display = 'none';
-            }}
-          />
+          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            {effectiveTintColor && effectiveUseImageTint ? (
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: effectiveTintColor,
+                  WebkitMaskImage: `url(${imageSourceObj.uri})`,
+                  maskImage: `url(${imageSourceObj.uri})`,
+                  WebkitMaskSize: objectFit === 'none' || objectFit === 'fill' ? '100% 100%' : objectFit,
+                  maskSize: objectFit === 'none' || objectFit === 'fill' ? '100% 100%' : objectFit,
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
+              />
+            ) : (
+              <img
+                src={imageSourceObj.uri}
+                alt={label || 'Custom image'}
+                style={{
+                  ...(objectFit === 'none' ? {
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'fill'
+                  } : {
+                    width: '100%',
+                    height: '100%',
+                    objectFit: objectFit
+                  }),
+                  display: 'block'
+                }}
+                onLoad={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  setImageDimensions({
+                    width: img.naturalWidth,
+                    height: img.naturalHeight
+                  });
+                }}
+                onError={(e) => {
+                  console.error('Failed to load image:', imageSourceObj.uri);
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            )}
+          </div>
         </>
       ) : (
         // Render text content

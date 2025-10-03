@@ -1257,6 +1257,161 @@ function PropertyPanel({
                   </div>
                 </div>
               ) : null}
+
+              {/* Image Tint Color Section */}
+              {component.props?.imageSource !== 'none' && (
+                <>
+                  <div className="property-field">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={getStateValue('useImageTint', false)}
+                        onChange={(e) => {
+                          // Set both properties at once to avoid timing issues
+                          if (e.target.checked && !getStateValue('imageTintColor', null)) {
+                            onUpdateComponent(component.id, {
+                              props: {
+                                ...component.props,
+                                useImageTint: true,
+                                imageTintColor: '#ffffff'
+                              }
+                            });
+                          } else {
+                            updateStateProps('useImageTint', e.target.checked);
+                          }
+                        }}
+                        style={{ marginRight: '8px' }}
+                      />
+                      Enable Image Tint (Color Mask)
+                    </label>
+                  </div>
+
+                  {getStateValue('useImageTint', false) && (
+                    <>
+                      <div className="property-field">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={component?.useTeamColor || false}
+                            onChange={(e) => {
+                              onUpdateComponent(component.id, {
+                                useTeamColor: e.target.checked,
+                                teamColorSide: e.target.checked ? (component.teamColorSide || 'home') : undefined
+                              });
+                            }}
+                            style={{ marginRight: '8px' }}
+                          />
+                          Use Team Color for Tint
+                        </label>
+                      </div>
+
+                      {component?.useTeamColor && (
+                        <div className="property-field">
+                          <label>Team Color for Tint</label>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                            <button
+                              onClick={() => {
+                                onUpdateComponent(component.id, {
+                                  teamColorSide: 'home'
+                                });
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '8px',
+                                border: component.teamColorSide === 'home' ? '2px solid #4CAF50' : '1px solid #444',
+                                borderRadius: '4px',
+                                backgroundColor: '#1a1a1a',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontWeight: component.teamColorSide === 'home' ? 'bold' : 'normal'
+                              }}
+                            >
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                backgroundColor: '#c41e3a',
+                                borderRadius: '3px',
+                                border: '1px solid rgba(255, 255, 255, 0.2)'
+                              }} />
+                              Home
+                            </button>
+                            <button
+                              onClick={() => {
+                                onUpdateComponent(component.id, {
+                                  teamColorSide: 'away'
+                                });
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '8px',
+                                border: component.teamColorSide === 'away' ? '2px solid #4CAF50' : '1px solid #444',
+                                borderRadius: '4px',
+                                backgroundColor: '#1a1a1a',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontWeight: component.teamColorSide === 'away' ? 'bold' : 'normal'
+                              }}
+                            >
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                backgroundColor: '#003f7f',
+                                borderRadius: '3px',
+                                border: '1px solid rgba(255, 255, 255, 0.2)'
+                              }} />
+                              Away
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {!component?.useTeamColor && (
+                        <>
+                          {isDragging ? (
+                            <StaticColorSwatch
+                              label="Tint Color"
+                              color={component?.props?.imageTintColor || '#ffffff'}
+                            />
+                          ) : (
+                            component?.props?.imageTintColor ? (
+                              <div className="property-field">
+                                <label>Tint Color</label>
+                                <ColorPicker
+                                  key={`tint-${component.id}`}
+                                  label="Tint Color"
+                                  value={component.props.imageTintColor}
+                                  onChange={(color) => {
+                                    if (color) {
+                                      updateStateProps('imageTintColor', color);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ) : null
+                          )}
+                        </>
+                      )}
+
+                      <div className="property-note" style={{
+                        fontSize: '11px',
+                        color: '#888',
+                        marginTop: '4px',
+                        padding: '8px',
+                        backgroundColor: '#1a1a1a',
+                        borderRadius: '4px'
+                      }}>
+                        💡 Tint overlays a color on white/transparent images. Works great for team color masks! Enable "Use Team Color" to automatically use team colors.
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </PropertySection>
 
             {/* BORDERS SECTION */}

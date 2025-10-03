@@ -120,7 +120,9 @@ export const loadAvailableImages = async (sport: Sport = 'general'): Promise<str
       // Volleyball-specific images
       const volleyballImages = [
         'vb-full-frames.png',
-        'vb-full-period-bg.png'
+        'vb-full-period-bg.png',
+        'vb-full-team-color-left.png',
+        'vb-full-team-color-right.png'
       ];
 
       // Test each volleyball image to see if it exists
