@@ -820,10 +820,16 @@ function PropertyPanel({
                   <optgroup label="Game Info">
                     <option value="gameClock">Game Clock</option>
                     <option value="timeoutClock">Timeout Clock</option>
+                    <option value="activityClock">Activity Clock</option>
                     <option value="period">Period/Quarter</option>
                     <option value="isOvertime">Overtime</option>
                     <option value="home_sets_won">Home Sets Won</option>
                     <option value="away_sets_won">Away Sets Won</option>
+                  </optgroup>
+                  <optgroup label="Activity Timer">
+                    <option value="timerName">Timer Name</option>
+                    <option value="sessionName">Session Name</option>
+                    <option value="nextUp">Next Up</option>
                   </optgroup>
                   <optgroup label="Home Team">
                     <option value="homeTeam.name">Home Team Name</option>
