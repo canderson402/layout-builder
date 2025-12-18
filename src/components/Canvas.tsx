@@ -132,6 +132,30 @@ export default function Canvas({
     }
   }, [selectedComponents, onSelectComponents]);
 
+  // Helper function to get all descendants (children, grandchildren, etc.) of given component IDs
+  const getAllDescendants = useCallback((parentIds: string[], components: ComponentConfig[]): string[] => {
+    const descendants: string[] = [];
+    const toProcess = [...parentIds];
+    const processed = new Set<string>();
+
+    while (toProcess.length > 0) {
+      const currentId = toProcess.shift()!;
+      if (processed.has(currentId)) continue;
+      processed.add(currentId);
+
+      // Find all components that have this as their parent
+      const children = components.filter(c => c.parentId === currentId);
+      for (const child of children) {
+        if (!parentIds.includes(child.id) && !descendants.includes(child.id)) {
+          descendants.push(child.id);
+          toProcess.push(child.id); // Process grandchildren too
+        }
+      }
+    }
+
+    return descendants;
+  }, []);
+
   // Simple pixel-based grid
   const gridSize = GRID_SIZE_OPTIONS[gridSizeIndex] || DEFAULT_GRID_SIZE;
 
@@ -584,9 +608,13 @@ export default function Canvas({
           setIsDragging(true);
           setHasDraggedFarEnough(true);
 
-          // Store initial positions of all selected components
+          // Store initial positions of all selected components AND their descendants
           const positions = new Map<string, { x: number, y: number }>();
-          selectedComponentsRef.current.forEach(componentId => {
+          const selectedIds = selectedComponentsRef.current;
+          const descendantIds = getAllDescendants(selectedIds, layoutRef.current.components);
+          const allIdsToMove = [...selectedIds, ...descendantIds];
+
+          allIdsToMove.forEach(componentId => {
             const component = layoutRef.current.components.find(c => c.id === componentId);
             if (component) {
               positions.set(componentId, { x: component.position.x, y: component.position.y });
@@ -603,9 +631,17 @@ export default function Canvas({
           setIsDragging(true);
           setHasDraggedFarEnough(true);
 
-          // Store initial position of the single selected component
+          // Store initial position of the single selected component AND its descendants
           const positions = new Map<string, { x: number, y: number }>();
-          positions.set(draggedComponent.id, { x: draggedComponent.position.x, y: draggedComponent.position.y });
+          const descendantIds = getAllDescendants([draggedComponent.id], layoutRef.current.components);
+          const allIdsToMove = [draggedComponent.id, ...descendantIds];
+
+          allIdsToMove.forEach(componentId => {
+            const component = layoutRef.current.components.find(c => c.id === componentId);
+            if (component) {
+              positions.set(componentId, { x: component.position.x, y: component.position.y });
+            }
+          });
           setInitialComponentPositions(positions);
 
           // Notify PropertyPanel to pause expensive rendering
@@ -697,24 +733,21 @@ export default function Canvas({
       const snappedDeltaX = (snapResult.x - snapRawX) + rawDeltaX;
       const snappedDeltaY = (snapResult.y - snapRawY) + rawDeltaY;
 
-      // Update all selected components
-      selectedIds.forEach(componentId => {
-        const initialPos = initialComponentPositions.get(componentId);
-        if (initialPos) {
-          const newX = initialPos.x + snappedDeltaX;
-          const newY = initialPos.y + snappedDeltaY;
+      // Update all selected components AND their descendants
+      initialComponentPositions.forEach((initialPos, componentId) => {
+        const newX = initialPos.x + snappedDeltaX;
+        const newY = initialPos.y + snappedDeltaY;
 
-          // For single selection, also update size if grid snapping
-          if (selectedIds.length === 1 && componentId === draggedComponent.id) {
-            onUpdateComponent(componentId, {
-              position: { x: newX, y: newY },
-              size: { width: snapWidth, height: snapHeight }
-            });
-          } else {
-            onUpdateComponent(componentId, {
-              position: { x: newX, y: newY }
-            });
-          }
+        // For single selection of primary component, also update size if grid snapping
+        if (selectedIds.length === 1 && componentId === draggedComponent.id) {
+          onUpdateComponent(componentId, {
+            position: { x: newX, y: newY },
+            size: { width: snapWidth, height: snapHeight }
+          });
+        } else {
+          onUpdateComponent(componentId, {
+            position: { x: newX, y: newY }
+          });
         }
       });
     }
@@ -1070,6 +1103,37 @@ export default function Canvas({
     }
     onEndDragOperation('Center on canvas vertical');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation, layout.dimensions.height]);
+
+  // Set parent-child relationship: first selected becomes parent, rest become children
+  const setAsParent = useCallback(() => {
+    if (selectedComponents.length < 2) return;
+
+    onStartDragOperation();
+    const parentId = selectedComponents[0];
+    const childIds = selectedComponents.slice(1);
+
+    childIds.forEach(childId => {
+      onUpdateComponent(childId, { parentId });
+    });
+    onEndDragOperation('Set parent-child relationship');
+  }, [selectedComponents, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Clear parent relationship from selected components
+  const clearParent = useCallback(() => {
+    if (selectedComponents.length === 0) return;
+
+    const components = getSelectedComponentsData();
+    const hasParent = components.some(c => c.parentId);
+    if (!hasParent) return;
+
+    onStartDragOperation();
+    components.forEach(comp => {
+      if (comp.parentId) {
+        onUpdateComponent(comp.id, { parentId: undefined });
+      }
+    });
+    onEndDragOperation('Clear parent relationship');
+  }, [selectedComponents, getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
   // Handle multi-component resize
   const handleMultiResizeMouseDown = useCallback((e: React.MouseEvent, handle: string) => {
@@ -1488,7 +1552,9 @@ export default function Canvas({
     };
 
     const isSelected = selectedComponents.includes(component.id);
-    
+    const hasParent = !!component.parentId;
+    const hasChildren = layout.components.some(c => c.parentId === component.id);
+
     return (
       <div
         key={component.id}
@@ -1501,6 +1567,55 @@ export default function Canvas({
         onMouseDown={(e) => handleMouseDown(e, component)}
         className="canvas-handle"
       >
+        {/* Parent-child relationship indicators */}
+        {hasParent && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -8,
+              left: -8,
+              width: 16,
+              height: 16,
+              backgroundColor: '#ff9800',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '10px',
+              color: 'white',
+              pointerEvents: 'none',
+              zIndex: 20,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+            }}
+            title="This component is a child"
+          >
+            ⛓
+          </div>
+        )}
+        {hasChildren && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -8,
+              right: -8,
+              width: 16,
+              height: 16,
+              backgroundColor: '#2196f3',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '10px',
+              color: 'white',
+              pointerEvents: 'none',
+              zIndex: 20,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+            }}
+            title="This component has children"
+          >
+            P
+          </div>
+        )}
         {selectedComponents.includes(component.id) && selectedComponents.length === 1 && (
           <>
             {/* Resize handles - only show for single selection */}
@@ -1921,6 +2036,35 @@ export default function Canvas({
             style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
           >
             ⧫V
+          </button>
+        </div>
+        {/* Parent-Child Controls */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          marginLeft: '12px',
+          borderLeft: '1px solid rgba(255,255,255,0.2)',
+          paddingLeft: '12px'
+        }}>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginRight: '4px' }}>Parent:</span>
+          <button
+            className="grid-button"
+            onClick={setAsParent}
+            disabled={selectedComponents.length < 2}
+            title="Set first selected as parent, others as children (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '11px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            Link
+          </button>
+          <button
+            className="grid-button"
+            onClick={clearParent}
+            disabled={selectedComponents.length < 1}
+            title="Remove parent relationship from selected components"
+            style={{ padding: '4px 6px', fontSize: '11px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
+          >
+            Unlink
           </button>
         </div>
       </div>
