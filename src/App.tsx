@@ -781,6 +781,8 @@ function App() {
           onSelectComponents={setSelectedComponents}
           onUpdateComponent={updateComponent}
           onAddComponent={addComponent}
+          onStartDragOperation={startDragOperation}
+          onEndDragOperation={endDragOperation}
         />
         
         <MemoizedCanvas
@@ -894,7 +896,8 @@ function getDefaultProps(type: ComponentConfig['type']) {
 }
 
 function getDefaultDisplayName(type: ComponentConfig['type']) {
-  // Just return the type as a simple display name
+  // Return "Layer" for group type, otherwise return the type
+  if (type === 'group') return 'Layer';
   return type;
 }
 

@@ -175,7 +175,21 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
       }}
     >
       {[...(layout.components || [])]
-        .filter(component => component.visible !== false) // Only show visible components
+        .filter(component => {
+          // Don't show hidden components
+          if (component.visible === false) return false;
+          // Don't render layers/groups - they're organizational only
+          if (component.type === 'group') return false;
+          // Don't show if any ancestor is hidden
+          let parentId = component.parentId;
+          while (parentId) {
+            const parent = (layout.components || []).find(c => c.id === parentId);
+            if (!parent) break;
+            if (parent.visible === false) return false;
+            parentId = parent.parentId;
+          }
+          return true;
+        })
         .sort((a, b) => (a.layer || 0) - (b.layer || 0))
         .map((component, index) => renderComponent(component, index))}
     </View>

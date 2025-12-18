@@ -156,6 +156,18 @@ export default function Canvas({
     return descendants;
   }, []);
 
+  // Helper function to check if any ancestor of a component is hidden
+  const isAncestorHidden = useCallback((component: ComponentConfig, components: ComponentConfig[]): boolean => {
+    let currentParentId = component.parentId;
+    while (currentParentId) {
+      const parent = components.find(c => c.id === currentParentId);
+      if (!parent) break;
+      if (parent.visible === false) return true;
+      currentParentId = parent.parentId;
+    }
+    return false;
+  }, []);
+
   // Simple pixel-based grid
   const gridSize = GRID_SIZE_OPTIONS[gridSizeIndex] || DEFAULT_GRID_SIZE;
 
@@ -1338,17 +1350,21 @@ export default function Canvas({
   // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
     return (layout.components || [])
-      .filter(component => component.visible !== false) // Only check visible components
+      .filter(component =>
+        component.visible !== false &&
+        component.type !== 'group' &&
+        !isAncestorHidden(component, layout.components || [])
+      ) // Only check visible, non-group components with visible ancestors
       .find(component => {
         // Positions and sizes are already in pixels
         const left = component.position.x;
         const top = component.position.y;
         const width = component.size.width;
         const height = component.size.height;
-        
+
         return x >= left && x <= left + width && y >= top && y <= top + height;
       });
-  }, [layout.components]);
+  }, [layout.components, isAncestorHidden]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // Handle middle mouse button for panning
@@ -2038,35 +2054,6 @@ export default function Canvas({
             ⧫V
           </button>
         </div>
-        {/* Parent-Child Controls */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          marginLeft: '12px',
-          borderLeft: '1px solid rgba(255,255,255,0.2)',
-          paddingLeft: '12px'
-        }}>
-          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginRight: '4px' }}>Parent:</span>
-          <button
-            className="grid-button"
-            onClick={setAsParent}
-            disabled={selectedComponents.length < 2}
-            title="Set first selected as parent, others as children (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '11px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            Link
-          </button>
-          <button
-            className="grid-button"
-            onClick={clearParent}
-            disabled={selectedComponents.length < 1}
-            title="Remove parent relationship from selected components"
-            style={{ padding: '4px 6px', fontSize: '11px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
-          >
-            Unlink
-          </button>
-        </div>
       </div>
       
       <div 
@@ -2401,9 +2388,13 @@ export default function Canvas({
             />
           )}
           
-          {/* Overlay draggable handles - sorted by layer, only show visible components */}
+          {/* Overlay draggable handles - sorted by layer, only show visible components and those with visible ancestors, exclude groups */}
           {[...(layout.components || [])]
-            .filter(component => component.visible !== false) // Show components that are explicitly visible or undefined (default true)
+            .filter(component =>
+              component.visible !== false &&
+              component.type !== 'group' &&
+              !isAncestorHidden(component, layout.components || [])
+            ) // Exclude groups and components with hidden ancestors
             .sort((a, b) => (a.layer || 0) - (b.layer || 0))
             .map(component => getComponentHandle(component))}
 
@@ -2510,7 +2501,8 @@ function getComponentColor(component: ComponentConfig): string {
     timeouts: '#607D8B',
     bonus: '#FFEB3B',
     custom: '#795548',
-    dynamicList: '#009688'
+    dynamicList: '#009688',
+    group: '#666666'
   };
   return colors[component.type] || '#666';
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import './LayerPanel.css';
 
@@ -8,6 +8,14 @@ interface LayerPanelProps {
   onSelectComponents: (ids: string[]) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }) => void;
+  onStartDragOperation?: () => void;
+  onEndDragOperation?: (description: string) => void;
+}
+
+interface DragState {
+  draggedId: string | null;
+  dragOverId: string | null;
+  dropPosition: 'before' | 'after' | 'child' | null;
 }
 
 export default function LayerPanel({
@@ -15,14 +23,20 @@ export default function LayerPanel({
   selectedComponents,
   onSelectComponents,
   onUpdateComponent,
-  onAddComponent
+  onAddComponent,
+  onStartDragOperation,
+  onEndDragOperation
 }: LayerPanelProps) {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
   const [pendingToggleComponent, setPendingToggleComponent] = useState<boolean>(false);
-
-  // Sort components by layer (highest layer first for visual stacking order)
-  const sortedComponents = [...(layout.components || [])].sort((a, b) => (b.layer || 0) - (a.layer || 0));
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set());
+  const [dragState, setDragState] = useState<DragState>({
+    draggedId: null,
+    dragOverId: null,
+    dropPosition: null
+  });
+  const dragCounter = useRef(0);
 
   // Handle applying toggle properties to newly created component
   React.useEffect(() => {
@@ -65,36 +79,54 @@ export default function LayerPanel({
     }
   }, [layout.components.length, pendingToggleComponent, onUpdateComponent]);
 
-  // Group components by layer
-  const componentsByLayer: { [layer: number]: ComponentConfig[] } = {};
-  sortedComponents.forEach(component => {
-    const layer = component.layer || 0;
-    if (!componentsByLayer[layer]) {
-      componentsByLayer[layer] = [];
-    }
-    componentsByLayer[layer].push(component);
-  });
+  // Build hierarchical structure from flat list
+  const buildHierarchy = () => {
+    const components = layout.components || [];
+    const rootComponents: ComponentConfig[] = [];
+    const childrenMap: Map<string, ComponentConfig[]> = new Map();
+
+    // First pass: separate root components and build children map
+    components.forEach(component => {
+      if (component.parentId) {
+        const siblings = childrenMap.get(component.parentId) || [];
+        siblings.push(component);
+        childrenMap.set(component.parentId, siblings);
+      } else {
+        rootComponents.push(component);
+      }
+    });
+
+    // Sort by layer (highest first)
+    rootComponents.sort((a, b) => (b.layer || 0) - (a.layer || 0));
+    childrenMap.forEach(children => {
+      children.sort((a, b) => (b.layer || 0) - (a.layer || 0));
+    });
+
+    return { rootComponents, childrenMap };
+  };
+
+  const { rootComponents, childrenMap } = buildHierarchy();
 
   const handleComponentClick = (componentId: string, isCtrlClick: boolean) => {
     if (isCtrlClick) {
-      // Toggle selection
       if (selectedComponents.includes(componentId)) {
         onSelectComponents(selectedComponents.filter(id => id !== componentId));
       } else {
         onSelectComponents([...selectedComponents, componentId]);
       }
     } else {
-      // Single selection
       onSelectComponents([componentId]);
     }
   };
 
   const getComponentDisplayName = (component: ComponentConfig) => {
-    // Use displayName if available, otherwise fall back to simple type
     if (component.displayName) {
       return component.displayName;
     }
-    
+    // Show "Layer" for group type components
+    if (component.type === 'group') {
+      return 'Layer';
+    }
     return component.type;
   };
 
@@ -107,7 +139,6 @@ export default function LayerPanel({
     if (editingName.trim()) {
       onUpdateComponent(componentId, { displayName: editingName.trim() });
     } else {
-      // If name is empty, remove the custom name (fall back to default)
       onUpdateComponent(componentId, { displayName: undefined });
     }
     setEditingNameId(null);
@@ -119,24 +150,6 @@ export default function LayerPanel({
     setEditingName('');
   };
 
-  const getComponentIcon = (component: ComponentConfig) => {
-    const icons = {
-      teamName: '🏷️',
-      score: '🏆',
-      clock: '⏰',
-      period: '📊',
-      fouls: '❌',
-      timeouts: '⏱️',
-      bonus: '⭐',
-      custom: '📦'
-    };
-    return icons[component.type] || '📦';
-  };
-
-  const moveComponentToLayer = (componentId: string, newLayer: number) => {
-    onUpdateComponent(componentId, { layer: newLayer });
-  };
-
   const toggleComponentVisibility = (componentId: string) => {
     const component = (layout.components || []).find(c => c.id === componentId);
     if (component) {
@@ -144,183 +157,323 @@ export default function LayerPanel({
     }
   };
 
-  const toggleLayerVisibility = (layerNumber: number) => {
-    const layerComponents = componentsByLayer[layerNumber];
-    if (!layerComponents) return;
-    
-    // Check if all components in this layer are visible
-    const allVisible = layerComponents.every(c => c.visible ?? true);
-    
-    // Toggle all components in this layer
-    layerComponents.forEach(component => {
-      onUpdateComponent(component.id, { visible: !allVisible });
+  const toggleParentCollapsed = (parentId: string) => {
+    setCollapsedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(parentId)) {
+        next.delete(parentId);
+      } else {
+        next.add(parentId);
+      }
+      return next;
     });
   };
 
-  const isLayerVisible = (layerNumber: number) => {
-    const layerComponents = componentsByLayer[layerNumber];
-    if (!layerComponents || layerComponents.length === 0) return true;
-    
-    // Layer is considered visible if any component is visible
-    return layerComponents.some(c => c.visible ?? true);
+  const hasChildren = (componentId: string) => {
+    return (childrenMap.get(componentId) || []).length > 0;
   };
 
-  // Get all unique layers in ascending order
-  const allLayers = Object.keys(componentsByLayer)
-    .map(Number)
-    .sort((a, b) => b - a); // Descending order (highest first)
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, componentId: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', componentId);
+    setDragState(prev => ({ ...prev, draggedId: componentId }));
+    onStartDragOperation?.();
+  };
+
+  const handleDragEnd = () => {
+    setDragState({ draggedId: null, dragOverId: null, dropPosition: null });
+    dragCounter.current = 0;
+  };
+
+  const handleDragEnter = (e: React.DragEvent, componentId: string) => {
+    e.preventDefault();
+    dragCounter.current++;
+    if (dragState.draggedId && dragState.draggedId !== componentId) {
+      setDragState(prev => ({ ...prev, dragOverId: componentId }));
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragState(prev => ({ ...prev, dragOverId: null, dropPosition: null }));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, componentId: string) => {
+    e.preventDefault();
+    if (!dragState.draggedId || dragState.draggedId === componentId) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+
+    let position: 'before' | 'after' | 'child';
+    if (y < height * 0.25) {
+      position = 'before';
+    } else if (y > height * 0.75) {
+      position = 'after';
+    } else {
+      position = 'child'; // Drop in middle = make it a child
+    }
+
+    setDragState(prev => ({ ...prev, dragOverId: componentId, dropPosition: position }));
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData('text/plain');
+
+    if (!draggedId || draggedId === targetId) {
+      handleDragEnd();
+      return;
+    }
+
+    // Check for circular reference (can't drop parent onto its own child)
+    const isDescendant = (parentId: string, childId: string): boolean => {
+      const children = childrenMap.get(parentId) || [];
+      for (const child of children) {
+        if (child.id === childId) return true;
+        if (isDescendant(child.id, childId)) return true;
+      }
+      return false;
+    };
+
+    if (isDescendant(draggedId, targetId)) {
+      handleDragEnd();
+      return;
+    }
+
+    const targetComponent = layout.components.find(c => c.id === targetId);
+    const draggedComponent = layout.components.find(c => c.id === draggedId);
+
+    if (!targetComponent || !draggedComponent) {
+      handleDragEnd();
+      return;
+    }
+
+    const { dropPosition } = dragState;
+
+    if (dropPosition === 'child') {
+      // Make dragged component a child of target
+      onUpdateComponent(draggedId, { parentId: targetId });
+      onEndDragOperation?.('Set parent-child relationship');
+    } else if (dropPosition === 'before' || dropPosition === 'after') {
+      // Move to same level as target (same parent)
+      const newParentId = targetComponent.parentId;
+      const newLayer = dropPosition === 'before'
+        ? (targetComponent.layer || 0) + 1
+        : (targetComponent.layer || 0) - 1;
+
+      onUpdateComponent(draggedId, {
+        parentId: newParentId || undefined,
+        layer: Math.max(0, newLayer)
+      });
+      onEndDragOperation?.('Reorder component');
+    }
+
+    handleDragEnd();
+  };
+
+  const renderComponent = (component: ComponentConfig) => {
+    const children = childrenMap.get(component.id) || [];
+    const isCollapsed = collapsedParents.has(component.id);
+    const hasChildComponents = children.length > 0;
+    const isVisible = component.visible ?? true;
+    const isDragging = dragState.draggedId === component.id;
+    const isDragOver = dragState.dragOverId === component.id;
+    const dropPosition = dragState.dropPosition;
+    const isLayer = component.type === 'group';
+
+    return (
+      <div key={component.id} className="layer-component-wrapper">
+        <div
+          className={`layer-component ${!isLayer && selectedComponents.includes(component.id) ? 'selected' : ''} ${!isVisible ? 'hidden-component' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? `drag-over drag-over-${dropPosition}` : ''} ${isLayer ? 'is-layer' : ''}`}
+          onClick={(e) => {
+            // Layers are not selectable - only components
+            if (editingNameId !== component.id && !isLayer) {
+              handleComponentClick(component.id, e.ctrlKey || e.metaKey);
+            }
+          }}
+          draggable={editingNameId !== component.id}
+          onDragStart={(e) => handleDragStart(e, component.id)}
+          onDragEnd={handleDragEnd}
+          onDragEnter={(e) => handleDragEnter(e, component.id)}
+          onDragLeave={handleDragLeave}
+          onDragOver={(e) => handleDragOver(e, component.id)}
+          onDrop={(e) => handleDrop(e, component.id)}
+        >
+          <div className="component-info">
+            {/* Collapse toggle for parents */}
+            {hasChildComponents ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleParentCollapsed(component.id);
+                }}
+                className="collapse-btn"
+                title={isCollapsed ? `Expand (${children.length} children)` : `Collapse (${children.length} children)`}
+              >
+                {isCollapsed ? '▶' : '▼'}
+              </button>
+            ) : (
+              <span className="collapse-spacer" />
+            )}
+
+            {/* Visibility checkbox */}
+            <input
+              type="checkbox"
+              checked={isVisible}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleComponentVisibility(component.id);
+              }}
+              className="visibility-checkbox"
+              title={isVisible ? 'Hide component' : 'Show component'}
+            />
+
+            {editingNameId === component.id ? (
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onBlur={() => saveComponentName(component.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    saveComponentName(component.id);
+                  } else if (e.key === 'Escape') {
+                    cancelEditingName();
+                  }
+                }}
+                className="component-name-input"
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span
+                className="component-name"
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  startEditingName(component);
+                }}
+                title="Double-click to rename"
+              >
+                {getComponentDisplayName(component)}
+              </span>
+            )}
+          </div>
+
+          <div className="component-actions">
+            {editingNameId !== component.id && (
+              <>
+                {component.props?.canToggle && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateComponent(component.id, {
+                        props: {
+                          ...component.props,
+                          toggleState: !component.props?.toggleState
+                        }
+                      });
+                    }}
+                    className="layer-action-btn"
+                    style={{
+                      backgroundColor: component.props?.toggleState ? '#4CAF50' : '#607D8B',
+                      fontSize: '10px',
+                      padding: '2px 4px'
+                    }}
+                    title={`Toggle state: ${component.props?.toggleState ? 'ON' : 'OFF'}`}
+                  >
+                    {component.props?.toggleState ? 'ON' : 'OFF'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Render children directly below when expanded (no indentation) */}
+        {hasChildComponents && !isCollapsed && (
+          <div className="layer-children-flat">
+            {children.map(child => renderComponent(child))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const createNewLayer = () => {
+    onStartDragOperation?.();
+    onAddComponent('group', { x: 0, y: 0 }, { width: 0, height: 0 });
+    onEndDragOperation?.('Create new layer');
+  };
 
   return (
     <div className="layer-panel">
       <div className="layer-header">
-        <h3>Layers</h3>
-        <div className="layer-info">
-          {(layout.components || []).length} component{(layout.components || []).length !== 1 ? 's' : ''}
+        <div className="layer-header-title">
+          <h3>Layers</h3>
+          <div className="layer-info">
+            {(() => {
+              const componentCount = (layout.components || []).filter(c => c.type !== 'group').length;
+              const layerCount = (layout.components || []).filter(c => c.type === 'group').length;
+              return `${componentCount} component${componentCount !== 1 ? 's' : ''}${layerCount > 0 ? `, ${layerCount} layer${layerCount !== 1 ? 's' : ''}` : ''}`;
+            })()}
+          </div>
         </div>
+        <button
+          className="new-layer-btn"
+          onClick={createNewLayer}
+          title="Create new layer"
+        >
+          + Layer
+        </button>
       </div>
-      
+
       <div className="layer-content">
-        {allLayers.length === 0 ? (
+        {rootComponents.length === 0 ? (
           <div className="no-components">
             No components in layout
           </div>
         ) : (
-          allLayers.map(layer => (
-            <div key={layer} className="layer-group">
-              <div className="layer-group-header">
-                <div className="layer-header-left">
-                  <button
-                    onClick={() => toggleLayerVisibility(layer)}
-                    className={`layer-visibility-btn ${isLayerVisible(layer) ? 'visible' : 'hidden'}`}
-                    title={`${isLayerVisible(layer) ? 'Hide' : 'Show'} layer ${layer}`}
-                  >
-                    {isLayerVisible(layer) ? '👁️' : '👁️‍🗨️'}
-                  </button>
-                  <span className="layer-title">Layer {layer}</span>
-                </div>
-                <span className="layer-count">
-                  {componentsByLayer[layer].length} item{componentsByLayer[layer].length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              
-              <div className="layer-components">
-                {componentsByLayer[layer].map(component => (
-                  <div
-                    key={component.id}
-                    className={`layer-component ${selectedComponents.includes(component.id) ? 'selected' : ''} ${!(component.visible ?? true) ? 'hidden-component' : ''}`}
-                    onClick={(e) => {
-                      if (editingNameId !== component.id) {
-                        handleComponentClick(component.id, e.ctrlKey || e.metaKey);
-                      }
-                    }}
-                  >
-                    <div className="component-info">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleComponentVisibility(component.id);
-                        }}
-                        className={`component-visibility-btn ${(component.visible ?? true) ? 'visible' : 'hidden'}`}
-                        title={`${(component.visible ?? true) ? 'Hide' : 'Show'} component`}
-                      >
-                        {(component.visible ?? true) ? '👁️' : '👁️‍🗨️'}
-                      </button>
-
-                      {editingNameId === component.id ? (
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onBlur={() => saveComponentName(component.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              saveComponentName(component.id);
-                            } else if (e.key === 'Escape') {
-                              cancelEditingName();
-                            }
-                          }}
-                          className="component-name-input"
-                          autoFocus
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        <span
-                          className="component-name"
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            startEditingName(component);
-                          }}
-                          title="Double-click to rename"
-                        >
-                          {getComponentDisplayName(component)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="component-actions">
-                      {editingNameId !== component.id && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEditingName(component);
-                            }}
-                            className="layer-action-btn"
-                            title="Rename component"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              moveComponentToLayer(component.id, (component.layer || 0) + 1);
-                            }}
-                            className="layer-action-btn"
-                            title="Move up one layer"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              moveComponentToLayer(component.id, Math.max(0, (component.layer || 0) - 1));
-                            }}
-                            className="layer-action-btn"
-                            title="Move down one layer"
-                          >
-                            ↓
-                          </button>
-                          {component.props?.canToggle && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onUpdateComponent(component.id, {
-                                  props: {
-                                    ...component.props,
-                                    toggleState: !component.props?.toggleState
-                                  }
-                                });
-                              }}
-                              className="layer-action-btn"
-                              style={{
-                                backgroundColor: component.props?.toggleState ? '#4CAF50' : '#607D8B',
-                                fontSize: '10px',
-                                padding: '2px 4px'
-                              }}
-                              title={`Toggle state: ${component.props?.toggleState ? 'ON' : 'OFF'}`}
-                            >
-                              {component.props?.toggleState ? 'ON' : 'OFF'}
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
+          <div className="layer-list">
+            {rootComponents.map(component => renderComponent(component))}
+          </div>
         )}
+
+        {/* Root drop zone - drop here to unlink from parent */}
+        <div
+          className={`root-drop-zone ${dragState.draggedId && !dragState.dragOverId ? 'active' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (dragState.draggedId) {
+              setDragState(prev => ({ ...prev, dragOverId: null, dropPosition: null }));
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (draggedId) {
+              const draggedComponent = layout.components.find(c => c.id === draggedId);
+              if (draggedComponent?.parentId) {
+                onUpdateComponent(draggedId, { parentId: undefined });
+                onEndDragOperation?.('Unlink from parent');
+              }
+            }
+            handleDragEnd();
+          }}
+        >
+          {dragState.draggedId && (
+            <span>Drop here to move to root level</span>
+          )}
+        </div>
+
+        <div className="layer-help">
+          <small>Drag components to reorder. Drop on another to parent.</small>
+        </div>
       </div>
 
       {/* Component Menu */}
@@ -332,7 +485,6 @@ export default function LayerPanel({
           <button
             className="component-menu-item"
             onClick={() => {
-              // Create a basic component with blue background
               onAddComponent('custom', undefined, { width: 500, height: 500 });
             }}
             draggable
@@ -370,9 +522,7 @@ export default function LayerPanel({
           <button
             className="component-menu-item"
             onClick={() => {
-              // Set flag to indicate we're creating a toggle component
               setPendingToggleComponent(true);
-              // Create a toggle component with preset toggle configuration
               onAddComponent('custom', undefined, { width: 500, height: 500 });
             }}
             draggable
