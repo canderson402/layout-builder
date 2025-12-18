@@ -21,8 +21,28 @@ interface CanvasProps {
 
 // Pixel-based grid settings
 const DEFAULT_GRID_SIZE = 20;
-const SNAP_THRESHOLD = 5;
+const DEFAULT_SNAP_THRESHOLD = 25; // Default snap threshold in pixels
+const SNAP_THRESHOLD_OPTIONS = [5, 10, 15, 20, 25, 35, 50]; // Snap strength options (higher = stickier)
 const GRID_SIZE_OPTIONS = [5, 10, 20]; // Grid spacing options in pixels
+
+// Smart guide types
+interface SmartGuide {
+  type: 'center-h' | 'center-v' | 'edge-top' | 'edge-bottom' | 'edge-left' | 'edge-right' | 'element-center-h' | 'element-center-v';
+  position: number; // x for vertical lines, y for horizontal lines
+  label?: string; // Optional distance label
+}
+
+interface ActiveGuides {
+  guides: SmartGuide[];
+  elementBounds?: { // The bounds of the element being moved (for rendering guides)
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    centerX: number;
+    centerY: number;
+  };
+}
 
 // Common resolution presets
 const RESOLUTION_PRESETS = [
@@ -73,6 +93,13 @@ export default function Canvas({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
+
+  // Smart guides state
+  const [activeGuides, setActiveGuides] = useState<ActiveGuides>({ guides: [] });
+
+  // Configurable snap threshold (snap strength)
+  const [snapThresholdIndex, setSnapThresholdIndex] = useState(4); // Default to 25px (index 4)
+  const snapThreshold = SNAP_THRESHOLD_OPTIONS[snapThresholdIndex] || DEFAULT_SNAP_THRESHOLD;
   
   
   // Throttle drag updates for better performance
@@ -114,33 +141,160 @@ export default function Canvas({
   const snapToGrid = useCallback((value: number, dimension: 'width' | 'height') => {
     const layoutDimension = dimension === 'width' ? layout.dimensions.width : layout.dimensions.height;
     const center = layoutDimension / 2;
-    
+
     // Always allow snapping to the exact center
-    if (Math.abs(value - center) <= SNAP_THRESHOLD) {
+    if (Math.abs(value - center) <= snapThreshold) {
       return center;
     }
-    
+
     // For larger grid sizes, add center as an additional snap point
     if (gridSize >= 50) {
       const regularSnap = Math.round(value / gridSize) * gridSize;
       const distToRegular = Math.abs(value - regularSnap);
       const distToCenter = Math.abs(value - center);
-      
+
       // If we're closer to center than regular grid, snap to center
-      if (distToCenter < distToRegular && distToCenter <= SNAP_THRESHOLD) {
+      if (distToCenter < distToRegular && distToCenter <= snapThreshold) {
         return center;
       }
-      
+
       return regularSnap;
     }
-    
+
     // For smaller grid sizes, use regular snapping
     return Math.round(value / gridSize) * gridSize;
-  }, [gridSize, layout.dimensions.width, layout.dimensions.height]);
+  }, [gridSize, layout.dimensions.width, layout.dimensions.height, snapThreshold]);
 
   const shouldSnap = useCallback((value: number, snappedValue: number) => {
     return Math.abs(value - snappedValue) <= SNAP_THRESHOLD;
   }, []);
+
+  // Smart snapping function that returns snapped position and active guides
+  const smartSnap = useCallback((
+    rawX: number,
+    rawY: number,
+    componentWidth: number,
+    componentHeight: number,
+    enableSnapping: boolean
+  ): { x: number; y: number; guides: ActiveGuides } => {
+    const guides: SmartGuide[] = [];
+    let snappedX = rawX;
+    let snappedY = rawY;
+
+    const canvasWidth = layout.dimensions.width;
+    const canvasHeight = layout.dimensions.height;
+    const canvasCenterX = canvasWidth / 2;
+    const canvasCenterY = canvasHeight / 2;
+
+    // Calculate element bounds and center
+    const elementLeft = rawX;
+    const elementRight = rawX + componentWidth;
+    const elementTop = rawY;
+    const elementBottom = rawY + componentHeight;
+    const elementCenterX = rawX + componentWidth / 2;
+    const elementCenterY = rawY + componentHeight / 2;
+
+    if (enableSnapping) {
+      // Track if we've snapped on each axis to prevent conflicting snaps
+      let snappedOnX = false;
+      let snappedOnY = false;
+
+      // 1. Check element CENTER to canvas center (highest priority)
+      if (Math.abs(elementCenterX - canvasCenterX) <= snapThreshold) {
+        snappedX = canvasCenterX - componentWidth / 2;
+        guides.push({ type: 'center-v', position: canvasCenterX });
+        snappedOnX = true;
+      }
+
+      if (Math.abs(elementCenterY - canvasCenterY) <= snapThreshold) {
+        snappedY = canvasCenterY - componentHeight / 2;
+        guides.push({ type: 'center-h', position: canvasCenterY });
+        snappedOnY = true;
+      }
+
+      // 2. Check element LEFT edge to canvas center (vertical line)
+      if (!snappedOnX && Math.abs(elementLeft - canvasCenterX) <= snapThreshold) {
+        snappedX = canvasCenterX;
+        guides.push({ type: 'center-v', position: canvasCenterX });
+        snappedOnX = true;
+      }
+
+      // 3. Check element RIGHT edge to canvas center (vertical line)
+      if (!snappedOnX && Math.abs(elementRight - canvasCenterX) <= snapThreshold) {
+        snappedX = canvasCenterX - componentWidth;
+        guides.push({ type: 'center-v', position: canvasCenterX });
+        snappedOnX = true;
+      }
+
+      // 4. Check element TOP edge to canvas center (horizontal line)
+      if (!snappedOnY && Math.abs(elementTop - canvasCenterY) <= snapThreshold) {
+        snappedY = canvasCenterY;
+        guides.push({ type: 'center-h', position: canvasCenterY });
+        snappedOnY = true;
+      }
+
+      // 5. Check element BOTTOM edge to canvas center (horizontal line)
+      if (!snappedOnY && Math.abs(elementBottom - canvasCenterY) <= snapThreshold) {
+        snappedY = canvasCenterY - componentHeight;
+        guides.push({ type: 'center-h', position: canvasCenterY });
+        snappedOnY = true;
+      }
+
+      // 6. Check left edge to canvas left
+      if (!snappedOnX && Math.abs(elementLeft) <= snapThreshold) {
+        snappedX = 0;
+        guides.push({ type: 'edge-left', position: 0 });
+        snappedOnX = true;
+      }
+
+      // 7. Check right edge to canvas right
+      if (!snappedOnX && Math.abs(elementRight - canvasWidth) <= snapThreshold) {
+        snappedX = canvasWidth - componentWidth;
+        guides.push({ type: 'edge-right', position: canvasWidth });
+        snappedOnX = true;
+      }
+
+      // 8. Check top edge to canvas top
+      if (!snappedOnY && Math.abs(elementTop) <= snapThreshold) {
+        snappedY = 0;
+        guides.push({ type: 'edge-top', position: 0 });
+        snappedOnY = true;
+      }
+
+      // 9. Check bottom edge to canvas bottom
+      if (!snappedOnY && Math.abs(elementBottom - canvasHeight) <= snapThreshold) {
+        snappedY = canvasHeight - componentHeight;
+        guides.push({ type: 'edge-bottom', position: canvasHeight });
+        snappedOnY = true;
+      }
+
+      // If no smart guides triggered, fall back to grid snapping
+      if (guides.length === 0 && showGrid) {
+        snappedX = snapToGrid(snappedX, 'width');
+        snappedY = snapToGrid(snappedY, 'height');
+      }
+    }
+
+    // Calculate final element bounds after snapping
+    const finalCenterX = snappedX + componentWidth / 2;
+    const finalCenterY = snappedY + componentHeight / 2;
+
+    return {
+      x: snappedX,
+      y: snappedY,
+      guides: {
+        guides,
+        elementBounds: {
+          left: snappedX,
+          top: snappedY,
+          right: snappedX + componentWidth,
+          bottom: snappedY + componentHeight,
+          centerX: finalCenterX,
+          centerY: finalCenterY
+        }
+      }
+    };
+  }, [layout.dimensions.width, layout.dimensions.height, snapToGrid, showGrid, snapThreshold]);
 
   // Use manual zoom level (10% to 200%)
   const scale = zoomLevel / 100;
@@ -339,34 +493,31 @@ export default function Canvas({
         return;
       }
       lastUpdateTime.current = now;
-      
+
       // Calculate raw mouse movement delta (before any snapping)
       const rawX = canvasX - dragOffset.x;
       const rawY = canvasY - dragOffset.y;
 
       // Get the initial position of the primary component
       const initialPrimaryPos = initialComponentPositions.get(draggedComponent.id) || draggedComponent.position;
-      const rawDeltaX = rawX - initialPrimaryPos.x;
-      const rawDeltaY = rawY - initialPrimaryPos.y;
 
       // Component size is already in pixels
       let compWidth = draggedComponent.size.width;
       let compHeight = draggedComponent.size.height;
-      
+
       // Only snap component size to grid if grid is enabled
       if (showGrid) {
         compWidth = snapToGrid(compWidth, 'width');
         compHeight = snapToGrid(compHeight, 'height');
       }
-      
-      let newX = rawX;
-      let newY = rawY;
 
-      // Only snap to grid if grid is enabled
-      if (showGrid) {
-        newX = snapToGrid(newX, 'width');
-        newY = snapToGrid(newY, 'height');
-      }
+      // Use smart snapping for position (includes center and edge snapping with visual guides)
+      const snapResult = smartSnap(rawX, rawY, compWidth, compHeight, true);
+      const newX = snapResult.x;
+      const newY = snapResult.y;
+
+      // Update active guides for visual feedback
+      setActiveGuides(snapResult.guides);
 
       // Update the primary dragged component with pixel values
       onUpdateComponent(draggedComponent.id, {
@@ -376,19 +527,17 @@ export default function Canvas({
 
       // If multiple components are selected, move them all by the same delta from their initial positions
       if (selectedComponentsRef.current.length > 1) {
+        // Calculate the delta from the snapped position
+        const snappedDeltaX = newX - initialPrimaryPos.x;
+        const snappedDeltaY = newY - initialPrimaryPos.y;
+
         selectedComponentsRef.current.forEach(componentId => {
           if (componentId !== draggedComponent.id) {
             const initialPos = initialComponentPositions.get(componentId);
             if (initialPos) {
-              // Apply the same raw delta from the component's initial position
-              let movedX = initialPos.x + rawDeltaX;
-              let movedY = initialPos.y + rawDeltaY;
-
-              // Optionally snap non-primary components too if grid is enabled
-              if (showGrid) {
-                movedX = snapToGrid(movedX, 'width');
-                movedY = snapToGrid(movedY, 'height');
-              }
+              // Apply the same snapped delta from the component's initial position
+              const movedX = initialPos.x + snappedDeltaX;
+              const movedY = initialPos.y + snappedDeltaY;
 
               onUpdateComponent(componentId, {
                 position: { x: movedX, y: movedY }
@@ -406,7 +555,7 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, scale, showGrid, isPanning, isCreating, panStart, viewportOffset]);
+  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
@@ -504,6 +653,7 @@ export default function Canvas({
     setHasDraggedFarEnough(false);
     setComponentsAtClickPosition([]); // Clear the stored components
     setInitialComponentPositions(new Map()); // Clear initial positions
+    setActiveGuides({ guides: [] }); // Clear smart guides
   }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
 
   // Calculate bounding box for multiple selected components
@@ -1122,7 +1272,7 @@ export default function Canvas({
             ╬ Center
           </button>
           <div className="grid-size-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <button 
+            <button
               className="grid-button"
               onClick={decreaseGridSize}
               title="Decrease grid size"
@@ -1130,11 +1280,11 @@ export default function Canvas({
             >
               −
             </button>
-            <span 
-              className="grid-info" 
-              style={{ 
-                minWidth: '40px', 
-                textAlign: 'center', 
+            <span
+              className="grid-info"
+              style={{
+                minWidth: '40px',
+                textAlign: 'center',
                 fontSize: '12px',
                 padding: '4px 8px',
                 backgroundColor: 'rgba(255,255,255,0.1)',
@@ -1144,10 +1294,43 @@ export default function Canvas({
             >
               {gridSize}px
             </span>
-            <button 
+            <button
               className="grid-button"
               onClick={increaseGridSize}
               title="Increase grid size"
+              style={{ padding: '4px 8px', fontSize: '12px' }}
+            >
+              +
+            </button>
+          </div>
+          {/* Snap Strength Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.2)', paddingLeft: '12px' }}>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>Snap:</span>
+            <button
+              className="grid-button"
+              onClick={() => setSnapThresholdIndex(Math.max(0, snapThresholdIndex - 1))}
+              title="Decrease snap strength (less sticky)"
+              style={{ padding: '4px 8px', fontSize: '12px' }}
+            >
+              −
+            </button>
+            <span
+              style={{
+                minWidth: '40px',
+                textAlign: 'center',
+                fontSize: '12px',
+                padding: '4px 8px',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                borderRadius: '4px'
+              }}
+              title={`Snap strength: ${snapThreshold}px threshold`}
+            >
+              {snapThreshold}px
+            </span>
+            <button
+              className="grid-button"
+              onClick={() => setSnapThresholdIndex(Math.min(SNAP_THRESHOLD_OPTIONS.length - 1, snapThresholdIndex + 1))}
+              title="Increase snap strength (stickier)"
               style={{ padding: '4px 8px', fontSize: '12px' }}
             >
               +
@@ -1355,6 +1538,113 @@ export default function Canvas({
                 }}
               />
             </>
+          )}
+
+          {/* Smart Guides Overlay - shows alignment guides when dragging */}
+          {activeGuides.guides.length > 0 && (
+            <svg
+              width={layout.dimensions.width}
+              height={layout.dimensions.height}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                pointerEvents: 'none',
+                zIndex: 9999
+              }}
+            >
+              {activeGuides.guides.map((guide, index) => {
+                // Define colors for different guide types
+                const colors = {
+                  'center-h': '#FF00FF', // Magenta for center
+                  'center-v': '#FF00FF',
+                  'edge-top': '#00FFFF', // Cyan for edges
+                  'edge-bottom': '#00FFFF',
+                  'edge-left': '#00FFFF',
+                  'edge-right': '#00FFFF',
+                  'element-center-h': '#00FF00', // Green for element-to-element
+                  'element-center-v': '#00FF00'
+                };
+                const color = colors[guide.type] || '#FF00FF';
+
+                // Render the guide line
+                if (guide.type === 'center-v' || guide.type === 'edge-left' || guide.type === 'edge-right' || guide.type === 'element-center-v') {
+                  // Vertical line
+                  return (
+                    <g key={`guide-${index}`}>
+                      <line
+                        x1={guide.position}
+                        y1={0}
+                        x2={guide.position}
+                        y2={layout.dimensions.height}
+                        stroke={color}
+                        strokeWidth="1"
+                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                      />
+                      {/* Glow effect */}
+                      <line
+                        x1={guide.position}
+                        y1={0}
+                        x2={guide.position}
+                        y2={layout.dimensions.height}
+                        stroke={color}
+                        strokeWidth="3"
+                        strokeOpacity="0.3"
+                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                      />
+                      {/* Center indicator circle */}
+                      {guide.type === 'center-v' && activeGuides.elementBounds && (
+                        <circle
+                          cx={guide.position}
+                          cy={activeGuides.elementBounds.centerY}
+                          r="6"
+                          fill="none"
+                          stroke={color}
+                          strokeWidth="2"
+                        />
+                      )}
+                    </g>
+                  );
+                } else {
+                  // Horizontal line
+                  return (
+                    <g key={`guide-${index}`}>
+                      <line
+                        x1={0}
+                        y1={guide.position}
+                        x2={layout.dimensions.width}
+                        y2={guide.position}
+                        stroke={color}
+                        strokeWidth="1"
+                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                      />
+                      {/* Glow effect */}
+                      <line
+                        x1={0}
+                        y1={guide.position}
+                        x2={layout.dimensions.width}
+                        y2={guide.position}
+                        stroke={color}
+                        strokeWidth="3"
+                        strokeOpacity="0.3"
+                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                      />
+                      {/* Center indicator circle */}
+                      {guide.type === 'center-h' && activeGuides.elementBounds && (
+                        <circle
+                          cx={activeGuides.elementBounds.centerX}
+                          cy={guide.position}
+                          r="6"
+                          fill="none"
+                          stroke={color}
+                          strokeWidth="2"
+                        />
+                      )}
+                    </g>
+                  );
+                }
+              })}
+            </svg>
           )}
 
           <WebPreview
