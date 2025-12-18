@@ -27,9 +27,12 @@ const GRID_SIZE_OPTIONS = [5, 10, 20]; // Grid spacing options in pixels
 
 // Smart guide types
 interface SmartGuide {
-  type: 'center-h' | 'center-v' | 'edge-top' | 'edge-bottom' | 'edge-left' | 'edge-right' | 'element-center-h' | 'element-center-v';
+  type: 'center-h' | 'center-v' | 'edge-top' | 'edge-bottom' | 'edge-left' | 'edge-right' |
+        'element-edge-v' | 'element-edge-h' | 'element-center-h' | 'element-center-v';
   position: number; // x for vertical lines, y for horizontal lines
   label?: string; // Optional distance label
+  // For element-to-element guides, store the span for drawing the connecting line
+  span?: { start: number; end: number };
 }
 
 interface ActiveGuides {
@@ -175,7 +178,8 @@ export default function Canvas({
     rawY: number,
     componentWidth: number,
     componentHeight: number,
-    enableSnapping: boolean
+    enableSnapping: boolean,
+    draggedComponentId?: string // ID of the component being dragged (to exclude from element-to-element checks)
   ): { x: number; y: number; guides: ActiveGuides } => {
     const guides: SmartGuide[] = [];
     let snappedX = rawX;
@@ -199,7 +203,14 @@ export default function Canvas({
       let snappedOnX = false;
       let snappedOnY = false;
 
-      // 1. Check element CENTER to canvas center (highest priority)
+      // Get other components for element-to-element snapping
+      const otherComponents = (layout.components || []).filter(
+        c => c.id !== draggedComponentId && c.visible !== false
+      );
+
+      // ========== CANVAS CENTER SNAPPING (highest priority) ==========
+
+      // 1. Check element CENTER to canvas center
       if (Math.abs(elementCenterX - canvasCenterX) <= snapThreshold) {
         snappedX = canvasCenterX - componentWidth / 2;
         guides.push({ type: 'center-v', position: canvasCenterX });
@@ -212,56 +223,155 @@ export default function Canvas({
         snappedOnY = true;
       }
 
-      // 2. Check element LEFT edge to canvas center (vertical line)
+      // 2. Check element edges to canvas center
       if (!snappedOnX && Math.abs(elementLeft - canvasCenterX) <= snapThreshold) {
         snappedX = canvasCenterX;
         guides.push({ type: 'center-v', position: canvasCenterX });
         snappedOnX = true;
       }
 
-      // 3. Check element RIGHT edge to canvas center (vertical line)
       if (!snappedOnX && Math.abs(elementRight - canvasCenterX) <= snapThreshold) {
         snappedX = canvasCenterX - componentWidth;
         guides.push({ type: 'center-v', position: canvasCenterX });
         snappedOnX = true;
       }
 
-      // 4. Check element TOP edge to canvas center (horizontal line)
       if (!snappedOnY && Math.abs(elementTop - canvasCenterY) <= snapThreshold) {
         snappedY = canvasCenterY;
         guides.push({ type: 'center-h', position: canvasCenterY });
         snappedOnY = true;
       }
 
-      // 5. Check element BOTTOM edge to canvas center (horizontal line)
       if (!snappedOnY && Math.abs(elementBottom - canvasCenterY) <= snapThreshold) {
         snappedY = canvasCenterY - componentHeight;
         guides.push({ type: 'center-h', position: canvasCenterY });
         snappedOnY = true;
       }
 
-      // 6. Check left edge to canvas left
+      // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
+
+      for (const other of otherComponents) {
+        const otherLeft = other.position.x;
+        const otherRight = other.position.x + other.size.width;
+        const otherTop = other.position.y;
+        const otherBottom = other.position.y + other.size.height;
+        const otherCenterX = other.position.x + other.size.width / 2;
+        const otherCenterY = other.position.y + other.size.height / 2;
+
+        // Calculate vertical span for horizontal guides (min/max Y of both elements)
+        const getVerticalSpan = () => ({
+          start: Math.min(elementTop, otherTop),
+          end: Math.max(elementBottom, otherBottom)
+        });
+
+        // Calculate horizontal span for vertical guides (min/max X of both elements)
+        const getHorizontalSpan = () => ({
+          start: Math.min(elementLeft, otherLeft),
+          end: Math.max(elementRight, otherRight)
+        });
+
+        // --- Vertical edge alignments (X-axis snapping) ---
+
+        // Left edge to left edge
+        if (!snappedOnX && Math.abs(elementLeft - otherLeft) <= snapThreshold) {
+          snappedX = otherLeft;
+          guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan() });
+          snappedOnX = true;
+        }
+
+        // Right edge to right edge
+        if (!snappedOnX && Math.abs(elementRight - otherRight) <= snapThreshold) {
+          snappedX = otherRight - componentWidth;
+          guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan() });
+          snappedOnX = true;
+        }
+
+        // Left edge to right edge
+        if (!snappedOnX && Math.abs(elementLeft - otherRight) <= snapThreshold) {
+          snappedX = otherRight;
+          guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan() });
+          snappedOnX = true;
+        }
+
+        // Right edge to left edge
+        if (!snappedOnX && Math.abs(elementRight - otherLeft) <= snapThreshold) {
+          snappedX = otherLeft - componentWidth;
+          guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan() });
+          snappedOnX = true;
+        }
+
+        // Center to center (horizontal alignment)
+        if (!snappedOnX && Math.abs(elementCenterX - otherCenterX) <= snapThreshold) {
+          snappedX = otherCenterX - componentWidth / 2;
+          guides.push({ type: 'element-center-v', position: otherCenterX, span: getVerticalSpan() });
+          snappedOnX = true;
+        }
+
+        // --- Horizontal edge alignments (Y-axis snapping) ---
+
+        // Top edge to top edge
+        if (!snappedOnY && Math.abs(elementTop - otherTop) <= snapThreshold) {
+          snappedY = otherTop;
+          guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan() });
+          snappedOnY = true;
+        }
+
+        // Bottom edge to bottom edge
+        if (!snappedOnY && Math.abs(elementBottom - otherBottom) <= snapThreshold) {
+          snappedY = otherBottom - componentHeight;
+          guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan() });
+          snappedOnY = true;
+        }
+
+        // Top edge to bottom edge
+        if (!snappedOnY && Math.abs(elementTop - otherBottom) <= snapThreshold) {
+          snappedY = otherBottom;
+          guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan() });
+          snappedOnY = true;
+        }
+
+        // Bottom edge to top edge
+        if (!snappedOnY && Math.abs(elementBottom - otherTop) <= snapThreshold) {
+          snappedY = otherTop - componentHeight;
+          guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan() });
+          snappedOnY = true;
+        }
+
+        // Center to center (vertical alignment)
+        if (!snappedOnY && Math.abs(elementCenterY - otherCenterY) <= snapThreshold) {
+          snappedY = otherCenterY - componentHeight / 2;
+          guides.push({ type: 'element-center-h', position: otherCenterY, span: getHorizontalSpan() });
+          snappedOnY = true;
+        }
+
+        // Break early if we've snapped on both axes
+        if (snappedOnX && snappedOnY) break;
+      }
+
+      // ========== CANVAS EDGE SNAPPING ==========
+
+      // Check left edge to canvas left
       if (!snappedOnX && Math.abs(elementLeft) <= snapThreshold) {
         snappedX = 0;
         guides.push({ type: 'edge-left', position: 0 });
         snappedOnX = true;
       }
 
-      // 7. Check right edge to canvas right
+      // Check right edge to canvas right
       if (!snappedOnX && Math.abs(elementRight - canvasWidth) <= snapThreshold) {
         snappedX = canvasWidth - componentWidth;
         guides.push({ type: 'edge-right', position: canvasWidth });
         snappedOnX = true;
       }
 
-      // 8. Check top edge to canvas top
+      // Check top edge to canvas top
       if (!snappedOnY && Math.abs(elementTop) <= snapThreshold) {
         snappedY = 0;
         guides.push({ type: 'edge-top', position: 0 });
         snappedOnY = true;
       }
 
-      // 9. Check bottom edge to canvas bottom
+      // Check bottom edge to canvas bottom
       if (!snappedOnY && Math.abs(elementBottom - canvasHeight) <= snapThreshold) {
         snappedY = canvasHeight - componentHeight;
         guides.push({ type: 'edge-bottom', position: canvasHeight });
@@ -294,7 +404,7 @@ export default function Canvas({
         }
       }
     };
-  }, [layout.dimensions.width, layout.dimensions.height, snapToGrid, showGrid, snapThreshold]);
+  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold]);
 
   // Use manual zoom level (10% to 200%)
   const scale = zoomLevel / 100;
@@ -511,8 +621,8 @@ export default function Canvas({
         compHeight = snapToGrid(compHeight, 'height');
       }
 
-      // Use smart snapping for position (includes center and edge snapping with visual guides)
-      const snapResult = smartSnap(rawX, rawY, compWidth, compHeight, true);
+      // Use smart snapping for position (includes center, edge, and element-to-element snapping with visual guides)
+      const snapResult = smartSnap(rawX, rawY, compWidth, compHeight, true, draggedComponent.id);
       const newX = snapResult.x;
       const newY = snapResult.y;
 
@@ -1555,44 +1665,54 @@ export default function Canvas({
             >
               {activeGuides.guides.map((guide, index) => {
                 // Define colors for different guide types
-                const colors = {
-                  'center-h': '#FF00FF', // Magenta for center
+                const colors: Record<string, string> = {
+                  'center-h': '#FF00FF', // Magenta for canvas center
                   'center-v': '#FF00FF',
-                  'edge-top': '#00FFFF', // Cyan for edges
+                  'edge-top': '#00FFFF', // Cyan for canvas edges
                   'edge-bottom': '#00FFFF',
                   'edge-left': '#00FFFF',
                   'edge-right': '#00FFFF',
-                  'element-center-h': '#00FF00', // Green for element-to-element
-                  'element-center-v': '#00FF00'
+                  'element-edge-h': '#00FF00', // Green for element-to-element edges
+                  'element-edge-v': '#00FF00',
+                  'element-center-h': '#39FF14', // Bright green for element-to-element centers
+                  'element-center-v': '#39FF14'
                 };
                 const color = colors[guide.type] || '#FF00FF';
+                const isElementGuide = guide.type.startsWith('element-');
+                const isCenterGuide = guide.type.includes('center');
 
-                // Render the guide line
-                if (guide.type === 'center-v' || guide.type === 'edge-left' || guide.type === 'edge-right' || guide.type === 'element-center-v') {
-                  // Vertical line
+                // Determine if this is a vertical or horizontal guide
+                const isVertical = guide.type === 'center-v' || guide.type === 'edge-left' || guide.type === 'edge-right' ||
+                                   guide.type === 'element-edge-v' || guide.type === 'element-center-v';
+
+                if (isVertical) {
+                  // Vertical line - use span for element-to-element guides
+                  const y1 = guide.span ? guide.span.start : 0;
+                  const y2 = guide.span ? guide.span.end : layout.dimensions.height;
+
                   return (
                     <g key={`guide-${index}`}>
                       <line
                         x1={guide.position}
-                        y1={0}
+                        y1={y1}
                         x2={guide.position}
-                        y2={layout.dimensions.height}
+                        y2={y2}
                         stroke={color}
-                        strokeWidth="1"
-                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                        strokeWidth={isElementGuide ? '2' : '1'}
+                        strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
                       {/* Glow effect */}
                       <line
                         x1={guide.position}
-                        y1={0}
+                        y1={y1}
                         x2={guide.position}
-                        y2={layout.dimensions.height}
+                        y2={y2}
                         stroke={color}
-                        strokeWidth="3"
+                        strokeWidth={isElementGuide ? '4' : '3'}
                         strokeOpacity="0.3"
-                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                        strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
-                      {/* Center indicator circle */}
+                      {/* Center indicator circle for canvas center */}
                       {guide.type === 'center-v' && activeGuides.elementBounds && (
                         <circle
                           cx={guide.position}
@@ -1603,33 +1723,43 @@ export default function Canvas({
                           strokeWidth="2"
                         />
                       )}
+                      {/* Small markers at element edges for element-to-element guides */}
+                      {isElementGuide && guide.span && (
+                        <>
+                          <rect x={guide.position - 3} y={guide.span.start - 1} width="6" height="2" fill={color} />
+                          <rect x={guide.position - 3} y={guide.span.end - 1} width="6" height="2" fill={color} />
+                        </>
+                      )}
                     </g>
                   );
                 } else {
-                  // Horizontal line
+                  // Horizontal line - use span for element-to-element guides
+                  const x1 = guide.span ? guide.span.start : 0;
+                  const x2 = guide.span ? guide.span.end : layout.dimensions.width;
+
                   return (
                     <g key={`guide-${index}`}>
                       <line
-                        x1={0}
+                        x1={x1}
                         y1={guide.position}
-                        x2={layout.dimensions.width}
+                        x2={x2}
                         y2={guide.position}
                         stroke={color}
-                        strokeWidth="1"
-                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                        strokeWidth={isElementGuide ? '2' : '1'}
+                        strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
                       {/* Glow effect */}
                       <line
-                        x1={0}
+                        x1={x1}
                         y1={guide.position}
-                        x2={layout.dimensions.width}
+                        x2={x2}
                         y2={guide.position}
                         stroke={color}
-                        strokeWidth="3"
+                        strokeWidth={isElementGuide ? '4' : '3'}
                         strokeOpacity="0.3"
-                        strokeDasharray={guide.type.includes('center') ? '8,4' : 'none'}
+                        strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
-                      {/* Center indicator circle */}
+                      {/* Center indicator circle for canvas center */}
                       {guide.type === 'center-h' && activeGuides.elementBounds && (
                         <circle
                           cx={activeGuides.elementBounds.centerX}
@@ -1639,6 +1769,13 @@ export default function Canvas({
                           stroke={color}
                           strokeWidth="2"
                         />
+                      )}
+                      {/* Small markers at element edges for element-to-element guides */}
+                      {isElementGuide && guide.span && (
+                        <>
+                          <rect x={guide.span.start - 1} y={guide.position - 3} width="2" height="6" fill={color} />
+                          <rect x={guide.span.end - 1} y={guide.position - 3} width="2" height="6" fill={color} />
+                        </>
                       )}
                     </g>
                   );
