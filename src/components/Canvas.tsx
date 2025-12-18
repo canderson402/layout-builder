@@ -103,8 +103,13 @@ export default function Canvas({
   // Configurable snap threshold (snap strength)
   const [snapThresholdIndex, setSnapThresholdIndex] = useState(4); // Default to 25px (index 4)
   const snapThreshold = SNAP_THRESHOLD_OPTIONS[snapThresholdIndex] || DEFAULT_SNAP_THRESHOLD;
-  
-  
+
+  // Snap type toggles
+  const [snapToElements, setSnapToElements] = useState(true); // Element-to-element snapping
+  const [snapToCanvasGuides, setSnapToCanvasGuides] = useState(true); // Canvas center/edge snapping
+  const [isAltHeld, setIsAltHeld] = useState(false); // Alt key temporarily disables all snapping (for UI)
+  const isAltHeldRef = useRef(false); // Ref for immediate access during drag
+
   // Throttle drag updates for better performance
   const lastUpdateTime = useRef(0);
   const THROTTLE_MS = 16; // ~60fps
@@ -169,8 +174,8 @@ export default function Canvas({
   }, [gridSize, layout.dimensions.width, layout.dimensions.height, snapThreshold]);
 
   const shouldSnap = useCallback((value: number, snappedValue: number) => {
-    return Math.abs(value - snappedValue) <= SNAP_THRESHOLD;
-  }, []);
+    return Math.abs(value - snappedValue) <= snapThreshold;
+  }, [snapThreshold]);
 
   // Smart snapping function that returns snapped position and active guides
   const smartSnap = useCallback((
@@ -179,7 +184,7 @@ export default function Canvas({
     componentWidth: number,
     componentHeight: number,
     enableSnapping: boolean,
-    draggedComponentId?: string // ID of the component being dragged (to exclude from element-to-element checks)
+    excludeComponentIds?: string[] // IDs of components to exclude from element-to-element checks (all selected components)
   ): { x: number; y: number; guides: ActiveGuides } => {
     const guides: SmartGuide[] = [];
     let snappedX = rawX;
@@ -198,59 +203,75 @@ export default function Canvas({
     const elementCenterX = rawX + componentWidth / 2;
     const elementCenterY = rawY + componentHeight / 2;
 
+    // If Alt is held, skip all smart snapping but still apply grid
+    // Use ref for immediate access during drag (state may be stale during rapid events)
+    if (isAltHeldRef.current) {
+      if (showGrid) {
+        snappedX = snapToGrid(snappedX, 'width');
+        snappedY = snapToGrid(snappedY, 'height');
+      }
+      return {
+        x: snappedX,
+        y: snappedY,
+        guides: { guides: [], elementBounds: undefined }
+      };
+    }
+
     if (enableSnapping) {
       // Track if we've snapped on each axis to prevent conflicting snaps
       let snappedOnX = false;
       let snappedOnY = false;
 
-      // Get other components for element-to-element snapping
+      // Get other components for element-to-element snapping (exclude all selected components)
+      const excludeSet = new Set(excludeComponentIds || []);
       const otherComponents = (layout.components || []).filter(
-        c => c.id !== draggedComponentId && c.visible !== false
+        c => !excludeSet.has(c.id) && c.visible !== false
       );
 
       // ========== CANVAS CENTER SNAPPING (highest priority) ==========
+      if (snapToCanvasGuides) {
+        // 1. Check element CENTER to canvas center
+        if (Math.abs(elementCenterX - canvasCenterX) <= snapThreshold) {
+          snappedX = canvasCenterX - componentWidth / 2;
+          guides.push({ type: 'center-v', position: canvasCenterX });
+          snappedOnX = true;
+        }
 
-      // 1. Check element CENTER to canvas center
-      if (Math.abs(elementCenterX - canvasCenterX) <= snapThreshold) {
-        snappedX = canvasCenterX - componentWidth / 2;
-        guides.push({ type: 'center-v', position: canvasCenterX });
-        snappedOnX = true;
-      }
+        if (Math.abs(elementCenterY - canvasCenterY) <= snapThreshold) {
+          snappedY = canvasCenterY - componentHeight / 2;
+          guides.push({ type: 'center-h', position: canvasCenterY });
+          snappedOnY = true;
+        }
 
-      if (Math.abs(elementCenterY - canvasCenterY) <= snapThreshold) {
-        snappedY = canvasCenterY - componentHeight / 2;
-        guides.push({ type: 'center-h', position: canvasCenterY });
-        snappedOnY = true;
-      }
+        // 2. Check element edges to canvas center
+        if (!snappedOnX && Math.abs(elementLeft - canvasCenterX) <= snapThreshold) {
+          snappedX = canvasCenterX;
+          guides.push({ type: 'center-v', position: canvasCenterX });
+          snappedOnX = true;
+        }
 
-      // 2. Check element edges to canvas center
-      if (!snappedOnX && Math.abs(elementLeft - canvasCenterX) <= snapThreshold) {
-        snappedX = canvasCenterX;
-        guides.push({ type: 'center-v', position: canvasCenterX });
-        snappedOnX = true;
-      }
+        if (!snappedOnX && Math.abs(elementRight - canvasCenterX) <= snapThreshold) {
+          snappedX = canvasCenterX - componentWidth;
+          guides.push({ type: 'center-v', position: canvasCenterX });
+          snappedOnX = true;
+        }
 
-      if (!snappedOnX && Math.abs(elementRight - canvasCenterX) <= snapThreshold) {
-        snappedX = canvasCenterX - componentWidth;
-        guides.push({ type: 'center-v', position: canvasCenterX });
-        snappedOnX = true;
-      }
+        if (!snappedOnY && Math.abs(elementTop - canvasCenterY) <= snapThreshold) {
+          snappedY = canvasCenterY;
+          guides.push({ type: 'center-h', position: canvasCenterY });
+          snappedOnY = true;
+        }
 
-      if (!snappedOnY && Math.abs(elementTop - canvasCenterY) <= snapThreshold) {
-        snappedY = canvasCenterY;
-        guides.push({ type: 'center-h', position: canvasCenterY });
-        snappedOnY = true;
-      }
-
-      if (!snappedOnY && Math.abs(elementBottom - canvasCenterY) <= snapThreshold) {
-        snappedY = canvasCenterY - componentHeight;
-        guides.push({ type: 'center-h', position: canvasCenterY });
-        snappedOnY = true;
+        if (!snappedOnY && Math.abs(elementBottom - canvasCenterY) <= snapThreshold) {
+          snappedY = canvasCenterY - componentHeight;
+          guides.push({ type: 'center-h', position: canvasCenterY });
+          snappedOnY = true;
+        }
       }
 
       // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
-
-      for (const other of otherComponents) {
+      if (snapToElements) {
+        for (const other of otherComponents) {
         const otherLeft = other.position.x;
         const otherRight = other.position.x + other.size.width;
         const otherTop = other.position.y;
@@ -344,44 +365,51 @@ export default function Canvas({
           snappedOnY = true;
         }
 
-        // Break early if we've snapped on both axes
-        if (snappedOnX && snappedOnY) break;
+          // Break early if we've snapped on both axes
+          if (snappedOnX && snappedOnY) break;
+        }
       }
 
       // ========== CANVAS EDGE SNAPPING ==========
+      if (snapToCanvasGuides) {
+        // Check left edge to canvas left
+        if (!snappedOnX && Math.abs(elementLeft) <= snapThreshold) {
+          snappedX = 0;
+          guides.push({ type: 'edge-left', position: 0 });
+          snappedOnX = true;
+        }
 
-      // Check left edge to canvas left
-      if (!snappedOnX && Math.abs(elementLeft) <= snapThreshold) {
-        snappedX = 0;
-        guides.push({ type: 'edge-left', position: 0 });
-        snappedOnX = true;
+        // Check right edge to canvas right
+        if (!snappedOnX && Math.abs(elementRight - canvasWidth) <= snapThreshold) {
+          snappedX = canvasWidth - componentWidth;
+          guides.push({ type: 'edge-right', position: canvasWidth });
+          snappedOnX = true;
+        }
+
+        // Check top edge to canvas top
+        if (!snappedOnY && Math.abs(elementTop) <= snapThreshold) {
+          snappedY = 0;
+          guides.push({ type: 'edge-top', position: 0 });
+          snappedOnY = true;
+        }
+
+        // Check bottom edge to canvas bottom
+        if (!snappedOnY && Math.abs(elementBottom - canvasHeight) <= snapThreshold) {
+          snappedY = canvasHeight - componentHeight;
+          guides.push({ type: 'edge-bottom', position: canvasHeight });
+          snappedOnY = true;
+        }
       }
 
-      // Check right edge to canvas right
-      if (!snappedOnX && Math.abs(elementRight - canvasWidth) <= snapThreshold) {
-        snappedX = canvasWidth - componentWidth;
-        guides.push({ type: 'edge-right', position: canvasWidth });
-        snappedOnX = true;
-      }
-
-      // Check top edge to canvas top
-      if (!snappedOnY && Math.abs(elementTop) <= snapThreshold) {
-        snappedY = 0;
-        guides.push({ type: 'edge-top', position: 0 });
-        snappedOnY = true;
-      }
-
-      // Check bottom edge to canvas bottom
-      if (!snappedOnY && Math.abs(elementBottom - canvasHeight) <= snapThreshold) {
-        snappedY = canvasHeight - componentHeight;
-        guides.push({ type: 'edge-bottom', position: canvasHeight });
-        snappedOnY = true;
-      }
-
-      // If no smart guides triggered, fall back to grid snapping
-      if (guides.length === 0 && showGrid) {
-        snappedX = snapToGrid(snappedX, 'width');
-        snappedY = snapToGrid(snappedY, 'height');
+      // Apply grid snapping on axes that aren't already snapped by smart guides
+      // This ensures movement is always grid-locked when grid is enabled
+      if (showGrid) {
+        if (!snappedOnX) {
+          snappedX = snapToGrid(snappedX, 'width');
+        }
+        if (!snappedOnY) {
+          snappedY = snapToGrid(snappedY, 'height');
+        }
       }
     }
 
@@ -404,7 +432,7 @@ export default function Canvas({
         }
       }
     };
-  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold]);
+  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides]);
 
   // Use manual zoom level (10% to 200%)
   const scale = zoomLevel / 100;
@@ -605,57 +633,90 @@ export default function Canvas({
       lastUpdateTime.current = now;
 
       // Calculate raw mouse movement delta (before any snapping)
-      const rawX = canvasX - dragOffset.x;
-      const rawY = canvasY - dragOffset.y;
+      const rawPrimaryX = canvasX - dragOffset.x;
+      const rawPrimaryY = canvasY - dragOffset.y;
 
       // Get the initial position of the primary component
       const initialPrimaryPos = initialComponentPositions.get(draggedComponent.id) || draggedComponent.position;
 
-      // Component size is already in pixels
-      let compWidth = draggedComponent.size.width;
-      let compHeight = draggedComponent.size.height;
+      // Calculate the raw delta from initial position
+      const rawDeltaX = rawPrimaryX - initialPrimaryPos.x;
+      const rawDeltaY = rawPrimaryY - initialPrimaryPos.y;
 
-      // Only snap component size to grid if grid is enabled
-      if (showGrid) {
-        compWidth = snapToGrid(compWidth, 'width');
-        compHeight = snapToGrid(compHeight, 'height');
+      // For multi-selection, calculate the bounding box of the selection and use it for snapping
+      const selectedIds = selectedComponentsRef.current;
+      let snapWidth: number;
+      let snapHeight: number;
+      let snapRawX: number;
+      let snapRawY: number;
+
+      if (selectedIds.length > 1) {
+        // Calculate initial bounding box of all selected components
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        selectedIds.forEach(id => {
+          const initPos = initialComponentPositions.get(id);
+          const comp = layoutRef.current.components.find(c => c.id === id);
+          if (initPos && comp) {
+            minX = Math.min(minX, initPos.x);
+            minY = Math.min(minY, initPos.y);
+            maxX = Math.max(maxX, initPos.x + comp.size.width);
+            maxY = Math.max(maxY, initPos.y + comp.size.height);
+          }
+        });
+
+        // Bounding box dimensions
+        snapWidth = maxX - minX;
+        snapHeight = maxY - minY;
+
+        // Calculate where the bounding box would be with the current drag delta
+        snapRawX = minX + rawDeltaX;
+        snapRawY = minY + rawDeltaY;
+      } else {
+        // Single selection - use the component's own dimensions
+        snapWidth = draggedComponent.size.width;
+        snapHeight = draggedComponent.size.height;
+        snapRawX = rawPrimaryX;
+        snapRawY = rawPrimaryY;
       }
 
-      // Use smart snapping for position (includes center, edge, and element-to-element snapping with visual guides)
-      const snapResult = smartSnap(rawX, rawY, compWidth, compHeight, true, draggedComponent.id);
-      const newX = snapResult.x;
-      const newY = snapResult.y;
+      // Only snap size to grid if grid is enabled (for single selection)
+      if (showGrid && selectedIds.length === 1) {
+        snapWidth = snapToGrid(snapWidth, 'width');
+        snapHeight = snapToGrid(snapHeight, 'height');
+      }
+
+      // Use smart snapping with the bounding box dimensions
+      // Pass all selected component IDs to exclude them from element-to-element snapping
+      const snapResult = smartSnap(snapRawX, snapRawY, snapWidth, snapHeight, true, selectedIds);
 
       // Update active guides for visual feedback
       setActiveGuides(snapResult.guides);
 
-      // Update the primary dragged component with pixel values
-      onUpdateComponent(draggedComponent.id, {
-        position: { x: newX, y: newY },
-        size: { width: compWidth, height: compHeight }
-      });
+      // Calculate the snapped delta
+      const snappedDeltaX = (snapResult.x - snapRawX) + rawDeltaX;
+      const snappedDeltaY = (snapResult.y - snapRawY) + rawDeltaY;
 
-      // If multiple components are selected, move them all by the same delta from their initial positions
-      if (selectedComponentsRef.current.length > 1) {
-        // Calculate the delta from the snapped position
-        const snappedDeltaX = newX - initialPrimaryPos.x;
-        const snappedDeltaY = newY - initialPrimaryPos.y;
+      // Update all selected components
+      selectedIds.forEach(componentId => {
+        const initialPos = initialComponentPositions.get(componentId);
+        if (initialPos) {
+          const newX = initialPos.x + snappedDeltaX;
+          const newY = initialPos.y + snappedDeltaY;
 
-        selectedComponentsRef.current.forEach(componentId => {
-          if (componentId !== draggedComponent.id) {
-            const initialPos = initialComponentPositions.get(componentId);
-            if (initialPos) {
-              // Apply the same snapped delta from the component's initial position
-              const movedX = initialPos.x + snappedDeltaX;
-              const movedY = initialPos.y + snappedDeltaY;
-
-              onUpdateComponent(componentId, {
-                position: { x: movedX, y: movedY }
-              });
-            }
+          // For single selection, also update size if grid snapping
+          if (selectedIds.length === 1 && componentId === draggedComponent.id) {
+            onUpdateComponent(componentId, {
+              position: { x: newX, y: newY },
+              size: { width: snapWidth, height: snapHeight }
+            });
+          } else {
+            onUpdateComponent(componentId, {
+              position: { x: newX, y: newY }
+            });
           }
-        });
-      }
+        }
+      });
     }
 
     if (isResizing) {
@@ -798,6 +859,217 @@ export default function Canvas({
       components: selectedComponentData
     };
   }, [selectedComponents, layout.components]);
+
+  // ========== ALIGNMENT FUNCTIONS ==========
+
+  // Get selected components data
+  const getSelectedComponentsData = useCallback(() => {
+    return selectedComponents
+      .map(id => layout.components.find(c => c.id === id))
+      .filter((c): c is ComponentConfig => c !== undefined);
+  }, [selectedComponents, layout.components]);
+
+  // Align selected components to left
+  const alignLeft = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 2) return;
+
+    onStartDragOperation();
+    const minX = Math.min(...components.map(c => c.position.x));
+    components.forEach(comp => {
+      onUpdateComponent(comp.id, { position: { ...comp.position, x: minX } });
+    });
+    onEndDragOperation('Align left');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Align selected components to horizontal center
+  const alignCenterH = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 2) return;
+
+    onStartDragOperation();
+    const minX = Math.min(...components.map(c => c.position.x));
+    const maxX = Math.max(...components.map(c => c.position.x + c.size.width));
+    const centerX = (minX + maxX) / 2;
+
+    components.forEach(comp => {
+      const newX = centerX - comp.size.width / 2;
+      onUpdateComponent(comp.id, { position: { ...comp.position, x: newX } });
+    });
+    onEndDragOperation('Align center horizontal');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Align selected components to right
+  const alignRight = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 2) return;
+
+    onStartDragOperation();
+    const maxX = Math.max(...components.map(c => c.position.x + c.size.width));
+    components.forEach(comp => {
+      onUpdateComponent(comp.id, { position: { ...comp.position, x: maxX - comp.size.width } });
+    });
+    onEndDragOperation('Align right');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Align selected components to top
+  const alignTop = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 2) return;
+
+    onStartDragOperation();
+    const minY = Math.min(...components.map(c => c.position.y));
+    components.forEach(comp => {
+      onUpdateComponent(comp.id, { position: { ...comp.position, y: minY } });
+    });
+    onEndDragOperation('Align top');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Align selected components to vertical center
+  const alignCenterV = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 2) return;
+
+    onStartDragOperation();
+    const minY = Math.min(...components.map(c => c.position.y));
+    const maxY = Math.max(...components.map(c => c.position.y + c.size.height));
+    const centerY = (minY + maxY) / 2;
+
+    components.forEach(comp => {
+      const newY = centerY - comp.size.height / 2;
+      onUpdateComponent(comp.id, { position: { ...comp.position, y: newY } });
+    });
+    onEndDragOperation('Align center vertical');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Align selected components to bottom
+  const alignBottom = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 2) return;
+
+    onStartDragOperation();
+    const maxY = Math.max(...components.map(c => c.position.y + c.size.height));
+    components.forEach(comp => {
+      onUpdateComponent(comp.id, { position: { ...comp.position, y: maxY - comp.size.height } });
+    });
+    onEndDragOperation('Align bottom');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Distribute selected components horizontally (equal spacing)
+  const distributeH = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 3) return;
+
+    onStartDragOperation();
+    // Sort by x position
+    const sorted = [...components].sort((a, b) => a.position.x - b.position.x);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    // Calculate total width of all components
+    const totalComponentWidth = sorted.reduce((sum, c) => sum + c.size.width, 0);
+    // Calculate available space
+    const totalSpace = (last.position.x + last.size.width) - first.position.x;
+    // Calculate gap between components
+    const gap = (totalSpace - totalComponentWidth) / (sorted.length - 1);
+
+    let currentX = first.position.x;
+    sorted.forEach((comp, index) => {
+      if (index === 0) {
+        currentX += comp.size.width + gap;
+        return;
+      }
+      onUpdateComponent(comp.id, { position: { ...comp.position, x: currentX } });
+      currentX += comp.size.width + gap;
+    });
+    onEndDragOperation('Distribute horizontal');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Distribute selected components vertically (equal spacing)
+  const distributeV = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length < 3) return;
+
+    onStartDragOperation();
+    // Sort by y position
+    const sorted = [...components].sort((a, b) => a.position.y - b.position.y);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    // Calculate total height of all components
+    const totalComponentHeight = sorted.reduce((sum, c) => sum + c.size.height, 0);
+    // Calculate available space
+    const totalSpace = (last.position.y + last.size.height) - first.position.y;
+    // Calculate gap between components
+    const gap = (totalSpace - totalComponentHeight) / (sorted.length - 1);
+
+    let currentY = first.position.y;
+    sorted.forEach((comp, index) => {
+      if (index === 0) {
+        currentY += comp.size.height + gap;
+        return;
+      }
+      onUpdateComponent(comp.id, { position: { ...comp.position, y: currentY } });
+      currentY += comp.size.height + gap;
+    });
+    onEndDragOperation('Distribute vertical');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
+
+  // Center selected component(s) on canvas horizontally
+  const centerOnCanvasH = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length === 0) return;
+
+    onStartDragOperation();
+    const canvasCenterX = layout.dimensions.width / 2;
+
+    if (components.length === 1) {
+      // Single component - center it
+      const comp = components[0];
+      const newX = canvasCenterX - comp.size.width / 2;
+      onUpdateComponent(comp.id, { position: { ...comp.position, x: newX } });
+    } else {
+      // Multiple components - center the group
+      const minX = Math.min(...components.map(c => c.position.x));
+      const maxX = Math.max(...components.map(c => c.position.x + c.size.width));
+      const groupWidth = maxX - minX;
+      const groupCenterX = minX + groupWidth / 2;
+      const offset = canvasCenterX - groupCenterX;
+
+      components.forEach(comp => {
+        onUpdateComponent(comp.id, { position: { ...comp.position, x: comp.position.x + offset } });
+      });
+    }
+    onEndDragOperation('Center on canvas horizontal');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation, layout.dimensions.width]);
+
+  // Center selected component(s) on canvas vertically
+  const centerOnCanvasV = useCallback(() => {
+    const components = getSelectedComponentsData();
+    if (components.length === 0) return;
+
+    onStartDragOperation();
+    const canvasCenterY = layout.dimensions.height / 2;
+
+    if (components.length === 1) {
+      // Single component - center it
+      const comp = components[0];
+      const newY = canvasCenterY - comp.size.height / 2;
+      onUpdateComponent(comp.id, { position: { ...comp.position, y: newY } });
+    } else {
+      // Multiple components - center the group
+      const minY = Math.min(...components.map(c => c.position.y));
+      const maxY = Math.max(...components.map(c => c.position.y + c.size.height));
+      const groupHeight = maxY - minY;
+      const groupCenterY = minY + groupHeight / 2;
+      const offset = canvasCenterY - groupCenterY;
+
+      components.forEach(comp => {
+        onUpdateComponent(comp.id, { position: { ...comp.position, y: comp.position.y + offset } });
+      });
+    }
+    onEndDragOperation('Center on canvas vertical');
+  }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation, layout.dimensions.height]);
 
   // Handle multi-component resize
   const handleMultiResizeMouseDown = useCallback((e: React.MouseEvent, handle: string) => {
@@ -1144,6 +1416,35 @@ export default function Canvas({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // Alt key listener to temporarily disable snapping
+  React.useEffect(() => {
+    const handleAltKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        isAltHeldRef.current = true;
+        setIsAltHeld(true);
+      }
+    };
+    const handleAltKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        isAltHeldRef.current = false;
+        setIsAltHeld(false);
+      }
+    };
+    document.addEventListener('keydown', handleAltKeyDown);
+    document.addEventListener('keyup', handleAltKeyUp);
+    // Also clear Alt state when window loses focus
+    const handleBlur = () => {
+      isAltHeldRef.current = false;
+      setIsAltHeld(false);
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      document.removeEventListener('keydown', handleAltKeyDown);
+      document.removeEventListener('keyup', handleAltKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
   const getComponentHandle = (component: ComponentConfig) => {
     // Positions and sizes are already in pixels
     const left = component.position.x;
@@ -1446,9 +1747,50 @@ export default function Canvas({
               +
             </button>
           </div>
+          {/* Snap Type Toggles */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.2)', paddingLeft: '12px' }}>
+            <button
+              className="grid-button"
+              onClick={() => setSnapToElements(!snapToElements)}
+              title={snapToElements ? "Disable element-to-element snapping" : "Enable element-to-element snapping"}
+              style={{
+                padding: '4px 8px',
+                fontSize: '11px',
+                backgroundColor: snapToElements ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255,255,255,0.1)',
+                border: snapToElements ? '1px solid rgba(0, 255, 0, 0.5)' : '1px solid rgba(255,255,255,0.2)'
+              }}
+            >
+              Elements
+            </button>
+            <button
+              className="grid-button"
+              onClick={() => setSnapToCanvasGuides(!snapToCanvasGuides)}
+              title={snapToCanvasGuides ? "Disable canvas center/edge snapping" : "Enable canvas center/edge snapping"}
+              style={{
+                padding: '4px 8px',
+                fontSize: '11px',
+                backgroundColor: snapToCanvasGuides ? 'rgba(255, 0, 255, 0.3)' : 'rgba(255,255,255,0.1)',
+                border: snapToCanvasGuides ? '1px solid rgba(255, 0, 255, 0.5)' : '1px solid rgba(255,255,255,0.2)'
+              }}
+            >
+              Canvas
+            </button>
+            {isAltHeld && (
+              <span style={{
+                fontSize: '10px',
+                color: '#ff9800',
+                backgroundColor: 'rgba(255, 152, 0, 0.2)',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                border: '1px solid rgba(255, 152, 0, 0.5)'
+              }}>
+                Alt: Grid Only
+              </span>
+            )}
+          </div>
         </div>
         <div className="canvas-zoom">
-          <button 
+          <button
             onClick={() => {
               const maxWidth = window.innerWidth - 650;
               const maxHeight = window.innerHeight - 160;
@@ -1463,15 +1805,123 @@ export default function Canvas({
             Fit
           </button>
           <label style={{fontSize: '12px', marginRight: '8px'}}>Zoom:</label>
-          <input 
-            type="range" 
-            min="10" 
-            max="200" 
+          <input
+            type="range"
+            min="10"
+            max="200"
             value={zoomLevel}
             onChange={(e) => setZoomLevel(parseInt(e.target.value))}
             style={{width: '100px', marginRight: '8px'}}
           />
           <span>{zoomLevel}%</span>
+        </div>
+        {/* Alignment Toolbar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          marginLeft: '12px',
+          borderLeft: '1px solid rgba(255,255,255,0.2)',
+          paddingLeft: '12px'
+        }}>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginRight: '4px' }}>Align:</span>
+          {/* Horizontal alignments */}
+          <button
+            className="grid-button"
+            onClick={alignLeft}
+            disabled={selectedComponents.length < 2}
+            title="Align left edges (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            ⬅
+          </button>
+          <button
+            className="grid-button"
+            onClick={alignCenterH}
+            disabled={selectedComponents.length < 2}
+            title="Align horizontal centers (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            ⬌
+          </button>
+          <button
+            className="grid-button"
+            onClick={alignRight}
+            disabled={selectedComponents.length < 2}
+            title="Align right edges (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            ➡
+          </button>
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+          {/* Vertical alignments */}
+          <button
+            className="grid-button"
+            onClick={alignTop}
+            disabled={selectedComponents.length < 2}
+            title="Align top edges (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            ⬆
+          </button>
+          <button
+            className="grid-button"
+            onClick={alignCenterV}
+            disabled={selectedComponents.length < 2}
+            title="Align vertical centers (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            ⬍
+          </button>
+          <button
+            className="grid-button"
+            onClick={alignBottom}
+            disabled={selectedComponents.length < 2}
+            title="Align bottom edges (2+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
+          >
+            ⬇
+          </button>
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+          {/* Distribute */}
+          <button
+            className="grid-button"
+            onClick={distributeH}
+            disabled={selectedComponents.length < 3}
+            title="Distribute horizontally (3+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 3 ? 0.5 : 1 }}
+          >
+            ⫴
+          </button>
+          <button
+            className="grid-button"
+            onClick={distributeV}
+            disabled={selectedComponents.length < 3}
+            title="Distribute vertically (3+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 3 ? 0.5 : 1 }}
+          >
+            ⫳
+          </button>
+          <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+          {/* Center on canvas */}
+          <button
+            className="grid-button"
+            onClick={centerOnCanvasH}
+            disabled={selectedComponents.length < 1}
+            title="Center on canvas horizontally (1+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
+          >
+            ⧫H
+          </button>
+          <button
+            className="grid-button"
+            onClick={centerOnCanvasV}
+            disabled={selectedComponents.length < 1}
+            title="Center on canvas vertically (1+ selected)"
+            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
+          >
+            ⧫V
+          </button>
         </div>
       </div>
       
