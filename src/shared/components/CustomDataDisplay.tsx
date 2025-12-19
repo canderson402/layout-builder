@@ -493,17 +493,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           </View>
         </>
       )}
-      {/* Show data path for debugging */}
-      <Text style={{
-        fontSize: 8,
-        color: effectiveTextColor,
-        opacity: 0.5,
-        position: 'absolute',
-        bottom: 2,
-        right: 2
-      }}>
-        {imageSourceObj ? 'Image' : (dataPath || 'No data selected')}
-      </Text>
       {/* Show toggle indicator if can toggle */}
       {canToggle && (
         <View style={{

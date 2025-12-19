@@ -71,9 +71,10 @@ export default function Canvas({
   gameData
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);
   const selectedComponentsRef = useRef(selectedComponents);
-  
+
   // Keep refs updated
   layoutRef.current = layout;
   selectedComponentsRef.current = selectedComponents;
@@ -84,7 +85,7 @@ export default function Canvas({
   const [showHalfwayLines, setShowHalfwayLines] = useState(false);
   const [gridSizeIndex, setGridSizeIndex] = useState(2); // Default to 20px grid (index 2)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [zoomLevel, setZoomLevel] = useState(50); // Zoom level from 10% to 200%
+  const [zoomLevel, setZoomLevel] = useState(60); // Zoom level from 10% to 200%
   const [isCreating, setIsCreating] = useState(false);
   const [createStart, setCreateStart] = useState({ x: 0, y: 0 });
   const [createEnd, setCreateEnd] = useState({ x: 0, y: 0 });
@@ -465,6 +466,259 @@ export default function Canvas({
           bottom: snappedY + componentHeight,
           centerX: finalCenterX,
           centerY: finalCenterY
+        }
+      }
+    };
+  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides]);
+
+  // Smart snapping function for resize operations - snaps moving edges to guides
+  const smartSnapResize = useCallback((
+    handle: string,
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+    excludeComponentIds?: string[]
+  ): { left: number; top: number; right: number; bottom: number; guides: ActiveGuides } => {
+    const guides: SmartGuide[] = [];
+    let snappedLeft = left;
+    let snappedTop = top;
+    let snappedRight = right;
+    let snappedBottom = bottom;
+
+    const canvasWidth = layout.dimensions.width;
+    const canvasHeight = layout.dimensions.height;
+    const canvasCenterX = canvasWidth / 2;
+    const canvasCenterY = canvasHeight / 2;
+
+    // Determine which edges are being moved based on handle
+    const movingLeft = handle === 'nw' || handle === 'sw';
+    const movingRight = handle === 'ne' || handle === 'se';
+    const movingTop = handle === 'nw' || handle === 'ne';
+    const movingBottom = handle === 'sw' || handle === 'se';
+
+    // If Alt is held, skip all smart snapping but still apply grid
+    if (isAltHeldRef.current) {
+      if (showGrid) {
+        if (movingLeft) snappedLeft = snapToGrid(snappedLeft, 'width');
+        if (movingRight) snappedRight = snapToGrid(snappedRight, 'width');
+        if (movingTop) snappedTop = snapToGrid(snappedTop, 'height');
+        if (movingBottom) snappedBottom = snapToGrid(snappedBottom, 'height');
+      }
+      return {
+        left: snappedLeft,
+        top: snappedTop,
+        right: snappedRight,
+        bottom: snappedBottom,
+        guides: { guides: [] }
+      };
+    }
+
+    // Track if we've snapped each edge
+    let snappedLeftEdge = false;
+    let snappedRightEdge = false;
+    let snappedTopEdge = false;
+    let snappedBottomEdge = false;
+
+    // Get other components for element-to-element snapping
+    const excludeSet = new Set(excludeComponentIds || []);
+    const otherComponents = (layout.components || []).filter(
+      c => !excludeSet.has(c.id) && c.visible !== false
+    );
+
+    // Helper to get vertical span for horizontal guides
+    const getVerticalSpan = (otherTop: number, otherBottom: number) => ({
+      start: Math.min(top, otherTop),
+      end: Math.max(bottom, otherBottom)
+    });
+
+    // Helper to get horizontal span for vertical guides
+    const getHorizontalSpan = (otherLeft: number, otherRight: number) => ({
+      start: Math.min(left, otherLeft),
+      end: Math.max(right, otherRight)
+    });
+
+    // ========== CANVAS CENTER SNAPPING ==========
+    if (snapToCanvasGuides) {
+      // Snap moving edges to canvas center
+      if (movingLeft && !snappedLeftEdge && Math.abs(left - canvasCenterX) <= snapThreshold) {
+        snappedLeft = canvasCenterX;
+        guides.push({ type: 'center-v', position: canvasCenterX });
+        snappedLeftEdge = true;
+      }
+      if (movingRight && !snappedRightEdge && Math.abs(right - canvasCenterX) <= snapThreshold) {
+        snappedRight = canvasCenterX;
+        guides.push({ type: 'center-v', position: canvasCenterX });
+        snappedRightEdge = true;
+      }
+      if (movingTop && !snappedTopEdge && Math.abs(top - canvasCenterY) <= snapThreshold) {
+        snappedTop = canvasCenterY;
+        guides.push({ type: 'center-h', position: canvasCenterY });
+        snappedTopEdge = true;
+      }
+      if (movingBottom && !snappedBottomEdge && Math.abs(bottom - canvasCenterY) <= snapThreshold) {
+        snappedBottom = canvasCenterY;
+        guides.push({ type: 'center-h', position: canvasCenterY });
+        snappedBottomEdge = true;
+      }
+    }
+
+    // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
+    if (snapToElements) {
+      for (const other of otherComponents) {
+        const otherLeft = other.position.x;
+        const otherRight = other.position.x + other.size.width;
+        const otherTop = other.position.y;
+        const otherBottom = other.position.y + other.size.height;
+        const otherCenterX = other.position.x + other.size.width / 2;
+        const otherCenterY = other.position.y + other.size.height / 2;
+
+        // --- Vertical edge snapping (X-axis) ---
+        if (movingLeft && !snappedLeftEdge) {
+          // Left edge to other left edge
+          if (Math.abs(left - otherLeft) <= snapThreshold) {
+            snappedLeft = otherLeft;
+            guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan(otherTop, otherBottom) });
+            snappedLeftEdge = true;
+          }
+          // Left edge to other right edge
+          else if (Math.abs(left - otherRight) <= snapThreshold) {
+            snappedLeft = otherRight;
+            guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan(otherTop, otherBottom) });
+            snappedLeftEdge = true;
+          }
+          // Left edge to other center
+          else if (Math.abs(left - otherCenterX) <= snapThreshold) {
+            snappedLeft = otherCenterX;
+            guides.push({ type: 'element-center-v', position: otherCenterX, span: getVerticalSpan(otherTop, otherBottom) });
+            snappedLeftEdge = true;
+          }
+        }
+
+        if (movingRight && !snappedRightEdge) {
+          // Right edge to other right edge
+          if (Math.abs(right - otherRight) <= snapThreshold) {
+            snappedRight = otherRight;
+            guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan(otherTop, otherBottom) });
+            snappedRightEdge = true;
+          }
+          // Right edge to other left edge
+          else if (Math.abs(right - otherLeft) <= snapThreshold) {
+            snappedRight = otherLeft;
+            guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan(otherTop, otherBottom) });
+            snappedRightEdge = true;
+          }
+          // Right edge to other center
+          else if (Math.abs(right - otherCenterX) <= snapThreshold) {
+            snappedRight = otherCenterX;
+            guides.push({ type: 'element-center-v', position: otherCenterX, span: getVerticalSpan(otherTop, otherBottom) });
+            snappedRightEdge = true;
+          }
+        }
+
+        // --- Horizontal edge snapping (Y-axis) ---
+        if (movingTop && !snappedTopEdge) {
+          // Top edge to other top edge
+          if (Math.abs(top - otherTop) <= snapThreshold) {
+            snappedTop = otherTop;
+            guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan(otherLeft, otherRight) });
+            snappedTopEdge = true;
+          }
+          // Top edge to other bottom edge
+          else if (Math.abs(top - otherBottom) <= snapThreshold) {
+            snappedTop = otherBottom;
+            guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan(otherLeft, otherRight) });
+            snappedTopEdge = true;
+          }
+          // Top edge to other center
+          else if (Math.abs(top - otherCenterY) <= snapThreshold) {
+            snappedTop = otherCenterY;
+            guides.push({ type: 'element-center-h', position: otherCenterY, span: getHorizontalSpan(otherLeft, otherRight) });
+            snappedTopEdge = true;
+          }
+        }
+
+        if (movingBottom && !snappedBottomEdge) {
+          // Bottom edge to other bottom edge
+          if (Math.abs(bottom - otherBottom) <= snapThreshold) {
+            snappedBottom = otherBottom;
+            guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan(otherLeft, otherRight) });
+            snappedBottomEdge = true;
+          }
+          // Bottom edge to other top edge
+          else if (Math.abs(bottom - otherTop) <= snapThreshold) {
+            snappedBottom = otherTop;
+            guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan(otherLeft, otherRight) });
+            snappedBottomEdge = true;
+          }
+          // Bottom edge to other center
+          else if (Math.abs(bottom - otherCenterY) <= snapThreshold) {
+            snappedBottom = otherCenterY;
+            guides.push({ type: 'element-center-h', position: otherCenterY, span: getHorizontalSpan(otherLeft, otherRight) });
+            snappedBottomEdge = true;
+          }
+        }
+
+        // Break if all moving edges are snapped
+        const allSnapped =
+          (!movingLeft || snappedLeftEdge) &&
+          (!movingRight || snappedRightEdge) &&
+          (!movingTop || snappedTopEdge) &&
+          (!movingBottom || snappedBottomEdge);
+        if (allSnapped) break;
+      }
+    }
+
+    // ========== CANVAS EDGE SNAPPING ==========
+    if (snapToCanvasGuides) {
+      if (movingLeft && !snappedLeftEdge && Math.abs(left) <= snapThreshold) {
+        snappedLeft = 0;
+        guides.push({ type: 'edge-left', position: 0 });
+        snappedLeftEdge = true;
+      }
+      if (movingRight && !snappedRightEdge && Math.abs(right - canvasWidth) <= snapThreshold) {
+        snappedRight = canvasWidth;
+        guides.push({ type: 'edge-right', position: canvasWidth });
+        snappedRightEdge = true;
+      }
+      if (movingTop && !snappedTopEdge && Math.abs(top) <= snapThreshold) {
+        snappedTop = 0;
+        guides.push({ type: 'edge-top', position: 0 });
+        snappedTopEdge = true;
+      }
+      if (movingBottom && !snappedBottomEdge && Math.abs(bottom - canvasHeight) <= snapThreshold) {
+        snappedBottom = canvasHeight;
+        guides.push({ type: 'edge-bottom', position: canvasHeight });
+        snappedBottomEdge = true;
+      }
+    }
+
+    // ========== GRID SNAPPING (fallback) ==========
+    if (showGrid) {
+      if (movingLeft && !snappedLeftEdge) snappedLeft = snapToGrid(snappedLeft, 'width');
+      if (movingRight && !snappedRightEdge) snappedRight = snapToGrid(snappedRight, 'width');
+      if (movingTop && !snappedTopEdge) snappedTop = snapToGrid(snappedTop, 'height');
+      if (movingBottom && !snappedBottomEdge) snappedBottom = snapToGrid(snappedBottom, 'height');
+    }
+
+    // Calculate final bounds for guide rendering
+    const finalWidth = snappedRight - snappedLeft;
+    const finalHeight = snappedBottom - snappedTop;
+
+    return {
+      left: snappedLeft,
+      top: snappedTop,
+      right: snappedRight,
+      bottom: snappedBottom,
+      guides: {
+        guides,
+        elementBounds: {
+          left: snappedLeft,
+          top: snappedTop,
+          right: snappedRight,
+          bottom: snappedBottom,
+          centerX: snappedLeft + finalWidth / 2,
+          centerY: snappedTop + finalHeight / 2
         }
       }
     };
@@ -1253,79 +1507,106 @@ export default function Canvas({
       return;
     }
 
-    // Single component resize logic (existing code)
+    // Single component resize logic
     const currentLeft = draggedComponent.position.x;
     const currentTop = draggedComponent.position.y;
     const currentWidth = draggedComponent.size.width;
     const currentHeight = draggedComponent.size.height;
+    const currentRight = currentLeft + currentWidth;
+    const currentBottom = currentTop + currentHeight;
 
     // Calculate original aspect ratio
     const aspectRatio = currentWidth / currentHeight;
 
-    let newWidth = currentWidth;
-    let newHeight = currentHeight;
-    let newX = currentLeft;
-    let newY = currentTop;
-
     const minSize = 20;
 
+    // Calculate raw edge positions based on resize handle
+    let rawLeft = currentLeft;
+    let rawTop = currentTop;
+    let rawRight = currentRight;
+    let rawBottom = currentBottom;
+
     switch (resizeHandle) {
-      case 'se': // Bottom-right
-        newWidth = Math.max(minSize, canvasX - currentLeft);
-        newHeight = Math.max(minSize, canvasY - currentTop);
+      case 'se': // Bottom-right - right and bottom edges move
+        rawRight = canvasX;
+        rawBottom = canvasY;
         if (maintainAspectRatio) {
-          // Use width to determine height
-          newHeight = newWidth / aspectRatio;
+          const newWidth = Math.max(minSize, rawRight - rawLeft);
+          rawBottom = rawTop + newWidth / aspectRatio;
         }
         break;
-      case 'sw': // Bottom-left
-        newWidth = Math.max(minSize, currentLeft + currentWidth - canvasX);
-        newHeight = Math.max(minSize, canvasY - currentTop);
+      case 'sw': // Bottom-left - left and bottom edges move
+        rawLeft = canvasX;
+        rawBottom = canvasY;
         if (maintainAspectRatio) {
-          // Use width to determine height
-          newHeight = newWidth / aspectRatio;
+          const newWidth = Math.max(minSize, rawRight - rawLeft);
+          rawBottom = rawTop + newWidth / aspectRatio;
         }
-        newX = canvasX;
         break;
-      case 'ne': // Top-right
-        newWidth = Math.max(minSize, canvasX - currentLeft);
-        newHeight = Math.max(minSize, currentTop + currentHeight - canvasY);
+      case 'ne': // Top-right - right and top edges move
+        rawRight = canvasX;
+        rawTop = canvasY;
         if (maintainAspectRatio) {
-          // Use width to determine height, then adjust Y position
-          const calculatedHeight = newWidth / aspectRatio;
-          newY = currentTop + currentHeight - calculatedHeight;
-          newHeight = calculatedHeight;
+          const newWidth = Math.max(minSize, rawRight - rawLeft);
+          rawTop = rawBottom - newWidth / aspectRatio;
         }
-        newY = maintainAspectRatio ? newY : canvasY;
         break;
-      case 'nw': // Top-left
-        newWidth = Math.max(minSize, currentLeft + currentWidth - canvasX);
-        newHeight = Math.max(minSize, currentTop + currentHeight - canvasY);
+      case 'nw': // Top-left - left and top edges move
+        rawLeft = canvasX;
+        rawTop = canvasY;
         if (maintainAspectRatio) {
-          // Use width to determine height, then adjust both X and Y positions
-          const calculatedHeight = newWidth / aspectRatio;
-          newY = currentTop + currentHeight - calculatedHeight;
-          newHeight = calculatedHeight;
+          const newWidth = Math.max(minSize, rawRight - rawLeft);
+          rawTop = rawBottom - newWidth / aspectRatio;
         }
-        newX = canvasX;
-        newY = maintainAspectRatio ? newY : canvasY;
         break;
     }
 
-    // Only snap to grid during resizing if grid is enabled
-    if (showGrid) {
-      newWidth = snapToGrid(newWidth, 'width');
-      newHeight = snapToGrid(newHeight, 'height');
-      newX = snapToGrid(newX, 'width');
-      newY = snapToGrid(newY, 'height');
+    // Apply smart snapping to the edges being resized
+    const snapResult = smartSnapResize(
+      resizeHandle,
+      rawLeft,
+      rawTop,
+      rawRight,
+      rawBottom,
+      [draggedComponent.id] // Exclude the component being resized
+    );
+
+    // Update active guides for visual feedback
+    setActiveGuides(snapResult.guides);
+
+    // Calculate final dimensions from snapped edges
+    let finalLeft = snapResult.left;
+    let finalTop = snapResult.top;
+    let finalRight = snapResult.right;
+    let finalBottom = snapResult.bottom;
+
+    // Enforce minimum size
+    if (finalRight - finalLeft < minSize) {
+      if (resizeHandle === 'nw' || resizeHandle === 'sw') {
+        finalLeft = finalRight - minSize;
+      } else {
+        finalRight = finalLeft + minSize;
+      }
     }
+    if (finalBottom - finalTop < minSize) {
+      if (resizeHandle === 'nw' || resizeHandle === 'ne') {
+        finalTop = finalBottom - minSize;
+      } else {
+        finalBottom = finalTop + minSize;
+      }
+    }
+
+    const newX = finalLeft;
+    const newY = finalTop;
+    const newWidth = finalRight - finalLeft;
+    const newHeight = finalBottom - finalTop;
 
     // Store pixel values directly
     onUpdateComponent(draggedComponent.id, {
       position: { x: newX, y: newY },
       size: { width: newWidth, height: newHeight }
     });
-  }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, getMultiSelectBounds]);
+  }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, getMultiSelectBounds, smartSnapResize]);
 
   // Update the ref whenever handleResize changes
   handleResizeRef.current = handleResize;
@@ -1525,6 +1806,42 @@ export default function Canvas({
     };
   }, []);
 
+  // Auto-fit canvas to available space
+  const fitCanvasToWrapper = useCallback(() => {
+    if (!wrapperRef.current) return;
+    const wrapper = wrapperRef.current;
+    const padding = 40; // 20px padding on each side
+    const availableWidth = wrapper.clientWidth - padding;
+    const availableHeight = wrapper.clientHeight - padding;
+
+    if (availableWidth <= 0 || availableHeight <= 0) return;
+
+    const scaleX = availableWidth / layout.dimensions.width;
+    const scaleY = availableHeight / layout.dimensions.height;
+    const fitScale = Math.min(scaleX, scaleY, 2.0); // Cap at 200%
+
+    setZoomLevel(Math.max(10, Math.round(fitScale * 100)));
+    setViewportOffset({ x: 0, y: 0 });
+  }, [layout.dimensions.width, layout.dimensions.height]);
+
+  // Calculate effective z-index based on hierarchy (parent layers affect children)
+  const getEffectiveLayer = (component: ComponentConfig): number => {
+    let effectiveLayer = component.layer || 0;
+    let parentId = component.parentId;
+    let multiplier = 1000; // Each parent level adds this much priority
+
+    while (parentId) {
+      const parent = (layout.components || []).find(c => c.id === parentId);
+      if (!parent) break;
+      // Add parent's layer contribution - higher parent layer = higher z-index for all children
+      effectiveLayer += (parent.layer || 0) * multiplier;
+      parentId = parent.parentId;
+      multiplier *= 1000; // Increase multiplier for deeper nesting
+    }
+
+    return effectiveLayer;
+  };
+
   const getComponentHandle = (component: ComponentConfig) => {
     // Positions and sizes are already in pixels
     const left = component.position.x;
@@ -1578,7 +1895,7 @@ export default function Canvas({
           ...baseStyle,
           backgroundColor: 'transparent',
           pointerEvents: 'auto', // Always capture events for component interaction
-          zIndex: isSelected ? 10 : 5, // Selected components on top
+          zIndex: getEffectiveLayer(component) + (isSelected ? 10000000 : 0), // Respect hierarchy layer order, selected on top
         }}
         onMouseDown={(e) => handleMouseDown(e, component)}
         className="canvas-handle"
@@ -2056,17 +2373,16 @@ export default function Canvas({
         </div>
       </div>
       
-      <div 
-        className="canvas-wrapper" 
+      <div
+        ref={wrapperRef}
+        className="canvas-wrapper"
         style={{
           flex: 1,
-          overflow: 'auto',
+          overflow: 'hidden',
           display: 'flex',
           justifyContent: 'center',
-          alignItems: 'flex-start',
-          padding: '20px',
-          minWidth: displayWidth,
-          minHeight: displayHeight
+          alignItems: 'center',
+          padding: '20px'
         }}
         onMouseDown={(e) => {
           // Prevent browser default middle-click behavior (like opening links in new tabs)

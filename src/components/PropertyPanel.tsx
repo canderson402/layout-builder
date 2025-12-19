@@ -11,7 +11,11 @@ interface PropertyPanelProps {
   onUpdateLayout: (layout: LayoutConfig) => void;
   gameData?: any;
   onUpdateGameData?: (gameData: any) => void;
+  panelWidth?: number;
 }
+
+// Width threshold for two-column layout
+const TWO_COLUMN_THRESHOLD = 450;
 
 
 // Simple number input handlers - no complex hook needed
@@ -22,8 +26,10 @@ function PropertyPanel({
   onUpdateComponent,
   onUpdateLayout,
   gameData,
-  onUpdateGameData
+  onUpdateGameData,
+  panelWidth = 320
 }: PropertyPanelProps) {
+  const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
   const [isDragging, setIsDragging] = useState(false);
   
@@ -403,8 +409,8 @@ function PropertyPanel({
     const isCollapsed = collapsedSections.has(sectionKey);
     return (
       <div className="property-section">
-        <button 
-          className="section-header" 
+        <button
+          className={`section-header ${isCollapsed ? 'collapsed' : ''}`}
           onClick={() => toggleSection(sectionKey)}
         >
           <span className="section-title">{title}</span>
@@ -422,7 +428,7 @@ function PropertyPanel({
 
   if (selectedComponents.length === 0) {
     return (
-      <div className="property-panel">
+      <div className={`property-panel ${useTwoColumns ? 'two-columns' : ''}`}>
         <div className="property-header">
           <h3>Properties</h3>
         </div>
@@ -441,7 +447,7 @@ function PropertyPanel({
       .filter((c): c is ComponentConfig => c !== undefined);
 
     return (
-      <div className="property-panel">
+      <div className={`property-panel ${useTwoColumns ? 'two-columns' : ''}`}>
         <div className="property-header">
           <h3>Multi-Select Properties</h3>
           <span className="component-count">{selectedComponents.length} components</span>
@@ -507,7 +513,7 @@ function PropertyPanel({
   // If component not found, show error message
   if (!component) {
     return (
-      <div className="property-panel">
+      <div className={`property-panel ${useTwoColumns ? 'two-columns' : ''}`}>
         <div className="property-header">
           <h3>Properties</h3>
         </div>
@@ -522,7 +528,7 @@ function PropertyPanel({
   }
 
   return (
-    <div className="property-panel">
+    <div className={`property-panel ${useTwoColumns ? 'two-columns' : ''}`}>
       <div className="property-header">
         <h3>{component.displayName || component.type} Properties</h3>
         {component.team && (
@@ -593,15 +599,18 @@ function PropertyPanel({
       
       {/* Display Name Field */}
       <div className="property-section">
-        <label>Display Name:</label>
-        <input
-          type="text"
-          value={component.displayName || ''}
-          onChange={(e) => updateComponentWithScrollPreservation(component.id, { 
-            displayName: e.target.value 
-          })}
-          placeholder={`${component.type} component`}
-        />
+        <div className="property-field">
+          <label>Display Name</label>
+          <input
+            type="text"
+            value={component.displayName || ''}
+            onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+              displayName: e.target.value
+            })}
+            placeholder={`${component.type} component`}
+            style={{ maxWidth: '200px' }}
+          />
+        </div>
       </div>
       
       <div 
@@ -647,38 +656,6 @@ function PropertyPanel({
                 onChange={(e) => handleNumberChange('height', e.target.value)}
                 onBlur={(e) => handleNumberBlur('height', e.target.value)}
               />
-            </div>
-            {/* Layer control */}
-            <div className="property-field">
-              <label>Layer</label>
-              <div className="radius-input-group">
-                <button
-                  className="radius-quick-button minus"
-                  title="Move Behind"
-                  onClick={() => {
-                    const currentLayer = component.layer || 0;
-                    updateComponentWithScrollPreservation(component.id, { layer: currentLayer - 1 });
-                  }}
-                >
-                  -1
-                </button>
-                <input
-                  type="number"
-                  defaultValue={component ? (component.layer || 0) : 0}
-                  onChange={(e) => handleNumberChange('layer', e.target.value)}
-                  onBlur={(e) => handleNumberBlur('layer', e.target.value)}
-                />
-                <button
-                  className="radius-quick-button"
-                  title="Move Front"
-                  onClick={() => {
-                    const currentLayer = component.layer || 0;
-                    updateComponentWithScrollPreservation(component.id, { layer: currentLayer + 1 });
-                  }}
-                >
-                  +1
-                </button>
-              </div>
             </div>
           </div>
         </PropertySection>
@@ -952,10 +929,12 @@ function PropertyPanel({
                   </select>
                 </div>
               )}
+            </PropertySection>
 
-              <h5>Image</h5>
+            {/* IMAGE SECTION */}
+            <PropertySection title="IMAGE" sectionKey="image">
               <div className="property-field">
-                <label>Sport Category</label>
+                <label>Category</label>
                 <select
                   value={selectedSport}
                   onChange={(e) => setSelectedSport(e.target.value as Sport)}
@@ -981,19 +960,6 @@ function PropertyPanel({
 
               {getStateValue('imageSource', 'none') === 'local' && (
                 <>
-                  <div className="property-field">
-                    <label>Image Type</label>
-                    <select
-                      value={selectedSport}
-                      onChange={(e) => setSelectedSport(e.target.value as Sport)}
-                    >
-                      <option value="general">General</option>
-                      <option value="basketball">Basketball</option>
-                      <option value="break">Break</option>
-                      <option value="volleyball">Volleyball</option>
-                      <option value="wrestling">Wrestling</option>
-                    </select>
-                  </div>
                   <div className="property-field">
                     <label>Select Image</label>
                     <select
@@ -1054,118 +1020,6 @@ function PropertyPanel({
                 </div>
               )}
 
-              {component.props?.imageSource !== 'none' && (
-                <div className="property-field">
-                  <label>Image Anchor Point</label>
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(3, 1fr)', 
-                    gap: '4px',
-                    marginTop: '4px' 
-                  }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        console.log('Setting imageAnchor to top-left');
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, imageAnchor: 'top-left' }
-                        });
-                      }}
-                      style={{
-                        padding: '8px 4px',
-                        fontSize: '10px',
-                        backgroundColor: component.props?.imageAnchor === 'top-left' ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                      title="Top Left"
-                    >
-                      ⬉
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, imageAnchor: 'top-right' }
-                      })}
-                      style={{
-                        padding: '8px 4px',
-                        fontSize: '10px',
-                        backgroundColor: component.props?.imageAnchor === 'top-right' ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                      title="Top Right"
-                    >
-                      ⬈
-                    </button>
-                    <div></div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        console.log('Setting imageAnchor to center');
-                        updateComponentWithScrollPreservation(component.id, {
-                          props: { ...component.props, imageAnchor: 'center' }
-                        });
-                      }}
-                      style={{
-                        padding: '8px 4px',
-                        fontSize: '10px',
-                        backgroundColor: component.props?.imageAnchor === 'center' || !component.props?.imageAnchor ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        gridColumn: '2'
-                      }}
-                      title="Center"
-                    >
-                      ⬛
-                    </button>
-                    <div></div>
-                    <button
-                      type="button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, imageAnchor: 'bottom-left' }
-                      })}
-                      style={{
-                        padding: '8px 4px',
-                        fontSize: '10px',
-                        backgroundColor: component.props?.imageAnchor === 'bottom-left' ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                      title="Bottom Left"
-                    >
-                      ⬋
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateComponentWithScrollPreservation(component.id, {
-                        props: { ...component.props, imageAnchor: 'bottom-right' }
-                      })}
-                      style={{
-                        padding: '8px 4px',
-                        fontSize: '10px',
-                        backgroundColor: component.props?.imageAnchor === 'bottom-right' ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                      title="Bottom Right"
-                    >
-                      ⬊
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {(getStateValue('imageSource', 'none') === 'local' && getStateValue('imagePath', '')) ||
                (getStateValue('imageSource', 'none') === 'url' && getStateValue('imageUrl', '')) ? (
                 <div className="property-field">
@@ -1210,55 +1064,6 @@ function PropertyPanel({
                       }}
                     >
                       📐 Native Resolution
-                    </button>
-                    
-                    <button
-                      className="crop-to-content-btn"
-                      onClick={() => {
-                        const imageUrl = getStateValue('imageSource', 'none') === 'local'
-                          ? getStateValue('imagePath', '')
-                          : getStateValue('imageUrl', '');
-                        
-                        if (imageUrl) {
-                          // Create a temporary image to get dimensions
-                          const img = new Image();
-                          img.onload = () => {
-                            const imageWidth = img.naturalWidth;
-                            const imageHeight = img.naturalHeight;
-                            const imageAspectRatio = imageWidth / imageHeight;
-                            
-                            // Component dimensions are already in pixels
-                            const currentWidthPx = component.size.width;
-                            
-                            // Maintain the image's aspect ratio
-                            const displayWidth = currentWidthPx;
-                            const displayHeight = currentWidthPx / imageAspectRatio;
-                            
-                            updateComponentWithScrollPreservation(component.id, {
-                              size: { 
-                                width: Math.min(displayWidth, layout.dimensions.width),
-                                height: Math.min(displayHeight, layout.dimensions.height)
-                              },
-                              props: {
-                                ...component.props,
-                                // Remove all padding to crop to content
-                                paddingTop: 0,
-                                paddingRight: 0,
-                                paddingBottom: 0,
-                                paddingLeft: 0,
-                                // Set background to transparent so only image shows
-                                backgroundColor: 'transparent'
-                              }
-                            });
-                          };
-                          img.onerror = () => {
-                            console.error('Failed to load image for dimension detection:', imageUrl);
-                          };
-                          img.src = imageUrl;
-                        }
-                      }}
-                    >
-                      ✂️ Crop to Content
                     </button>
                   </div>
                 </div>
@@ -1387,7 +1192,6 @@ function PropertyPanel({
                           ) : (
                             component?.props?.imageTintColor ? (
                               <div className="property-field">
-                                <label>Tint Color</label>
                                 <ColorPicker
                                   key={`tint-${component.id}`}
                                   label="Tint Color"
@@ -1403,17 +1207,6 @@ function PropertyPanel({
                           )}
                         </>
                       )}
-
-                      <div className="property-note" style={{
-                        fontSize: '11px',
-                        color: '#888',
-                        marginTop: '4px',
-                        padding: '8px',
-                        backgroundColor: '#1a1a1a',
-                        borderRadius: '4px'
-                      }}>
-                        💡 Tint overlays a color on white/transparent images. Works great for team color masks! Enable "Use Team Color" to automatically use team colors.
-                      </div>
                     </>
                   )}
                 </>

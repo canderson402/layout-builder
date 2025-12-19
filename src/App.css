@@ -264,3 +264,52 @@
   flex: 1;
   overflow: hidden;
 }
+
+.panel-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.panel-container.left-panel {
+  min-width: 200px;
+  max-width: 600px;
+}
+
+.panel-container.right-panel {
+  min-width: 200px;
+  max-width: 600px;
+}
+
+.panel-container.resizing {
+  user-select: none;
+}
+
+/* Edge-based resize handles */
+.panel-resize-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 100;
+  transition: background-color 0.15s;
+}
+
+.panel-resize-edge.right-edge {
+  right: -3px;
+}
+
+.panel-resize-edge.left-edge {
+  left: -3px;
+}
+
+.panel-resize-edge:hover {
+  background: rgba(76, 175, 80, 0.5);
+}
+
+.panel-container.resizing .panel-resize-edge {
+  background: rgba(76, 175, 80, 0.7);
+}

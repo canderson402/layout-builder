@@ -1,11 +1,31 @@
 .property-panel {
-  width: 300px;
+  width: 100%;
   background: #2a2a2a;
   border-left: 1px solid #444;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+/* Two-column layout when panel is wide enough */
+.property-panel.two-columns .property-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.property-panel.two-columns .property-section .property-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px 16px;
+}
+
+.property-panel.two-columns .property-section .property-grid .property-field {
+  min-width: 0;
+}
+
+/* Allow some fields to span 2 columns in wide mode */
+.property-panel.two-columns .property-section .property-grid .property-field.span-2 {
+  grid-column: span 2;
 }
 
 .property-header {
@@ -43,6 +63,12 @@
 .property-section {
   display: flex;
   flex-direction: column;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.property-section:last-child {
+  border-bottom: none;
 }
 
 .no-selection {
@@ -53,35 +79,31 @@
 }
 
 .property-section h4 {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
-  margin: 16px 0 12px 0;
-  color: #ddd;
+  margin: 0 0 12px 0;
+  color: #888;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.property-section h4:first-child {
-  margin-top: 0;
 }
 
 .property-section h5 {
   font-size: 12px;
   font-weight: 600;
-  margin: 16px 0 8px 0;
+  margin: 20px 0 12px 0;
   color: #ddd;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .property-section h5:first-child {
-  margin-top: 0;
+  margin-top: 4px;
 }
 
 .property-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 16px;
 }
 
 .property-field {
@@ -89,27 +111,52 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  margin-bottom: 16px;
+}
+
+.property-field:last-child {
+  margin-bottom: 0;
+}
+
+/* Inline field variant - label and input side by side */
+.property-field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.property-field.inline label {
+  margin-bottom: 0;
+  min-width: fit-content;
 }
 
 .property-field label {
   font-size: 10px;
   font-weight: 500;
-  color: #ccc;
+  color: #888;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
 }
 
 .property-field input,
 .property-field select {
-  padding: 6px 8px;
+  padding: 8px 10px;
   background: #3a3a3a;
   color: #fff;
   border: 1px solid #555;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 13px;
   width: 100%;
   box-sizing: border-box;
+}
+
+.property-field input[type="number"] {
+  width: 100%;
+}
+
+.property-field select {
+  cursor: pointer;
 }
 
 .property-field input[type="color"] {
@@ -146,8 +193,48 @@
 }
 
 .property-field input[type="checkbox"] {
-  width: auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
   margin-right: 8px;
+  accent-color: #4CAF50;
+  cursor: pointer;
+}
+
+/* Checkbox label styling when checkbox is inside label */
+.property-field label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #ccc;
+  cursor: pointer;
+  text-transform: none;
+  padding: 4px 0;
+}
+
+/* Checkbox with label inline */
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #4CAF50;
+  cursor: pointer;
+}
+
+.checkbox-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #ccc;
+  margin: 0;
+  cursor: pointer;
+  text-transform: none;
 }
 
 .property-section select {
@@ -327,25 +414,27 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 18px 16px;
+  padding: 14px 16px;
   background: transparent;
   border: none;
+  border-bottom: 1px solid #444;
   color: #fff;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   margin: 0;
 }
 
 .section-header:hover {
   background: transparent;
+  color: #fff;
 }
 
-.section-header:active {
-  background: transparent;
+.section-header.collapsed {
+  border-bottom: none;
 }
 
 .section-title {
@@ -354,38 +443,18 @@
 }
 
 .section-toggle {
-  font-size: 12px;
-  color: #888;
+  font-size: 10px;
+  color: #666;
   transition: color 0.2s;
 }
 
 .section-header:hover .section-toggle {
-  color: #fff;
+  color: #aaa;
 }
 
 .section-content {
-  padding: 12px 16px 16px 16px;
+  padding: 16px;
   background: #2a2a2a;
-}
-
-.property-section {
-  margin: 0;
-  border-bottom: 2px solid #444;
-}
-
-.property-section:last-child {
-  border-bottom: none;
-}
-
-.property-section h5 {
-  font-size: 11px;
-  font-weight: 600;
-  color: #aaa;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 16px 0 8px 0;
-  padding-top: 12px;
-  border-top: 1px solid #3a3a3a;
 }
 
 /* Image size buttons container */
@@ -393,6 +462,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 4px;
 }
 
 /* Native resolution button */

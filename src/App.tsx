@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { ComponentConfig, LayoutConfig } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
@@ -7,6 +7,12 @@ import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
 import { tvDiscoveryService, DiscoveredTV } from './services/tvDiscovery';
 import './App.css';
+
+// Panel resize constants
+const MIN_PANEL_WIDTH = 200;
+const MAX_PANEL_WIDTH = 600;
+const DEFAULT_LEFT_PANEL_WIDTH = 250;
+const DEFAULT_RIGHT_PANEL_WIDTH = 320;
 
 const DEVICE_PRESETS = {
   '1080p TV (1920x1080)': { width: 1920, height: 1080 },
@@ -100,7 +106,63 @@ function App() {
   const [discoveredTVs, setDiscoveredTVs] = useState<DiscoveredTV[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [selectedTvOption, setSelectedTvOption] = useState('custom');
-  
+
+  // Panel resize state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_PANEL_WIDTH);
+  const [rightPanelWidth, setRightPanelWidth] = useState(DEFAULT_RIGHT_PANEL_WIDTH);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+
+  // Panel resize handlers
+  const handleLeftResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = leftPanelWidth;
+  }, [leftPanelWidth]);
+
+  const handleRightResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = rightPanelWidth;
+  }, [rightPanelWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        const delta = e.clientX - resizeStartX.current;
+        const newWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + delta));
+        setLeftPanelWidth(newWidth);
+      } else if (isResizingRight) {
+        const delta = resizeStartX.current - e.clientX;
+        const newWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + delta));
+        setRightPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingLeft, isResizingRight]);
+
   // Generate unique component ID using UUID
   const generateComponentId = useCallback((type: ComponentConfig['type']) => {
     const uuid = crypto.randomUUID();
@@ -775,16 +837,25 @@ function App() {
       </header>
 
       <div className="app-body">
-        <MemoizedLayerPanel
-          layout={layout}
-          selectedComponents={selectedComponents}
-          onSelectComponents={setSelectedComponents}
-          onUpdateComponent={updateComponent}
-          onAddComponent={addComponent}
-          onStartDragOperation={startDragOperation}
-          onEndDragOperation={endDragOperation}
-        />
-        
+        <div
+          className={`panel-container left-panel ${isResizingLeft ? 'resizing' : ''}`}
+          style={{ width: leftPanelWidth }}
+        >
+          <MemoizedLayerPanel
+            layout={layout}
+            selectedComponents={selectedComponents}
+            onSelectComponents={setSelectedComponents}
+            onUpdateComponent={updateComponent}
+            onAddComponent={addComponent}
+            onStartDragOperation={startDragOperation}
+            onEndDragOperation={endDragOperation}
+          />
+          <div
+            className="panel-resize-edge right-edge"
+            onMouseDown={handleLeftResizeStart}
+          />
+        </div>
+
         <MemoizedCanvas
           layout={layout}
           selectedComponents={selectedComponents}
@@ -800,15 +871,25 @@ function App() {
           onUpdateLayout={setLayout}
           gameData={gameData}
         />
-        
-        <MemoizedPropertyPanel
-          layout={layout}
-          selectedComponents={selectedComponents}
-          onUpdateComponent={updateComponent}
-          onUpdateLayout={setLayout}
-          gameData={gameData}
-          onUpdateGameData={setGameData}
-        />
+
+        <div
+          className={`panel-container right-panel ${isResizingRight ? 'resizing' : ''}`}
+          style={{ width: rightPanelWidth }}
+        >
+          <div
+            className="panel-resize-edge left-edge"
+            onMouseDown={handleRightResizeStart}
+          />
+          <MemoizedPropertyPanel
+            layout={layout}
+            selectedComponents={selectedComponents}
+            onUpdateComponent={updateComponent}
+            onUpdateLayout={setLayout}
+            gameData={gameData}
+            onUpdateGameData={setGameData}
+            panelWidth={rightPanelWidth}
+          />
+        </div>
       </div>
 
       {showExportModal && (

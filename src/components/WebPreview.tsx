@@ -33,10 +33,28 @@ const mockGameData = {
   period: 4,
 };
 
+// Calculate effective z-index based on hierarchy (parent layers affect children)
+const getEffectiveLayer = (component: ComponentConfig, allComponents: ComponentConfig[]): number => {
+  let effectiveLayer = component.layer || 0;
+  let parentId = component.parentId;
+  let multiplier = 1000; // Each parent level adds this much priority
+
+  while (parentId) {
+    const parent = allComponents.find(c => c.id === parentId);
+    if (!parent) break;
+    // Add parent's layer contribution - higher parent layer = higher z-index for all children
+    effectiveLayer += (parent.layer || 0) * multiplier;
+    parentId = parent.parentId;
+    multiplier *= 1000; // Increase multiplier for deeper nesting
+  }
+
+  return effectiveLayer;
+};
+
 function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }: WebPreviewProps) {
   // Use provided gameData or fall back to mockGameData
   const effectiveGameData = gameData || mockGameData;
-  const renderComponent = (config: ComponentConfig, index: number) => {
+  const renderComponent = (config: ComponentConfig, index: number, effectiveLayer: number) => {
     const { type, position, size, props, team, id } = config;
     
     // Positions and sizes are already in pixels
@@ -51,7 +69,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
       top,
       width,
       height,
-      zIndex: config.layer || 0,  // Ensure proper layering
+      zIndex: effectiveLayer,  // Use effective layer that considers parent hierarchy
     };
 
     const TouchableWrapper = ({ children }: { children: React.ReactNode }) => (
@@ -190,8 +208,12 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           }
           return true;
         })
-        .sort((a, b) => (a.layer || 0) - (b.layer || 0))
-        .map((component, index) => renderComponent(component, index))}
+        .map(component => ({
+          component,
+          effectiveLayer: getEffectiveLayer(component, layout.components || [])
+        }))
+        .sort((a, b) => a.effectiveLayer - b.effectiveLayer)
+        .map(({ component, effectiveLayer }, index) => renderComponent(component, index, effectiveLayer))}
     </View>
   );
 }
