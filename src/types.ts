@@ -19,9 +19,32 @@ export interface ComponentConfig {
   parentId?: string; // ID of parent component (children move with parent)
 }
 
+// Predefined layout types that the TV app can load
+export const LAYOUT_TYPES = [
+  // Sports (alphabetical)
+  { value: 'badminton', label: 'Badminton' },
+  { value: 'baseball', label: 'Baseball' },
+  { value: 'basketball', label: 'Basketball' },
+  { value: 'football', label: 'Football' },
+  { value: 'hockey', label: 'Hockey' },
+  { value: 'lacrosse', label: 'Lacrosse' },
+  { value: 'rugby', label: 'Rugby' },
+  { value: 'soccer', label: 'Soccer' },
+  { value: 'tennis', label: 'Tennis' },
+  { value: 'volleyball', label: 'Volleyball' },
+  { value: 'waterpolo', label: 'Water Polo' },
+  { value: 'wrestling', label: 'Wrestling' },
+  // Special layouts
+  { value: 'universal', label: 'Universal' },
+  { value: 'timeout', label: 'Timeout' },
+  { value: 'activity-timer', label: 'Activity Timer' },
+  { value: 'playlist', label: 'Playlist' },
+] as const;
+
+export type LayoutType = typeof LAYOUT_TYPES[number]['value'];
+
 export interface LayoutConfig {
-  name: string;
-  sport: string;
+  name: string; // Layout type identifier (e.g., 'basketball', 'volleyball') - used by TV app to load correct layout
   components: ComponentConfig[];
   backgroundColor?: string;
   dimensions: {

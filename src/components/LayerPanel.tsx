@@ -7,7 +7,7 @@ interface LayerPanelProps {
   selectedComponents: string[];
   onSelectComponents: (ids: string[]) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
-  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }) => void;
+  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string) => void;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
 }
@@ -411,6 +411,55 @@ export default function LayerPanel({
     onEndDragOperation?.('Create new layer');
   };
 
+  // Add image component with default image centered on canvas
+  const addImageComponent = () => {
+    const defaultImagePath = '/images/face.png';
+    const imageProps = {
+      dataPath: 'none',
+      imageSource: 'local',
+      imagePath: defaultImagePath,
+      objectFit: 'none',
+      backgroundColor: 'transparent',
+      paddingTop: 0,
+      paddingRight: 0,
+      paddingBottom: 0,
+      paddingLeft: 0
+    };
+
+    // Load image to get native dimensions and center it
+    const img = new window.Image();
+    img.onload = () => {
+      const nativeWidth = img.naturalWidth;
+      const nativeHeight = img.naturalHeight;
+      const centerX = (layout.dimensions.width - nativeWidth) / 2;
+      const centerY = (layout.dimensions.height - nativeHeight) / 2;
+
+      onAddComponent(
+        'custom',
+        { x: Math.max(0, centerX), y: Math.max(0, centerY) },
+        { width: nativeWidth, height: nativeHeight },
+        imageProps,
+        'Image'
+      );
+    };
+    img.onerror = () => {
+      // Fallback if image doesn't load
+      const defaultWidth = 400;
+      const defaultHeight = 300;
+      const centerX = (layout.dimensions.width - defaultWidth) / 2;
+      const centerY = (layout.dimensions.height - defaultHeight) / 2;
+
+      onAddComponent(
+        'custom',
+        { x: Math.max(0, centerX), y: Math.max(0, centerY) },
+        { width: defaultWidth, height: defaultHeight },
+        { ...imageProps, objectFit: 'fill', backgroundColor: '#333333' },
+        'Image'
+      );
+    };
+    img.src = defaultImagePath;
+  };
+
   return (
     <div className="layer-panel">
       <div className="layer-header">
@@ -581,6 +630,15 @@ export default function LayerPanel({
           >
             <div className="component-menu-icon"></div>
             <div className="component-menu-label">Dynamic List</div>
+          </button>
+
+          <button
+            className="component-menu-item"
+            onClick={addImageComponent}
+            title="Image Component (centered, native resolution)"
+          >
+            <div className="component-menu-icon"></div>
+            <div className="component-menu-label">Image</div>
           </button>
         </div>
       </div>

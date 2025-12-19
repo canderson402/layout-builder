@@ -7,14 +7,14 @@ interface ToolbarProps {
 }
 
 const COMPONENT_TYPES = [
-  { type: 'teamName', label: 'Team Name', icon: '🏷️' },
-  { type: 'score', label: 'Score', icon: '🏆' },
-  { type: 'clock', label: 'Clock', icon: '⏰' },
-  { type: 'period', label: 'Period/Quarter', icon: '📊' },
-  { type: 'fouls', label: 'Fouls', icon: '⚠️' },
-  { type: 'timeouts', label: 'Timeouts', icon: '⏸️' },
-  { type: 'bonus', label: 'Bonus', icon: '⭐' },
-  { type: 'custom', label: 'Custom', icon: '🔧' },
+  { type: 'teamName', label: 'Team Name', icon: 'TN' },
+  { type: 'score', label: 'Score', icon: 'SC' },
+  { type: 'clock', label: 'Clock', icon: 'CK' },
+  { type: 'period', label: 'Period/Quarter', icon: 'PD' },
+  { type: 'fouls', label: 'Fouls', icon: 'FL' },
+  { type: 'timeouts', label: 'Timeouts', icon: 'TO' },
+  { type: 'bonus', label: 'Bonus', icon: 'BN' },
+  { type: 'custom', label: 'Custom', icon: 'CU' },
 ] as const;
 
 export default function Toolbar({ onAddComponent }: ToolbarProps) {

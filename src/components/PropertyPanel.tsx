@@ -114,8 +114,20 @@ function PropertyPanel({
     };
   }, []);
   
-  // State for collapsed sections
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  // State for collapsed sections - all collapsed by default
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set([
+    'position-size',
+    'team',
+    'text',
+    'custom-data',
+    'image',
+    'borders',
+    'dynamic-list-data',
+    'dynamic-list-active',
+    'dynamic-list-inactive',
+    'dynamic-list-borders',
+    'dynamic-list-layout'
+  ]));
   
   // Memoized update functions with minimal dependencies
   const updateX = useCallback((pixelValue: number) => {
@@ -384,16 +396,78 @@ function PropertyPanel({
   // Helper to get the current property value based on editing state
   const getStateValue = useCallback((field: string, defaultValue?: any) => {
     if (!component?.props) return defaultValue;
-    
+
     if (component.props?.canToggle) {
       const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
       const stateProps = component.props[stateKey] || {};
       return stateProps[field] !== undefined ? stateProps[field] : (component.props[field] || defaultValue);
     }
-    
+
     return component.props[field] || defaultValue;
   }, [component, editingState]);
-  
+
+  // Handler for image selection - sets native resolution and centers on canvas
+  const handleImageSelect = useCallback((imagePath: string, isUrl: boolean = false) => {
+    if (!component || !componentId || !imagePath) {
+      if (isUrl) {
+        updateStateProps('imageUrl', imagePath);
+      } else {
+        updateStateProps('imagePath', imagePath);
+      }
+      return;
+    }
+
+    // First update the image path/url
+    if (isUrl) {
+      updateStateProps('imageUrl', imagePath);
+    } else {
+      updateStateProps('imagePath', imagePath);
+    }
+
+    // Then load the image to get native dimensions and center it
+    const img = new window.Image();
+    img.onload = () => {
+      const nativeWidth = img.naturalWidth;
+      const nativeHeight = img.naturalHeight;
+
+      // Calculate center position
+      const centerX = (layout.dimensions.width - nativeWidth) / 2;
+      const centerY = (layout.dimensions.height - nativeHeight) / 2;
+
+      const propsUpdate: any = {
+        ...component.props,
+        paddingTop: 0,
+        paddingRight: 0,
+        paddingBottom: 0,
+        paddingLeft: 0,
+        objectFit: 'none',
+        backgroundColor: 'transparent'
+      };
+
+      if (isUrl) {
+        propsUpdate.imageUrl = imagePath;
+      } else {
+        propsUpdate.imagePath = imagePath;
+      }
+
+      updateComponentWithScrollPreservation(componentId, {
+        position: {
+          x: Math.max(0, centerX),
+          y: Math.max(0, centerY)
+        },
+        size: {
+          width: nativeWidth,
+          height: nativeHeight
+        },
+        props: propsUpdate
+      });
+    };
+    img.onerror = () => {
+      console.error('Failed to load image for dimension detection:', imagePath);
+    };
+    img.src = imagePath;
+  }, [component, componentId, layout.dimensions, updateStateProps, updateComponentWithScrollPreservation]);
+
   const toggleSection = (section: string) => {
     const newCollapsed = new Set(collapsedSections);
     if (newCollapsed.has(section)) {
@@ -459,8 +533,8 @@ function PropertyPanel({
               {multiComponents.map(component => (
                 <div key={component.id} className="selected-component-item">
                   <span className="component-icon">
-                    {component.type === 'custom' ? '📦' :
-                     component.type === 'dynamicList' ? '📋' : '🏷️'}
+                    {component.type === 'custom' ? '[C]' :
+                     component.type === 'dynamicList' ? '[L]' : '[T]'}
                   </span>
                   <span className="component-name">
                     {component.displayName || component.type}
@@ -964,7 +1038,7 @@ function PropertyPanel({
                     <label>Select Image</label>
                     <select
                       value={getStateValue('imagePath', '')}
-                      onChange={(e) => updateStateProps('imagePath', e.target.value)}
+                      onChange={(e) => handleImageSelect(e.target.value)}
                     >
                       <option value="">
                         {imagesLoading ? 'Loading images...' : 'Select an image...'}
@@ -1015,7 +1089,7 @@ function PropertyPanel({
                     defaultValue={getStateValue('imageUrl', '')}
                     placeholder="https://example.com/image.jpg"
                     onChange={(e) => handleStatePropsChange('imageUrl', e.target.value)}
-                    onBlur={(e) => handleStatePropsBlur('imageUrl', e.target.value)}
+                    onBlur={(e) => handleImageSelect(e.target.value, true)}
                   />
                 </div>
               )}

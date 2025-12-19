@@ -6,63 +6,188 @@
   color: #fff;
 }
 
+/* ========== HEADER STYLES ========== */
 .app-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  background: #2a2a2a;
-  border-bottom: 1px solid #444;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: linear-gradient(180deg, #2d2d2d 0%, #252525 100%);
+  border-bottom: 1px solid #3a3a3a;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
+.header-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-branding {
+  flex-shrink: 0;
+}
+
+.header-branding h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.header-divider {
+  width: 1px;
+  height: 24px;
+  background: #444;
+  margin: 0 4px;
+}
+
+.header-edit {
+  flex-shrink: 0;
+}
+
+.header-file {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Uniform header select */
+.header-select {
+  padding: 8px 12px;
+  background: #363636;
+  color: #fff;
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 130px;
+  transition: all 0.15s ease;
+}
+
+.header-select:hover {
+  background: #404040;
+  border-color: #555;
+}
+
+.header-select:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+/* Uniform header input */
+.header-input {
+  padding: 8px 12px;
+  background: #363636;
+  color: #fff;
+  border: 1px solid #FF9800;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 120px;
+  transition: all 0.15s ease;
+}
+
+.header-input:focus {
+  outline: none;
+  border-color: #FFB74D;
+  box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.2);
+}
+
+.header-input::placeholder {
+  color: #777;
+}
+
+/* Uniform header buttons */
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.header-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.header-btn-primary {
+  background: #4CAF50;
+  color: white;
+}
+
+.header-btn-primary:hover:not(:disabled) {
+  background: #43A047;
+  transform: translateY(-1px);
+}
+
+.header-btn-secondary {
+  background: #484848;
+  color: #ddd;
+  border: 1px solid #555;
+}
+
+.header-btn-secondary:hover:not(:disabled) {
+  background: #525252;
+  color: #fff;
+}
+
+.header-btn-accent {
+  background: #2196F3;
+  color: white;
+}
+
+.header-btn-accent:hover:not(:disabled) {
+  background: #1E88E5;
+  transform: translateY(-1px);
+}
+
+.header-btn-warning {
+  background: #FF9800;
+  color: white;
+}
+
+.header-btn-warning:hover:not(:disabled) {
+  background: #F57C00;
+}
+
+.header-btn-icon {
+  padding: 8px 10px;
+  background: #484848;
+  color: #ddd;
+  border: 1px solid #555;
+  min-width: auto;
+}
+
+.header-btn-icon:hover:not(:disabled) {
+  background: #525252;
+}
+
+.btn-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Legacy classes - keep for compatibility */
 .header-left {
   display: flex;
   align-items: center;
   gap: 20px;
-}
-
-.header-left h1 {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.layout-name-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.layout-name-input {
-  padding: 8px 12px;
-  background: #3a3a3a;
-  color: #fff;
-  border-radius: 6px;
-  font-size: 16px;
-  width: 200px;
-}
-
-.layout-name-input:focus {
-  outline: 2px solid #4CAF50;
-}
-
-.quick-save-button {
-  background: #4CAF50;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.quick-save-button:hover {
-  background: #45a049;
 }
 
 .header-right {

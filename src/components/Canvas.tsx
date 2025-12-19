@@ -740,7 +740,18 @@ export default function Canvas({
   });
   const [customWidth, setCustomWidth] = useState(layout.dimensions.width.toString());
   const [customHeight, setCustomHeight] = useState(layout.dimensions.height.toString());
-  
+
+  // Sync local resolution state when layout dimensions change externally
+  React.useEffect(() => {
+    setCustomWidth(layout.dimensions.width.toString());
+    setCustomHeight(layout.dimensions.height.toString());
+
+    const matchingPreset = RESOLUTION_PRESETS.find(p =>
+      p.width === layout.dimensions.width && p.height === layout.dimensions.height
+    );
+    setSelectedPreset(matchingPreset?.name || 'Custom');
+  }, [layout.dimensions.width, layout.dimensions.height]);
+
   // Handle resolution changes
   const handleResolutionChange = useCallback((presetName: string) => {
     setSelectedPreset(presetName);
@@ -1922,7 +1933,7 @@ export default function Canvas({
             }}
             title="This component is a child"
           >
-            ⛓
+            C
           </div>
         )}
         {hasChildren && (
@@ -2116,19 +2127,12 @@ export default function Canvas({
           )}
         </div>
         <div className="canvas-controls">
-          <button 
+          <button
             className={`grid-button ${showGrid ? 'active' : ''}`}
             onClick={() => setShowGrid(!showGrid)}
-            title="Toggle Grid (G)"
+            title="Show/hide the pixel grid overlay for precise alignment"
           >
-            ⊞ Grid
-          </button>
-          <button 
-            className={`grid-button ${showHalfwayLines ? 'active' : ''}`}
-            onClick={() => setShowHalfwayLines(!showHalfwayLines)}
-            title="Toggle Center Lines (H)"
-          >
-            ╬ Center
+            Grid
           </button>
           <div className="grid-size-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button
@@ -2290,7 +2294,7 @@ export default function Canvas({
             title="Align horizontal centers (2+ selected)"
             style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
           >
-            ⬌
+            |
           </button>
           <button
             className="grid-button"
@@ -2319,7 +2323,7 @@ export default function Canvas({
             title="Align vertical centers (2+ selected)"
             style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
           >
-            ⬍
+            —
           </button>
           <button
             className="grid-button"
@@ -2359,7 +2363,7 @@ export default function Canvas({
             title="Center on canvas horizontally (1+ selected)"
             style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
           >
-            ⧫H
+            CH
           </button>
           <button
             className="grid-button"
@@ -2368,7 +2372,7 @@ export default function Canvas({
             title="Center on canvas vertically (1+ selected)"
             style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
           >
-            ⧫V
+            CV
           </button>
         </div>
       </div>

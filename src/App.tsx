@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { ComponentConfig, LayoutConfig } from './types';
+import { ComponentConfig, LayoutConfig, LAYOUT_TYPES } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
@@ -40,8 +40,7 @@ const MemoizedPresetModal = React.memo(PresetModal);
 
 function App() {
   const [layout, setLayout] = useState<LayoutConfig>({
-    name: 'New Layout',
-    sport: 'basketball',
+    name: 'basketball', // Layout type identifier used by TV app
     components: [],
     backgroundColor: '#000000',
     dimensions: DEFAULT_DIMENSIONS
@@ -298,7 +297,6 @@ function App() {
 
         const testLayout = {
           name: layout.name,
-          sport: layout.sport,
           components: layout.components?.slice(0, testCount) || [],
           dimensions: layout.dimensions,
           backgroundColor: layout.backgroundColor
@@ -341,7 +339,7 @@ function App() {
       // Comprehensive JSON cleaning system to handle ALL Swift parsing issues
       const cleanLayoutForServer = (layout: any) => {
         return {
-          name: layout.name || "Layout",
+          name: layout.name || "basketball",
           components: (layout.components || []).map((component: any) => {
             // Start with only the essential fields Swift expects
             const cleanComponent: any = {
@@ -598,20 +596,26 @@ function App() {
     (layout.components || []).reduce((max, comp) => Math.max(max, comp.layer || 0), 0)
   , [layout.components]);
 
-  const addComponent = useCallback((type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => {
+  const addComponent = useCallback((
+    type: ComponentConfig['type'],
+    customPosition?: { x: number, y: number },
+    customSize?: { width: number, height: number },
+    customProps?: Record<string, any>,
+    customDisplayName?: string
+  ) => {
     setLayout(prev => {
       // Save current state for undo
       saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
-      
+
       const componentId = generateComponentId(type);
       const newComponent: ComponentConfig = {
         id: componentId,
-        displayName: getDefaultDisplayName(type), // Human-readable display name
+        displayName: customDisplayName || getDefaultDisplayName(type),
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
         layer: 0,
-        props: getDefaultProps(type),
+        props: customProps || getDefaultProps(type),
         team: needsTeam(type) ? 'home' : undefined
       };
 
@@ -696,7 +700,7 @@ function App() {
         const duplicate: ComponentConfig = {
           ...original,
           id: duplicateId,
-          name: duplicateId, // Use the generated ID as the display name
+          displayName: original.displayName ? `${original.displayName} (copy)` : duplicateId,
           position: {
             x: original.position.x + 40, // 40px offset
             y: original.position.y + 40  // 40px offset
@@ -722,118 +726,144 @@ function App() {
     });
   }, [saveStateForUndo]);
 
+  // Handler to properly merge partial layout updates (used by Canvas for resolution changes)
+  const handleUpdateLayout = useCallback((updates: Partial<LayoutConfig>) => {
+    setLayout(prev => ({
+      ...prev,
+      ...updates,
+      // Deep merge dimensions if provided
+      dimensions: updates.dimensions ? { ...prev.dimensions, ...updates.dimensions } : prev.dimensions
+    }));
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
-        <div className="header-left">
-          <h1>Scoreboard Layout Builder</h1>
-          <div className="layout-name-section">
+        {/* Left: Branding & Layout Type */}
+        <div className="header-section header-branding">
+          <h1>Layout Builder</h1>
+          <div className="header-divider" />
+          <select
+            value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
+            onChange={(e) => {
+              if (e.target.value === '__custom__') {
+                if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
+                  setLayout(prev => ({ ...prev, name: '' }));
+                }
+              } else {
+                setLayout(prev => ({ ...prev, name: e.target.value }));
+              }
+            }}
+            className="header-select"
+            title="Select the layout type - this determines which layout template the TV app will use"
+          >
+            {LAYOUT_TYPES.map(type => (
+              <option key={type.value} value={type.value}>{type.label}</option>
+            ))}
+            <option value="__custom__">Custom...</option>
+          </select>
+          {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
             <input
               type="text"
               value={layout.name}
               onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
-              className="layout-name-input"
-              placeholder="Layout Name"
+              className="header-input"
+              placeholder="Custom type"
+              title="Enter a custom layout type identifier for the TV app"
             />
-            <button className="quick-save-button" onClick={quickSavePreset}>
-              Save
-            </button>
-          </div>
+          )}
         </div>
-        <div className="header-right">
+
+        {/* Center: Edit Operations */}
+        <div className="header-section header-edit">
           <button
             onClick={undo}
             disabled={undoHistory.length === 0}
-            className="undo-button"
-            title={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'No actions to undo'}
+            className="header-btn header-btn-secondary"
+            title={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'Nothing to undo'}
           >
-            ↶ Undo {undoHistory.length > 0 && `(${undoHistory.length})`}
+            Undo {undoHistory.length > 0 && <span className="btn-badge">{undoHistory.length}</span>}
           </button>
           <button
             onClick={redo}
             disabled={redoHistory.length === 0}
-            className="redo-button"
-            title={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'No actions to redo'}
+            className="header-btn header-btn-secondary"
+            title={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'Nothing to redo'}
           >
-            ↷ Redo {redoHistory.length > 0 && `(${redoHistory.length})`}
+            Redo {redoHistory.length > 0 && <span className="btn-badge">{redoHistory.length}</span>}
+          </button>
+        </div>
+
+        {/* Right: File & Export Operations */}
+        <div className="header-section header-file">
+          <button
+            onClick={quickSavePreset}
+            className="header-btn header-btn-primary"
+            title="Quick save current layout as a preset with the current name"
+          >
+            Save
           </button>
           <button
             onClick={() => setShowPresetModal(true)}
-            className="preset-button"
+            className="header-btn header-btn-secondary"
+            title="Open preset manager to save, load, import, or export layout presets"
           >
-            Manage Presets
+            Presets
           </button>
-          <button
-            onClick={() => addComponent('dynamicList')}
-            className="add-component-button"
-            title="Add Dynamic List (timeouts, fouls, etc.)"
-          >
-            + Dynamic List
-          </button>
-          <select
-            value={Object.keys(DEVICE_PRESETS).find(key => 
-              DEVICE_PRESETS[key as keyof typeof DEVICE_PRESETS].width === layout.dimensions.width && 
-              DEVICE_PRESETS[key as keyof typeof DEVICE_PRESETS].height === layout.dimensions.height
-            ) || 'Custom 16:9'}
-            onChange={(e) => setLayout(prev => ({ 
-              ...prev, 
-              dimensions: DEVICE_PRESETS[e.target.value as keyof typeof DEVICE_PRESETS]
-            }))}
-            className="device-select"
-          >
-            {Object.keys(DEVICE_PRESETS).map(preset => (
-              <option key={preset} value={preset}>{preset}</option>
-            ))}
-          </select>
           <button
             onClick={() => setShowExportModal(true)}
-            className="export-button"
+            className="header-btn header-btn-accent"
+            title="Export current layout as JSON file for use in the TV app"
           >
-            Export Layout
+            Export
           </button>
-          
-          <div className="tv-controls">
-            <select
-              value={selectedTvOption}
-              onChange={(e) => handleTvSelectionChange(e.target.value)}
-              className="tv-select"
-            >
-              <option key="custom-ip" value="custom">Custom IP</option>
-              {discoveredTVs.map((tv) => (
-                <option key={tv.id} value={`${tv.ip}:${tv.port}`}>
-                  {tv.name}
-                </option>
-              ))}
-            </select>
-            
-            {selectedTvOption === 'custom' && (
-              <input
-                type="text"
-                value={tvIpAddress}
-                onChange={(e) => setTvIpAddress(e.target.value)}
-                placeholder="TV IP Address (e.g. 192.168.1.100)"
-                className="tv-ip-input"
-              />
-            )}
-            
-            <button
-              onClick={scanForTVs}
-              disabled={isScanning}
-              className="scan-tv-button"
-              title="Scan for TVs on network"
-            >
-              {isScanning ? '🔄' : '🔍'}
-            </button>
-            
-            <button
-              onClick={sendLayoutToTv}
-              disabled={isSendingToTv}
-              className="send-tv-button"
-            >
-              {isSendingToTv ? 'Sending...' : 'Send to TV'}
-            </button>
-          </div>
         </div>
+
+        {/* DEBUG: TV Controls - Commented out for production */}
+        {/*
+        <div className="header-section header-tv">
+          <div className="header-divider" />
+          <select
+            value={selectedTvOption}
+            onChange={(e) => handleTvSelectionChange(e.target.value)}
+            className="header-select"
+            title="Select a discovered TV or enter a custom IP address"
+          >
+            <option key="custom-ip" value="custom">Custom IP</option>
+            {discoveredTVs.map((tv) => (
+              <option key={tv.id} value={`${tv.ip}:${tv.port}`}>
+                {tv.name}
+              </option>
+            ))}
+          </select>
+          {selectedTvOption === 'custom' && (
+            <input
+              type="text"
+              value={tvIpAddress}
+              onChange={(e) => setTvIpAddress(e.target.value)}
+              placeholder="192.168.1.100"
+              className="header-input"
+              title="Enter the IP address of the TV to send the layout to"
+            />
+          )}
+          <button
+            onClick={scanForTVs}
+            disabled={isScanning}
+            className="header-btn header-btn-icon"
+            title="Scan local network for ScoreVision TV displays"
+          >
+            {isScanning ? '🔄' : '🔍'}
+          </button>
+          <button
+            onClick={sendLayoutToTv}
+            disabled={isSendingToTv}
+            className="header-btn header-btn-warning"
+            title="Send current layout directly to the selected TV for live preview"
+          >
+            {isSendingToTv ? 'Sending...' : '📺 Send to TV'}
+          </button>
+        </div>
+        */}
       </header>
 
       <div className="app-body">
@@ -868,7 +898,7 @@ function App() {
           onAddComponent={addComponent}
           onStartDragOperation={startDragOperation}
           onEndDragOperation={endDragOperation}
-          onUpdateLayout={setLayout}
+          onUpdateLayout={handleUpdateLayout}
           gameData={gameData}
         />
 
@@ -884,7 +914,7 @@ function App() {
             layout={layout}
             selectedComponents={selectedComponents}
             onUpdateComponent={updateComponent}
-            onUpdateLayout={setLayout}
+            onUpdateLayout={handleUpdateLayout}
             gameData={gameData}
             onUpdateGameData={setGameData}
             panelWidth={rightPanelWidth}

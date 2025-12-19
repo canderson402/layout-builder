@@ -54,10 +54,10 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
                   onClick={copyToClipboard}
                   className={`copy-button ${copied ? 'copied' : ''}`}
                 >
-                  {copied ? '✓ Copied!' : '📋 Copy'}
+                  {copied ? 'Copied!' : 'Copy'}
                 </button>
                 <button onClick={downloadFile} className="download-button">
-                  💾 Download
+                  Download
                 </button>
               </div>
             </div>
