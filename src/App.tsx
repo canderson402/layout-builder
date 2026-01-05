@@ -642,9 +642,28 @@ function App() {
       saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
 
       const componentId = generateComponentId(type);
+
+      // Generate unique display name
+      const baseName = customDisplayName || getDefaultDisplayName(type);
+      const existingNames = new Set(
+        (prev.components || [])
+          .map(c => c.displayName || c.type)
+          .filter(Boolean)
+      );
+
+      let uniqueName = baseName;
+      if (existingNames.has(uniqueName)) {
+        // Try baseName2, baseName3, etc.
+        let counter = 2;
+        while (existingNames.has(`${baseName}${counter}`)) {
+          counter++;
+        }
+        uniqueName = `${baseName}${counter}`;
+      }
+
       const newComponent: ComponentConfig = {
         id: componentId,
-        displayName: customDisplayName || getDefaultDisplayName(type),
+        displayName: uniqueName,
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
@@ -729,18 +748,37 @@ function App() {
       const original = (prev.components || []).find(comp => comp.id === id);
       if (original) {
         saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, prev);
-        
+
         const duplicateId = generateComponentId(original.type);
+
+        // Generate unique display name
+        const baseName = original.displayName || original.type;
+        const existingNames = new Set(
+          (prev.components || [])
+            .map(c => c.displayName || c.type)
+            .filter(Boolean)
+        );
+
+        let uniqueName = baseName;
+        if (existingNames.has(uniqueName)) {
+          // Try baseName2, baseName3, etc.
+          let counter = 2;
+          while (existingNames.has(`${baseName}${counter}`)) {
+            counter++;
+          }
+          uniqueName = `${baseName}${counter}`;
+        }
+
         const duplicate: ComponentConfig = {
           ...original,
           id: duplicateId,
-          displayName: original.displayName ? `${original.displayName} (copy)` : duplicateId,
+          displayName: uniqueName,
           position: {
             x: original.position.x + 40, // 40px offset
             y: original.position.y + 40  // 40px offset
           }
         };
-        
+
         return {
           ...prev,
           components: [...(prev.components || []), duplicate]

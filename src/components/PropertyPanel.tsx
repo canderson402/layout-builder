@@ -430,25 +430,37 @@ function PropertyPanel({
 
   // Handler for image selection - sets native resolution and centers on canvas
   // For toggleable components, only updates the image for the current editing state
-  const handleImageSelect = useCallback((imagePath: string, isUrl: boolean = false) => {
-    if (!component || !componentId || !imagePath) {
-      if (isUrl) {
-        updateStateProps('imageUrl', imagePath);
-      } else {
-        updateStateProps('imagePath', imagePath);
-      }
+  const handleImageSelect = useCallback((newImagePath: string, isUrl: boolean = false) => {
+    if (!component || !componentId) return;
+
+    // For toggleable components, update image in current state with a single update
+    // to avoid race conditions from multiple consecutive updateStateProps calls
+    if (component.props?.canToggle) {
+      const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+      const currentStateProps = component.props[stateKey] || {};
+
+      const imageUpdates = isUrl
+        ? { imageUrl: newImagePath, imageSource: 'url' }
+        : { imagePath: newImagePath, imageSource: 'local' };
+
+      updateComponentWithScrollPreservation(componentId, {
+        props: {
+          ...component.props,
+          [stateKey]: {
+            ...currentStateProps,
+            ...imageUpdates
+          }
+        }
+      });
       return;
     }
 
-    // For toggleable components, only update image in current state
-    // Don't center or resize - just update the image path for current state
-    if (component.props?.canToggle) {
+    // For non-toggleable components with empty path, just clear
+    if (!newImagePath) {
       if (isUrl) {
-        updateStateProps('imageUrl', imagePath);
-        updateStateProps('imageSource', 'url');
+        updateStateProps('imageUrl', newImagePath);
       } else {
-        updateStateProps('imagePath', imagePath);
-        updateStateProps('imageSource', 'local');
+        updateStateProps('imagePath', newImagePath);
       }
       return;
     }
@@ -456,9 +468,9 @@ function PropertyPanel({
     // For non-toggleable components, update with centering and native resolution
     // First update the image path/url
     if (isUrl) {
-      updateStateProps('imageUrl', imagePath);
+      updateStateProps('imageUrl', newImagePath);
     } else {
-      updateStateProps('imagePath', imagePath);
+      updateStateProps('imagePath', newImagePath);
     }
 
     // Then load the image to get native dimensions and center it
@@ -482,9 +494,9 @@ function PropertyPanel({
       };
 
       if (isUrl) {
-        propsUpdate.imageUrl = imagePath;
+        propsUpdate.imageUrl = newImagePath;
       } else {
-        propsUpdate.imagePath = imagePath;
+        propsUpdate.imagePath = newImagePath;
       }
 
       updateComponentWithScrollPreservation(componentId, {
@@ -500,10 +512,10 @@ function PropertyPanel({
       });
     };
     img.onerror = () => {
-      console.error('Failed to load image for dimension detection:', imagePath);
+      console.error('Failed to load image for dimension detection:', newImagePath);
     };
-    img.src = imagePath;
-  }, [component, componentId, layout.dimensions, updateStateProps, updateComponentWithScrollPreservation]);
+    img.src = newImagePath;
+  }, [component, componentId, editingState, layout.dimensions, updateStateProps, updateComponentWithScrollPreservation]);
 
   const toggleSection = (section: string) => {
     const newCollapsed = new Set(collapsedSections);

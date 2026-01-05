@@ -353,9 +353,9 @@
   user-select: none;
 }
 
-/* Children are rendered flat, no indentation */
-.layer-children-flat {
-  /* No indentation - children appear at same level */
+/* Children container - indentation is handled via inline styles */
+.layer-children {
+  /* Children are indented via paddingLeft on the layer-component element */
 }
 
 /* Collapse/expand button */

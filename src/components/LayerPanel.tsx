@@ -277,7 +277,7 @@ export default function LayerPanel({
     handleDragEnd();
   };
 
-  const renderComponent = (component: ComponentConfig) => {
+  const renderComponent = (component: ComponentConfig, depth: number = 0) => {
     const children = childrenMap.get(component.id) || [];
     const isCollapsed = collapsedParents.has(component.id);
     const hasChildComponents = children.length > 0;
@@ -286,11 +286,14 @@ export default function LayerPanel({
     const isDragOver = dragState.dragOverId === component.id;
     const dropPosition = dragState.dropPosition;
     const isLayer = component.type === 'group';
+    const basePadding = 16; // Base left padding from CSS
+    const indentPx = depth * 20; // 20px indent per level
 
     return (
       <div key={component.id} className="layer-component-wrapper">
         <div
           className={`layer-component ${!isLayer && selectedComponents.includes(component.id) ? 'selected' : ''} ${!isVisible ? 'hidden-component' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? `drag-over drag-over-${dropPosition}` : ''} ${isLayer ? 'is-layer' : ''}`}
+          style={{ paddingLeft: depth > 0 ? `${basePadding + indentPx}px` : undefined }}
           onClick={(e) => {
             // Layers are not selectable - only components
             if (editingNameId !== component.id && !isLayer) {
@@ -395,10 +398,10 @@ export default function LayerPanel({
           </div>
         </div>
 
-        {/* Render children directly below when expanded (no indentation) */}
+        {/* Render children with increased depth for indentation */}
         {hasChildComponents && !isCollapsed && (
-          <div className="layer-children-flat">
-            {children.map(child => renderComponent(child))}
+          <div className="layer-children">
+            {children.map(child => renderComponent(child, depth + 1))}
           </div>
         )}
       </div>
