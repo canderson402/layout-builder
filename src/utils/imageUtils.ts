@@ -1,207 +1,75 @@
-// Utility functions for handling images in the layout builder
+/**
+ * Utility functions for handling images in the layout builder
+ *
+ * This file uses the auto-generated image manifest.
+ * To add new images:
+ *   1. Add images to Images/{sport}/ folder at project root
+ *   2. Run `npm run sync-images` from the project root
+ *
+ * DO NOT manually edit the generated manifest file.
+ */
 
-// Sport-based image organization
-export const AVAILABLE_SPORTS = ['general', 'basketball', 'break', 'volleyball', 'wrestling'] as const;
-export type Sport = typeof AVAILABLE_SPORTS[number];
+// Import from auto-generated manifest
+import {
+  AVAILABLE_SPORTS as GENERATED_SPORTS,
+  SPORT_IMAGE_DATA,
+  KNOWN_IMAGES,
+  type Sport as GeneratedSport,
+  getImagePath as generatedGetImagePath,
+  getRootImages,
+  getSubsections,
+  getSubsectionImages,
+  hasSubsections,
+  getAvailableImagesForSport,
+  hasImage,
+  findImageSport,
+} from './imageManifest.generated';
 
-// Cache for sport-specific images
-let sportImages: Record<Sport, string[]> = {
-  general: [],
-  basketball: [],
-  break: [],
-  volleyball: [],
-  wrestling: []
+// Re-export generated types and constants
+export const AVAILABLE_SPORTS = GENERATED_SPORTS;
+export type Sport = GeneratedSport;
+
+// Cache for sport-specific images (initialized from manifest)
+let sportImages: Record<Sport, string[]> = {} as Record<Sport, string[]>;
+
+// Initialize cache from manifest
+for (const sport of AVAILABLE_SPORTS) {
+  sportImages[sport] = KNOWN_IMAGES[sport] || [];
+}
+
+/**
+ * Load available images for a sport with optional subsection
+ * Now synchronous since images come from generated manifest
+ */
+export const loadAvailableImages = async (
+  sport: Sport = 'Basketball',
+  subsection?: string
+): Promise<string[]> => {
+  return getAvailableImagesForSport(sport, subsection);
 };
 
-// Function to dynamically discover images by sport
-export const loadAvailableImages = async (sport: Sport = 'general'): Promise<string[]> => {
-  try {
-    if (sport === 'general') {
-      // List of potential image files to check for in root images directory
-      const potentialImages = [
-        'universal-stub.png',
-        'face.png',
-        'clock-node.png',
-        'test_score.png',
-        'wrapper-16x9-ATV.jpg',
-        'bb-sb-standard-frames-universal.png'
-      ];
-
-      // Test each potential image to see if it exists
-      const imagePromises = potentialImages.map(async (filename) => {
-        try {
-          const response = await fetch(`/images/${filename}`, { method: 'HEAD' });
-          if (response.ok) {
-            return filename;
-          }
-        } catch (error) {
-          // Image doesn't exist
-        }
-        return null;
-      });
-
-      const results = await Promise.all(imagePromises);
-      const foundImages = results.filter((filename): filename is string => filename !== null);
-
-      sportImages.general = foundImages;
-      console.log(`Found ${foundImages.length} general images:`, foundImages);
-      return foundImages;
-
-    } else if (sport === 'basketball') {
-      // Basketball-specific images
-      const basketballImages = [
-        'bb-full-tall-arrow-left.png',
-        'bb-full-tall-arrow-right.png',
-        'bb-full-tall-bonus-l-b-off.png',
-        'bb-full-tall-bonus-l-b-on.png',
-        'bb-full-tall-bonus-l-t-off.png',
-        'bb-full-tall-bonus-l-t-on.png',
-        'bb-full-tall-bonus-r-b-off.png',
-        'bb-full-tall-bonus-r-b-on.png',
-        'bb-full-tall-bonus-r-t-off.png',
-        'bb-full-tall-bonus-r-t-on.png',
-        'bb-full-tall-clock-bg.png',
-        'bb-full-tall-clock-stopped.png',
-        'bb-full-tall-frame.png',
-        'bb-full-tall-overtime-bg.png',
-        'bb-full-tall-period-bg.png',
-        'bb-full-tall-team-color-left.png',
-        'bb-full-tall-team-color-right.png'
-      ];
-
-      // Test each basketball image to see if it exists
-      const imagePromises = basketballImages.map(async (filename) => {
-        try {
-          const response = await fetch(`/images/basketball/${filename}`, { method: 'HEAD' });
-          if (response.ok) {
-            return filename;
-          }
-        } catch (error) {
-          // Image doesn't exist
-        }
-        return null;
-      });
-
-      const results = await Promise.all(imagePromises);
-      const foundImages = results.filter((filename): filename is string => filename !== null);
-
-      sportImages.basketball = foundImages;
-      console.log(`Found ${foundImages.length} basketball images:`, foundImages);
-      return foundImages;
-    } else if (sport === 'break') {
-      // Break-specific images
-      const breakImages = [
-        '16x9-cd-ind-timeout.png',
-        '16x9-cd-score-base.png',
-        '16x9-cd-time-base.png',
-        '16x9-cd-time-tab.png'
-      ];
-
-      // Test each break image to see if it exists
-      const imagePromises = breakImages.map(async (filename) => {
-        try {
-          const response = await fetch(`/images/break/${filename}`, { method: 'HEAD' });
-          if (response.ok) {
-            return filename;
-          }
-        } catch (error) {
-          // Image doesn't exist
-        }
-        return null;
-      });
-
-      const results = await Promise.all(imagePromises);
-      const foundImages = results.filter((filename): filename is string => filename !== null);
-
-      sportImages.break = foundImages;
-      console.log(`Found ${foundImages.length} break images:`, foundImages);
-      return foundImages;
-    } else if (sport === 'volleyball') {
-      // Volleyball-specific images
-      const volleyballImages = [
-        'vb-full-frames.png',
-        'vb-full-period-bg.png',
-        'vb-full-team-color-left.png',
-        'vb-full-team-color-right.png'
-      ];
-
-      // Test each volleyball image to see if it exists
-      const imagePromises = volleyballImages.map(async (filename) => {
-        try {
-          const response = await fetch(`/images/volleyball/${filename}`, { method: 'HEAD' });
-          if (response.ok) {
-            return filename;
-          }
-        } catch (error) {
-          // Image doesn't exist
-        }
-        return null;
-      });
-
-      const results = await Promise.all(imagePromises);
-      const foundImages = results.filter((filename): filename is string => filename !== null);
-
-      sportImages.volleyball = foundImages;
-      console.log(`Found ${foundImages.length} volleyball images:`, foundImages);
-      return foundImages;
-    } else if (sport === 'wrestling') {
-      // Wrestling-specific images
-      const wrestlingImages = [
-        'wr-le-base.png',
-        'wr-le-score-color-left.png',
-        'wr-le-score-color-right.png',
-        'wr-le-team-color-left.png',
-        'wr-le-team-color-right.png'
-      ];
-
-      // Test each wrestling image to see if it exists
-      const imagePromises = wrestlingImages.map(async (filename) => {
-        try {
-          const response = await fetch(`/images/wrestling/${filename}`, { method: 'HEAD' });
-          if (response.ok) {
-            return filename;
-          }
-        } catch (error) {
-          // Image doesn't exist
-        }
-        return null;
-      });
-
-      const results = await Promise.all(imagePromises);
-      const foundImages = results.filter((filename): filename is string => filename !== null);
-
-      sportImages.wrestling = foundImages;
-      console.log(`Found ${foundImages.length} wrestling images:`, foundImages);
-      return foundImages;
-    }
-
-    return [];
-  } catch (error) {
-    console.error(`Failed to load available images for ${sport}:`, error);
-    // Fallback to known existing images
-    if (sport === 'general') {
-      const fallbackImages = ['universal-stub.png', 'face.png', 'clock-node.png', 'test_score.png'];
-      sportImages.general = fallbackImages;
-      return fallbackImages;
-    }
-    return [];
-  }
+/**
+ * Get cached available images for a specific sport
+ */
+export const getAvailableImages = (sport: Sport = 'Basketball'): string[] => {
+  return sportImages[sport] || KNOWN_IMAGES[sport] || [];
 };
 
-// Get cached available images for a specific sport
-export const getAvailableImages = (sport: Sport = 'general'): string[] => {
-  return sportImages[sport] || [];
+/**
+ * Get the path for a local image
+ * Returns path in format '/images/{sport}/{filename}' or '/images/{sport}/{subsection}/{path}'
+ */
+export const getImagePath = (
+  filename: string,
+  sport: Sport = 'Basketball',
+  subsection?: string
+): string => {
+  return generatedGetImagePath(filename, sport, subsection);
 };
 
-// Helper function to get the full path for a local image
-export const getImagePath = (filename: string, sport: Sport = 'general'): string => {
-  if (sport === 'general') {
-    return `/images/${filename}`;
-  }
-  return `/images/${sport}/${filename}`;
-};
-
-// Helper function to validate image URLs
+/**
+ * Validate if a string is a valid image URL
+ */
 export const isValidImageUrl = (url: string): boolean => {
   try {
     const urlObj = new URL(url);
@@ -209,4 +77,17 @@ export const isValidImageUrl = (url: string): boolean => {
   } catch {
     return false;
   }
+};
+
+// Re-export additional utilities from generated manifest
+export {
+  SPORT_IMAGE_DATA,
+  KNOWN_IMAGES,
+  getRootImages,
+  getSubsections,
+  getSubsectionImages,
+  hasSubsections,
+  getAvailableImagesForSport,
+  hasImage,
+  findImageSport,
 };

@@ -413,6 +413,7 @@ export default function LayerPanel({
 
   // Add image component with default image centered on canvas
   const addImageComponent = () => {
+    // Use simple path - works in both dev and prod
     const defaultImagePath = '/images/face.png';
     const imageProps = {
       dataPath: 'none',

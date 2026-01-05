@@ -1,6 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text } from 'react-native';
 
+// Base URL for assets (handles GitHub Pages base path)
+const BASE_URL = import.meta.env.BASE_URL || '/';
+
+// Helper to resolve local image paths with base URL
+const resolveImagePath = (path: string): string => {
+  if (!path) return path;
+  // If path already starts with http/https or data:, return as-is
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path;
+  }
+  // If path starts with /, remove it and prepend BASE_URL
+  if (path.startsWith('/')) {
+    return `${BASE_URL}${path.slice(1)}`;
+  }
+  // Otherwise prepend BASE_URL directly
+  return `${BASE_URL}${path}`;
+};
+
 interface CustomDataDisplayProps {
   dataPath: string;
   gameData?: any;
@@ -303,7 +321,15 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   // Get image source
   const getImageSource = () => {
-    // Handle banner ads
+    // If user has explicitly set a local or URL image, use that for preview
+    if (imageSource === 'local' && imagePath) {
+      return { uri: resolveImagePath(imagePath) };
+    }
+    if (imageSource === 'url' && imageUrl) {
+      return { uri: imageUrl };
+    }
+
+    // Handle banner ads with mock data (only if no image explicitly set)
     if (dataPath === 'user_sequences.banner') {
       const bannerEntries = mockBannerData.entries;
       if (bannerEntries.length > 0) {
@@ -313,12 +339,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       return null;
     }
 
-    if (imageSource === 'local' && imagePath) {
-      return { uri: imagePath };
-    }
-    if (imageSource === 'url' && imageUrl) {
-      return { uri: imageUrl };
-    }
     return null;
   };
 

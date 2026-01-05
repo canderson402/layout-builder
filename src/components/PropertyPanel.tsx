@@ -1,6 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
-import { loadAvailableImages, getAvailableImages, getImagePath, AVAILABLE_SPORTS, Sport } from '../utils/imageUtils';
+import {
+  loadAvailableImages,
+  getImagePath,
+  AVAILABLE_SPORTS,
+  Sport,
+  getSubsections,
+  hasSubsections,
+  getAvailableImagesForSport,
+} from '../utils/imageUtils';
 import ColorPicker from './ColorPicker';
 import './PropertyPanel.css';
 
@@ -36,7 +44,17 @@ function PropertyPanel({
   // State for dynamically loaded images
   const [availableImages, setAvailableImages] = useState<string[]>([]);
   const [imagesLoading, setImagesLoading] = useState(true);
-  const [selectedSport, setSelectedSport] = useState<Sport>('general');
+  const [selectedSport, setSelectedSport] = useState<Sport>('Basketball');
+  const [selectedSubsection, setSelectedSubsection] = useState<string | undefined>(undefined);
+
+  // Get available subsections for the selected sport
+  const availableSubsections = useMemo(() => {
+    return getSubsections(selectedSport);
+  }, [selectedSport]);
+
+  const sportHasSubsections = useMemo(() => {
+    return hasSubsections(selectedSport);
+  }, [selectedSport]);
   
   // Create a frozen component reference that doesn't change during drag operations
   const [frozenComponent, setFrozenComponent] = useState<ComponentConfig | null>(null);
@@ -54,23 +72,27 @@ function PropertyPanel({
     }
   }, [layout.components, selectedComponents, isDragging]);
 
-  // Load available images on mount and when sport changes
+  // Load available images on mount and when sport/subsection changes
   useEffect(() => {
     const loadImages = async () => {
       setImagesLoading(true);
       try {
-        const images = await loadAvailableImages(selectedSport);
+        const images = await loadAvailableImages(selectedSport, selectedSubsection);
         setAvailableImages(images);
       } catch (error) {
         console.error('Failed to load images:', error);
-        // Fallback to static list
-        setAvailableImages(['universal-stub.png', 'face.png', 'clock-node.png']);
+        setAvailableImages([]);
       } finally {
         setImagesLoading(false);
       }
     };
 
     loadImages();
+  }, [selectedSport, selectedSubsection]);
+
+  // Reset subsection when sport changes
+  useEffect(() => {
+    setSelectedSubsection(undefined);
   }, [selectedSport]);
   
   // Use frozen component during drag, live component otherwise
@@ -407,6 +429,7 @@ function PropertyPanel({
   }, [component, editingState]);
 
   // Handler for image selection - sets native resolution and centers on canvas
+  // For toggleable components, only updates the image for the current editing state
   const handleImageSelect = useCallback((imagePath: string, isUrl: boolean = false) => {
     if (!component || !componentId || !imagePath) {
       if (isUrl) {
@@ -417,6 +440,20 @@ function PropertyPanel({
       return;
     }
 
+    // For toggleable components, only update image in current state
+    // Don't center or resize - just update the image path for current state
+    if (component.props?.canToggle) {
+      if (isUrl) {
+        updateStateProps('imageUrl', imagePath);
+        updateStateProps('imageSource', 'url');
+      } else {
+        updateStateProps('imagePath', imagePath);
+        updateStateProps('imageSource', 'local');
+      }
+      return;
+    }
+
+    // For non-toggleable components, update with centering and native resolution
     // First update the image path/url
     if (isUrl) {
       updateStateProps('imageUrl', imagePath);
@@ -907,19 +944,6 @@ function PropertyPanel({
                 </select>
               </div>
 
-              <div className="property-field">
-                <label>Format Type</label>
-                <select
-                  value={getStateValue('format', 'text')}
-                  onChange={(e) => updateStateProps('format', e.target.value)}
-                >
-                  <option value="text">Text</option>
-                  <option value="number">Number</option>
-                  <option value="time">Time</option>
-                  <option value="boolean">Yes/No</option>
-                </select>
-              </div>
-
               <div className="property-grid">
                 {isDragging ? (
                   <>
@@ -1013,71 +1037,49 @@ function PropertyPanel({
                   value={selectedSport}
                   onChange={(e) => setSelectedSport(e.target.value as Sport)}
                 >
-                  <option value="general">General</option>
-                  <option value="basketball">Basketball</option>
-                  <option value="break">Break</option>
-                  <option value="volleyball">Volleyball</option>
-                  <option value="wrestling">Wrestling</option>
-                </select>
-              </div>
-              <div className="property-field">
-                <label>Image Source</label>
-                <select
-                  value={getStateValue('imageSource', 'none')}
-                  onChange={(e) => updateStateProps('imageSource', e.target.value)}
-                >
-                  <option value="none">No Image</option>
-                  <option value="local">Local Image</option>
-                  <option value="url">URL</option>
+                  {AVAILABLE_SPORTS.map((sport) => (
+                    <option key={sport} value={sport}>
+                      {sport}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              {getStateValue('imageSource', 'none') === 'local' && (
-                <>
-                  <div className="property-field">
-                    <label>Select Image</label>
-                    <select
-                      value={getStateValue('imagePath', '')}
-                      onChange={(e) => handleImageSelect(e.target.value)}
-                    >
-                      <option value="">
-                        {imagesLoading ? 'Loading images...' : 'Select an image...'}
-                      </option>
-                      {availableImages.map((filename) => (
-                        <option key={filename} value={getImagePath(filename, selectedSport)}>
-                          {filename}
-                        </option>
-                      ))}
-                    </select>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setImagesLoading(true);
-                      try {
-                        const images = await loadAvailableImages(selectedSport);
-                        setAvailableImages(images);
-                      } catch (error) {
-                        console.error('Failed to reload images:', error);
-                      } finally {
-                        setImagesLoading(false);
-                      }
-                    }}
-                    disabled={imagesLoading}
-                    style={{
-                      marginTop: '8px',
-                      padding: '4px 8px',
-                      fontSize: '12px',
-                      backgroundColor: '#333',
-                      color: 'white',
-                      border: '1px solid #555',
-                      borderRadius: '4px',
-                      cursor: imagesLoading ? 'not-allowed' : 'pointer'
-                    }}
+              {/* Subsection selector - only shown if sport has subsections */}
+              {sportHasSubsections && (
+                <div className="property-field">
+                  <label>Subsection</label>
+                  <select
+                    value={selectedSubsection || ''}
+                    onChange={(e) => setSelectedSubsection(e.target.value || undefined)}
                   >
-                    {imagesLoading ? 'Loading...' : 'Refresh Images'}
-                  </button>
+                    <option value="">Root Images Only</option>
+                    {availableSubsections.map((subsection) => (
+                      <option key={subsection} value={subsection}>
+                        {subsection}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                </>
+              )}
+
+              {getStateValue('imageSource', 'none') === 'local' && (
+                <div className="property-field">
+                  <label>Select Image ({availableImages.length} available)</label>
+                  <select
+                    value={getStateValue('imagePath', '')}
+                    onChange={(e) => handleImageSelect(e.target.value)}
+                  >
+                    <option value="">
+                      {imagesLoading ? 'Loading images...' : 'Select an image...'}
+                    </option>
+                    {availableImages.map((filename) => (
+                      <option key={filename} value={getImagePath(filename, selectedSport, selectedSubsection)}>
+                        {filename}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
 
               {getStateValue('imageSource', 'none') === 'url' && (
@@ -1285,6 +1287,19 @@ function PropertyPanel({
                   )}
                 </>
               )}
+
+              {/* Image Source selector at bottom */}
+              <div className="property-field" style={{ marginTop: '12px', borderTop: '1px solid #444', paddingTop: '12px' }}>
+                <label>Image Source</label>
+                <select
+                  value={getStateValue('imageSource', 'none')}
+                  onChange={(e) => updateStateProps('imageSource', e.target.value)}
+                >
+                  <option value="none">No Image</option>
+                  <option value="local">Local Image</option>
+                  <option value="url">URL</option>
+                </select>
+              </div>
             </PropertySection>
 
             {/* BORDERS SECTION */}

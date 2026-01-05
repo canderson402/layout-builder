@@ -2,9 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  base: '/layout-builder/',
+  // Only use base path in production for GitHub Pages
+  base: mode === 'production' ? '/layout-builder/' : '/',
   server: {
     port: 3000,
     open: true
@@ -20,4 +21,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react-native-web'],
   }
-})
+}))

@@ -38,7 +38,41 @@ const MemoizedPropertyPanel = React.memo(PropertyPanel);
 const MemoizedExportModal = React.memo(ExportModal);
 const MemoizedPresetModal = React.memo(PresetModal);
 
+// Fake 404 overlay component for obfuscation
+const Fake404Overlay = ({ onDismiss }: { onDismiss: () => void }) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key.toLowerCase() === 's') {
+        onDismiss();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onDismiss]);
+
+  return (
+    <div className="fake-404-overlay">
+      <div className="fake-404-content">
+        <h1>404</h1>
+        <h2>Page Not Found</h2>
+        <p>The page you're looking for doesn't exist or has been moved.</p>
+        <a href="https://github.com" className="fake-404-link">Go to GitHub</a>
+      </div>
+    </div>
+  );
+};
+
 function App() {
+  // Obfuscation state - check sessionStorage to persist during session
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return sessionStorage.getItem('layout-builder-unlocked') === 'true';
+  });
+
+  const handleUnlock = useCallback(() => {
+    setIsUnlocked(true);
+    sessionStorage.setItem('layout-builder-unlocked', 'true');
+  }, []);
+
   const [layout, setLayout] = useState<LayoutConfig>({
     name: 'basketball', // Layout type identifier used by TV app
     components: [],
@@ -735,6 +769,11 @@ function App() {
       dimensions: updates.dimensions ? { ...prev.dimensions, ...updates.dimensions } : prev.dimensions
     }));
   }, []);
+
+  // Show fake 404 if not unlocked
+  if (!isUnlocked) {
+    return <Fake404Overlay onDismiss={handleUnlock} />;
+  }
 
   return (
     <div className="app">

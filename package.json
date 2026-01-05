@@ -3,6 +3,16 @@
   "version": "1.0.0",
   "description": "Web-based layout builder for creating scoreboard layouts",
   "main": "index.js",
+  "_deployment_notes": {
+    "site_url": "https://canderson402.github.io/layout-builder/",
+    "repo": "https://github.com/canderson402/layout-builder",
+    "update_steps": [
+      "1. Make changes in this directory",
+      "2. Commit to local repo",
+      "3. Run: git subtree push --prefix layout-builder-web github-pages main",
+      "4. Run: npm run deploy"
+    ]
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -24,6 +34,5 @@
     "vite": "^4.4.5"
   },
   "keywords": ["scoreboard", "layout", "builder", "sports"],
-  "author": "",
-  "license": "MIT"
+  "author": ""
 }
