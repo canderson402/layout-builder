@@ -12,6 +12,19 @@ import {
 import ColorPicker from './ColorPicker';
 import './PropertyPanel.css';
 
+// Helper to resolve image paths with BASE_URL for loading
+const resolveImagePath = (path: string): string => {
+  if (!path) return path;
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path;
+  }
+  const baseUrl = import.meta.env.BASE_URL || '/';
+  if (path.startsWith('/')) {
+    return `${baseUrl}${path.slice(1)}`;
+  }
+  return `${baseUrl}${path}`;
+};
+
 interface PropertyPanelProps {
   layout: LayoutConfig;
   selectedComponents: string[];
@@ -514,7 +527,7 @@ function PropertyPanel({
     img.onerror = () => {
       console.error('Failed to load image for dimension detection:', newImagePath);
     };
-    img.src = newImagePath;
+    img.src = resolveImagePath(newImagePath);
   }, [component, componentId, editingState, layout.dimensions, updateStateProps, updateComponentWithScrollPreservation]);
 
   const toggleSection = (section: string) => {
@@ -1147,7 +1160,7 @@ function PropertyPanel({
                           img.onerror = () => {
                             console.error('Failed to load image for dimension detection:', imageUrl);
                           };
-                          img.src = imageUrl;
+                          img.src = resolveImagePath(imageUrl);
                         }
                       }}
                     >
