@@ -57,7 +57,8 @@ export const getAvailableImages = (sport: Sport = 'Basketball'): string[] => {
 
 /**
  * Get the path for a local image
- * Returns path in format '/images/{sport}/{filename}' or '/images/{sport}/{subsection}/{path}'
+ * Returns canonical path format '/images/{sport}/{filename}' or '/images/{sport}/{subsection}/{path}'
+ * The BASE_URL is added at render time by resolveImagePath in CustomDataDisplay
  */
 export const getImagePath = (
   filename: string,

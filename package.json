@@ -18,7 +18,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist --repo https://github.com/canderson402/layout-builder.git"
   },
   "dependencies": {
     "react": "^18.2.0",
