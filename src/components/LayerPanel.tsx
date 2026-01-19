@@ -50,6 +50,7 @@ export default function LayerPanel({
     dropPosition: null
   });
   const dragCounter = useRef(0);
+  const lastSelectedIdRef = useRef<string | null>(null); // Anchor point for shift-click range selection
 
   // Handle applying toggle properties to newly created component
   React.useEffect(() => {
@@ -120,15 +121,62 @@ export default function LayerPanel({
 
   const { rootComponents, childrenMap } = buildHierarchy();
 
-  const handleComponentClick = (componentId: string, isCtrlClick: boolean) => {
-    if (isCtrlClick) {
+  /**
+   * Get all components in display order (flattened hierarchy as shown in the panel).
+   * This is used for shift-click range selection.
+   */
+  const getFlattenedDisplayOrder = (): string[] => {
+    const result: string[] = [];
+
+    const addComponentAndChildren = (component: ComponentConfig) => {
+      // Only add non-group components to the selectable list
+      if (component.type !== 'group') {
+        result.push(component.id);
+      }
+      // Add children if not collapsed
+      if (!collapsedParents.has(component.id)) {
+        const children = childrenMap.get(component.id) || [];
+        children.forEach(child => addComponentAndChildren(child));
+      }
+    };
+
+    rootComponents.forEach(component => addComponentAndChildren(component));
+    return result;
+  };
+
+  const handleComponentClick = (componentId: string, isCtrlClick: boolean, isShiftClick: boolean) => {
+    if (isShiftClick && lastSelectedIdRef.current && lastSelectedIdRef.current !== componentId) {
+      // Shift-click: select range between last selected and current
+      const flatOrder = getFlattenedDisplayOrder();
+      const lastIndex = flatOrder.indexOf(lastSelectedIdRef.current);
+      const currentIndex = flatOrder.indexOf(componentId);
+
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const startIndex = Math.min(lastIndex, currentIndex);
+        const endIndex = Math.max(lastIndex, currentIndex);
+        const rangeIds = flatOrder.slice(startIndex, endIndex + 1);
+
+        // Merge with existing selection if ctrl is also held, otherwise replace
+        if (isCtrlClick) {
+          const newSelection = [...new Set([...selectedComponents, ...rangeIds])];
+          onSelectComponents(newSelection);
+        } else {
+          onSelectComponents(rangeIds);
+        }
+      }
+      // Don't update lastSelectedIdRef on shift-click to allow extending selection
+    } else if (isCtrlClick) {
+      // Ctrl-click: toggle individual selection
       if (selectedComponents.includes(componentId)) {
         onSelectComponents(selectedComponents.filter(id => id !== componentId));
       } else {
         onSelectComponents([...selectedComponents, componentId]);
+        lastSelectedIdRef.current = componentId;
       }
     } else {
+      // Normal click: select only this component
       onSelectComponents([componentId]);
+      lastSelectedIdRef.current = componentId;
     }
   };
 
@@ -235,6 +283,39 @@ export default function LayerPanel({
     setDragState(prev => ({ ...prev, dragOverId: componentId, dropPosition: position }));
   };
 
+  /**
+   * Recalculate layer values for all siblings to ensure proper z-ordering.
+   * Layer values are assigned based on position: first in list = highest layer = renders on top.
+   * This ensures the visual order in the layer panel matches the rendering order.
+   */
+  const recalculateSiblingLayers = (
+    siblings: ComponentConfig[],
+    draggedId: string,
+    targetId: string,
+    position: 'before' | 'after'
+  ): { id: string; layer: number }[] => {
+    // Remove dragged component from current position
+    const orderedSiblings = siblings.filter(c => c.id !== draggedId);
+
+    // Find target index
+    const targetIndex = orderedSiblings.findIndex(c => c.id === targetId);
+    if (targetIndex === -1) return [];
+
+    // Insert dragged component at new position
+    const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+    const draggedComponent = siblings.find(c => c.id === draggedId);
+    if (!draggedComponent) return [];
+
+    orderedSiblings.splice(insertIndex, 0, draggedComponent);
+
+    // Assign layer values: first item gets highest layer (siblings.length - 1), last gets 0
+    // This ensures first in list = highest layer = renders on top
+    return orderedSiblings.map((component, index) => ({
+      id: component.id,
+      layer: orderedSiblings.length - 1 - index
+    }));
+  };
+
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     const draggedId = e.dataTransfer.getData('text/plain');
@@ -271,19 +352,52 @@ export default function LayerPanel({
 
     if (dropPosition === 'child') {
       // Make dragged component a child of target
-      onUpdateComponent(draggedId, { parentId: targetId });
+      // Also recalculate layers for the new siblings
+      const newSiblings = childrenMap.get(targetId) || [];
+      const allNewSiblings = [...newSiblings, draggedComponent];
+
+      // First update the parent
+      onUpdateComponent(draggedId, { parentId: targetId, layer: allNewSiblings.length - 1 });
+
+      // Recalculate existing children layers
+      newSiblings.forEach((sibling, index) => {
+        onUpdateComponent(sibling.id, { layer: newSiblings.length - 1 - index });
+      });
+
       onEndDragOperation?.('Set parent-child relationship');
     } else if (dropPosition === 'before' || dropPosition === 'after') {
       // Move to same level as target (same parent)
       const newParentId = targetComponent.parentId;
-      const newLayer = dropPosition === 'before'
-        ? (targetComponent.layer || 0) + 1
-        : (targetComponent.layer || 0) - 1;
 
-      onUpdateComponent(draggedId, {
-        parentId: newParentId || undefined,
-        layer: Math.max(0, newLayer)
+      // Get all siblings at this level (including dragged if already at this level)
+      let siblings: ComponentConfig[];
+      if (newParentId) {
+        siblings = childrenMap.get(newParentId) || [];
+      } else {
+        siblings = rootComponents;
+      }
+
+      // If dragged component is from a different parent, add it to siblings list
+      if (draggedComponent.parentId !== newParentId) {
+        siblings = [...siblings, draggedComponent];
+      }
+
+      // Recalculate all sibling layers based on new order
+      const layerUpdates = recalculateSiblingLayers(siblings, draggedId, targetId, dropPosition);
+
+      // Apply updates
+      layerUpdates.forEach(update => {
+        const component = layout.components.find(c => c.id === update.id);
+        if (component) {
+          const updates: Partial<ComponentConfig> = { layer: update.layer };
+          // Update parentId only for the dragged component if it changed levels
+          if (update.id === draggedId && draggedComponent.parentId !== newParentId) {
+            updates.parentId = newParentId || undefined;
+          }
+          onUpdateComponent(update.id, updates);
+        }
       });
+
       onEndDragOperation?.('Reorder component');
     }
 
@@ -310,7 +424,7 @@ export default function LayerPanel({
           onClick={(e) => {
             // Layers are not selectable - only components
             if (editingNameId !== component.id && !isLayer) {
-              handleComponentClick(component.id, e.ctrlKey || e.metaKey);
+              handleComponentClick(component.id, e.ctrlKey || e.metaKey, e.shiftKey);
             }
           }}
           draggable={editingNameId !== component.id}
@@ -510,7 +624,7 @@ export default function LayerPanel({
           </div>
         )}
 
-        {/* Root drop zone - drop here to unlink from parent */}
+        {/* Root drop zone - drop here to unlink from parent and place at top of root level */}
         <div
           className={`root-drop-zone ${dragState.draggedId && !dragState.dragOverId ? 'active' : ''}`}
           onDragOver={(e) => {
@@ -524,9 +638,16 @@ export default function LayerPanel({
             const draggedId = e.dataTransfer.getData('text/plain');
             if (draggedId) {
               const draggedComponent = layout.components.find(c => c.id === draggedId);
-              if (draggedComponent?.parentId) {
-                onUpdateComponent(draggedId, { parentId: undefined });
-                onEndDragOperation?.('Unlink from parent');
+              if (draggedComponent) {
+                // Calculate the new layer value: place at top of root level (highest layer)
+                // This matches how new components are added - they appear on top
+                const currentRootComponents = (layout.components || []).filter(c => !c.parentId && c.id !== draggedId);
+                const maxRootLayer = currentRootComponents.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
+
+                // Update dragged component: remove parent and set to highest layer + 1 (top)
+                onUpdateComponent(draggedId, { parentId: undefined, layer: maxRootLayer + 1 });
+
+                onEndDragOperation?.('Move to root level');
               }
             }
             handleDragEnd();

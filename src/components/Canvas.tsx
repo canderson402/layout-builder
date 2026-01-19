@@ -111,6 +111,13 @@ export default function Canvas({
   const [isAltHeld, setIsAltHeld] = useState(false); // Alt key temporarily disables all snapping (for UI)
   const isAltHeldRef = useRef(false); // Ref for immediate access during drag
 
+  // Scale mode state (press 'S' to scale selected components proportionally from center)
+  const [isScaling, setIsScaling] = useState(false);
+  const [scaleStartState, setScaleStartState] = useState<Map<string, { x: number, y: number, width: number, height: number }>>(new Map());
+  const [scaleCenter, setScaleCenter] = useState({ x: 0, y: 0 });
+  const [scaleStartDistance, setScaleStartDistance] = useState(0);
+  const [currentScaleFactor, setCurrentScaleFactor] = useState(1);
+
   // Throttle drag updates for better performance
   const lastUpdateTime = useRef(0);
   const THROTTLE_MS = 16; // ~60fps
@@ -859,14 +866,52 @@ export default function Canvas({
     if (isPanning) {
       const deltaX = e.clientX - panStart.x;
       const deltaY = e.clientY - panStart.y;
-      
+
       setViewportOffset({
         x: viewportOffset.x + deltaX,
         y: viewportOffset.y + deltaY
       });
-      
+
       setPanStart({ x: e.clientX, y: e.clientY });
       return; // Don't process other mouse movements while panning
+    }
+
+    // Handle scale mode - scale proportionally from center based on mouse distance
+    if (isScaling && scaleStartState.size > 0) {
+      // Calculate distance from mouse to scale center
+      const dx = canvasX - scaleCenter.x;
+      const dy = canvasY - scaleCenter.y;
+      const currentDistance = Math.sqrt(dx * dx + dy * dy);
+
+      // Calculate scale factor based on distance ratio
+      const newScaleFactor = Math.max(0.1, currentDistance / scaleStartDistance);
+      setCurrentScaleFactor(newScaleFactor);
+
+      // Apply scale to all selected components
+      scaleStartState.forEach((original, id) => {
+        // Calculate the component's center offset from the scale center
+        const compCenterX = original.x + original.width / 2;
+        const compCenterY = original.y + original.height / 2;
+        const offsetX = compCenterX - scaleCenter.x;
+        const offsetY = compCenterY - scaleCenter.y;
+
+        // Scale the offset and size
+        const newWidth = Math.max(10, original.width * newScaleFactor);
+        const newHeight = Math.max(10, original.height * newScaleFactor);
+        const newCenterX = scaleCenter.x + offsetX * newScaleFactor;
+        const newCenterY = scaleCenter.y + offsetY * newScaleFactor;
+
+        // Calculate new position (top-left corner)
+        const newX = newCenterX - newWidth / 2;
+        const newY = newCenterY - newHeight / 2;
+
+        onUpdateComponent(id, {
+          position: { x: Math.round(newX), y: Math.round(newY) },
+          size: { width: Math.round(newWidth), height: Math.round(newHeight) }
+        });
+      });
+
+      return; // Don't process other mouse movements while scaling
     }
     
     
@@ -1036,7 +1081,7 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset]);
+  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
@@ -1728,17 +1773,90 @@ export default function Canvas({
     }
   }, [zoomLevel]);
 
+  // Cancel scale mode and revert to original state
+  const cancelScaleMode = useCallback(() => {
+    if (isScaling && scaleStartState.size > 0) {
+      // Revert all components to their original state
+      scaleStartState.forEach((original, id) => {
+        onUpdateComponent(id, {
+          position: { x: original.x, y: original.y },
+          size: { width: original.width, height: original.height }
+        });
+      });
+    }
+    setIsScaling(false);
+    setScaleStartState(new Map());
+    setCurrentScaleFactor(1);
+  }, [isScaling, scaleStartState, onUpdateComponent]);
+
+  // Confirm scale mode (keep current scale)
+  const confirmScaleMode = useCallback(() => {
+    setIsScaling(false);
+    setScaleStartState(new Map());
+    setCurrentScaleFactor(1);
+    onEndDragOperation?.('Scale components');
+  }, [onEndDragOperation]);
+
+  // Start scale mode for selected components
+  const startScaleMode = useCallback(() => {
+    if (selectedComponents.length === 0) return;
+
+    // Save start state for undo
+    onStartDragOperation?.();
+
+    // Calculate the bounding box center of all selected components
+    const selectedComps = layout.components.filter(c => selectedComponents.includes(c.id));
+    if (selectedComps.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const startState = new Map<string, { x: number, y: number, width: number, height: number }>();
+
+    selectedComps.forEach(comp => {
+      minX = Math.min(minX, comp.position.x);
+      minY = Math.min(minY, comp.position.y);
+      maxX = Math.max(maxX, comp.position.x + comp.size.width);
+      maxY = Math.max(maxY, comp.position.y + comp.size.height);
+      startState.set(comp.id, {
+        x: comp.position.x,
+        y: comp.position.y,
+        width: comp.size.width,
+        height: comp.size.height
+      });
+    });
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    setScaleStartState(startState);
+    setScaleCenter({ x: centerX, y: centerY });
+    setScaleStartDistance(Math.max(maxX - minX, maxY - minY) / 2 || 100);
+    setCurrentScaleFactor(1);
+    setIsScaling(true);
+  }, [selectedComponents, layout.components, onStartDragOperation]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Check if user is typing in an input field - if so, don't intercept keys
     const activeElement = document.activeElement;
     const isInputFocused = activeElement && (
-      activeElement.tagName === 'INPUT' || 
-      activeElement.tagName === 'TEXTAREA' || 
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
       activeElement.tagName === 'SELECT' ||
       (activeElement as HTMLElement).contentEditable === 'true' ||
       // Check if the active element is inside the property panel
       activeElement.closest('.property-panel') !== null
     );
+
+    // Handle scale mode keys first
+    if (isScaling) {
+      e.preventDefault();
+      if (e.key === 'Enter') {
+        confirmScaleMode();
+      } else {
+        // Any other key cancels scale mode (including Escape)
+        cancelScaleMode();
+      }
+      return;
+    }
 
     // Always allow grid and center line toggles (unless typing)
     if (!isInputFocused) {
@@ -1751,6 +1869,13 @@ export default function Canvas({
       if (e.key === 'h' || e.key === 'H') {
         e.preventDefault();
         setShowHalfwayLines(prev => !prev);
+        return;
+      }
+
+      // Start scale mode with 'S' key
+      if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && selectedComponents.length > 0) {
+        e.preventDefault();
+        startScaleMode();
         return;
       }
     }
@@ -1781,7 +1906,7 @@ export default function Canvas({
         }
       }
     }
-  }, [selectedComponents, onDeleteComponent, onDuplicateComponent]);
+  }, [selectedComponents, onDeleteComponent, onDuplicateComponent, isScaling, confirmScaleMode, cancelScaleMode, startScaleMode]);
 
   React.useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
@@ -1987,23 +2112,19 @@ export default function Canvas({
             {/* Control buttons */}
             <div className="component-controls">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDuplicateComponent(component.id);
-                }}
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  
+
                   // Create duplicate immediately at the button's position
                   const rect = canvasRef.current!.getBoundingClientRect();
                   const buttonX = (e.clientX - rect.left) / scale;
                   const buttonY = (e.clientY - rect.top) / scale;
-                  
+
                   // Create the duplicate
                   onStartDragOperation();
                   onDuplicateComponent(component.id);
-                  
+
                   // Set up drag state for the new component (it will be the last one added)
                   setTimeout(() => {
                     const components = layoutRef.current.components;
@@ -2014,12 +2135,12 @@ export default function Canvas({
                         x: buttonX - newComponent.size.width / 2,
                         y: buttonY - newComponent.size.height / 2
                       };
-                      
+
                       // Update position immediately (preserve original layer)
                       onUpdateComponent(newComponent.id, {
                         position: newPosition
                       });
-                      
+
                       // Select the new component and start dragging it
                       onSelectComponents([newComponent.id]);
                       setDraggedComponent({ ...newComponent, position: newPosition });
@@ -2040,6 +2161,10 @@ export default function Canvas({
                 onClick={(e) => {
                   e.stopPropagation();
                   onDeleteComponent(component.id);
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
                 }}
                 className="control-button delete"
                 title="Delete"
@@ -2708,14 +2833,14 @@ export default function Canvas({
             />
           )}
           
-          {/* Overlay draggable handles - sorted by layer, only show visible components and those with visible ancestors, exclude groups */}
+          {/* Overlay draggable handles - sorted by effective layer (considers parent hierarchy), only show visible components and those with visible ancestors, exclude groups */}
           {[...(layout.components || [])]
             .filter(component =>
               component.visible !== false &&
               component.type !== 'group' &&
               !isAncestorHidden(component, layout.components || [])
             ) // Exclude groups and components with hidden ancestors
-            .sort((a, b) => (a.layer || 0) - (b.layer || 0))
+            .sort((a, b) => getEffectiveLayer(a) - getEffectiveLayer(b))
             .map(component => getComponentHandle(component))}
 
           {/* Multi-select bounding box */}
@@ -2804,6 +2929,49 @@ export default function Canvas({
               </div>
             );
           })()}
+
+          {/* Scale mode indicator */}
+          {isScaling && (
+            <div
+              style={{
+                position: 'absolute',
+                left: scaleCenter.x,
+                top: scaleCenter.y,
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+                zIndex: 10000,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {/* Center crosshair */}
+              <div
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  border: '2px solid #FF9800',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(255, 152, 0, 0.3)'
+                }}
+              />
+              {/* Scale percentage label */}
+              <div
+                style={{
+                  backgroundColor: '#FF9800',
+                  color: 'white',
+                  padding: '4px 12px',
+                  fontSize: '14px',
+                  borderRadius: '4px',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Scale: {Math.round(currentScaleFactor * 100)}% (Enter to confirm, Esc to cancel)
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

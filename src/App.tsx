@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ComponentConfig, LayoutConfig, LAYOUT_TYPES } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
@@ -625,11 +625,6 @@ function App() {
     };
   }, [undo, redo]);
 
-  // Memoize highest layer calculation to avoid recomputing on every render
-  const highestLayer = useMemo(() => 
-    (layout.components || []).reduce((max, comp) => Math.max(max, comp.layer || 0), 0)
-  , [layout.components]);
-
   const addComponent = useCallback((
     type: ComponentConfig['type'],
     customPosition?: { x: number, y: number },
@@ -661,13 +656,17 @@ function App() {
         uniqueName = `${baseName}${counter}`;
       }
 
+      // Calculate highest layer among root components (no parent) to place new component on top
+      const rootComponents = (prev.components || []).filter(c => !c.parentId);
+      const maxRootLayer = rootComponents.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
+
       const newComponent: ComponentConfig = {
         id: componentId,
         displayName: uniqueName,
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
-        layer: 0,
+        layer: maxRootLayer + 1, // New components get highest layer so they appear on top
         props: customProps || getDefaultProps(type),
         team: needsTeam(type) ? 'home' : undefined
       };
@@ -677,7 +676,7 @@ function App() {
         components: [...(prev.components || []), newComponent]
       };
     });
-  }, [highestLayer, saveStateForUndo, generateComponentId]);
+  }, [saveStateForUndo, generateComponentId]);
 
   // Add a ref to track if we're currently dragging to batch position updates
   const isDraggingRef = React.useRef(false);

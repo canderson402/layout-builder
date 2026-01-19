@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-01-06T21:38:58.490Z
+// Generated: 2026-01-19T15:53:24.183Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Badminton","Baseball","Basketball","Clock","Countdown","Equestrian","Football","Generic","Hockey","InfoBoard","Lacrosse","Leaderboard","PlayerCard","PracticeTimer","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling"] as const;
+export const AVAILABLE_SPORTS = ["Badminton","Baseball","Basketball","Clock","Countdown","Equestrian","Football","Generic","Hockey","InfoBoard","Lacrosse","Leaderboard","PlayerCard","PracticeTimer","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling","break"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -121,6 +121,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {"Condensed":["wr-condensed-advantage-marker-bottom.png","wr-condensed-advantage-marker-top.png","wr-condensed-base.png","wr-condensed-clock-stopped.png","wr-condensed-period-1-off.png","wr-condensed-period-1-on.png","wr-condensed-period-2-off.png","wr-condensed-period-2-on.png","wr-condensed-period-3-off.png","wr-condensed-period-3-on.png","wr-condensed-score-color-bottom.png","wr-condensed-score-color-top.png","wr-condensed-score-mask.png","wr-condensed-team-mask-bottom.png","wr-condensed-team-mask-top.png"],"Full":["wr-full-arrow-left.png","wr-full-arrow-right.png","wr-full-base.png","wr-full-clock-base.png","wr-full-player-score-mask-left.png","wr-full-player-score-mask-right.png","wr-full-score-color-left.png","wr-full-score-color-right.png","wr-full-team-color-left.png","wr-full-team-color-right.png","wr-full-team-score-mask-left.png","wr-full-team-score-mask-right.png"],"FullWide":["wr-full-wide-arrow-left.png","wr-full-wide-arrow-right.png","wr-full-wide-base.png","wr-full-wide-clock-base.png","wr-full-wide-clockless-base.png","wr-full-wide-score-color-left.png","wr-full-wide-score-color-right.png","wr-full-wide-score-mask-left.png","wr-full-wide-score-mask-right.png","wr-full-wide-team-mask-left.png","wr-full-wide-team-mask-right.png"],"LE":["wr-le-base.png","wr-le-score-color-left.png","wr-le-score-color-right.png","wr-le-score-mask-left.png","wr-le-score-mask-right.png","wr-le-team-color-left.png","wr-le-team-color-right.png"],"ScorebugFull":["wr-sb-scorebug-full-color-mask-left.png","wr-sb-scorebug-full-color-mask-right.png","wr-sb-scorebug-full-frames.png","wr-sb-scorebug-full-score-mask.png","wr-sb-scorebug-full-wrestler-color-left.png","wr-sb-scorebug-full-wrestler-color-right.png"],"ScorebugWide":["wr-scorebug-wide-advantage-marker-left.png","wr-scorebug-wide-advantage-marker-right.png","wr-scorebug-wide-base.png","wr-scorebug-wide-clock-stopped.png","wr-scorebug-wide-score-color-left.png","wr-scorebug-wide-score-color-right.png","wr-scorebug-wide-score-mask.png","wr-scorebug-wide-team-mask-left.png","wr-scorebug-wide-team-mask-right.png"]},
     hasSubsections: true,
   },
+  break: {
+    rootImages: ["16x9-cd-ind-timeout.png","16x9-cd-score-base.png","16x9-cd-time-base.png","16x9-cd-time-tab.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
 };
 
 // Legacy flat manifest (root images only, for backwards compatibility)
@@ -146,6 +151,7 @@ export const KNOWN_IMAGES: Record<Sport, string[]> = {
   Universal: [],
   Volleyball: [],
   Wrestling: [],
+  break: ["16x9-cd-ind-timeout.png","16x9-cd-score-base.png","16x9-cd-time-base.png","16x9-cd-time-tab.png"],
 };
 
 /**

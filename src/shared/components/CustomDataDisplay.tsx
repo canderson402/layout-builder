@@ -419,7 +419,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
               marginBottom: 4
             }}>
               <Text style={{
-                fontSize: fontSize * 0.6,
+                fontSize,
                 color: effectiveTextColor,
                 fontWeight: 'bold',
                 textTransform: 'uppercase'
@@ -477,41 +477,26 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           </div>
         </>
       ) : (
-        // Render text content
-        <>
-          {label && (
-            <View style={{
-              width: '100%',
-              justifyContent: getJustifyContent(),
-              alignItems: 'center',
-              flexDirection: 'row'
-            }}>
-              <Text style={{
-                fontSize: fontSize * 0.6,
-                color: effectiveTextColor,
-                fontWeight: 'bold',
-                textTransform: 'uppercase',
-                marginBottom: 2
-              }}>
-                {label}
-              </Text>
-            </View>
-          )}
-          <View style={{
-            width: '100%',
-            justifyContent: getJustifyContent(),
-            alignItems: 'center',
-            flexDirection: 'row'
-          }}>
-            <Text style={{
-              fontSize,
-              color: textColor,
-              fontWeight: 'bold'
-            }}>
-              {displayText}
-            </Text>
-          </View>
-        </>
+        // Render text using SVG - position at center with middle alignment
+        <svg
+          width={containerWidth}
+          height={containerHeight}
+          viewBox={`0 0 ${containerWidth} ${containerHeight}`}
+          style={{ position: 'absolute', top: 0, left: 0 }}
+        >
+          <text
+            x={textAlign === 'left' ? paddingLeft : textAlign === 'right' ? containerWidth - paddingRight : containerWidth / 2}
+            y="50%"
+            dy="0.35em"
+            textAnchor={textAlign === 'left' ? 'start' : textAlign === 'right' ? 'end' : 'middle'}
+            fill={textColor}
+            fontSize={fontSize}
+            fontWeight="bold"
+            fontFamily="Score-Regular"
+          >
+            {displayText}
+          </text>
+        </svg>
       )}
       {/* Show toggle indicator if can toggle */}
       {canToggle && (
