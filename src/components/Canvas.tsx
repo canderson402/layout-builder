@@ -117,6 +117,14 @@ export default function Canvas({
   const [scaleCenter, setScaleCenter] = useState({ x: 0, y: 0 });
   const [scaleStartDistance, setScaleStartDistance] = useState(0);
   const [currentScaleFactor, setCurrentScaleFactor] = useState(1);
+  const currentMousePosRef = useRef({ x: 0, y: 0 }); // Track mouse position for scale mode
+  // For smooth precision mode - tracks transition points to prevent jumps
+  const precisionModeRef = useRef({
+    active: false,
+    baseScaleFactor: 1, // The visual scale when entering precision mode
+    baseDistance: 0,    // The mouse distance when entering precision mode
+    scaleOffset: 0      // Accumulated offset to maintain continuity when exiting precision mode
+  });
 
   // Throttle drag updates for better performance
   const lastUpdateTime = useRef(0);
@@ -799,12 +807,63 @@ export default function Canvas({
     }
   }, [customWidth, customHeight, onUpdateLayout]);
 
+  // Cancel scale mode and revert to original state
+  const cancelScaleMode = useCallback(() => {
+    if (isScaling && scaleStartState.size > 0) {
+      // Revert all components to their original state
+      scaleStartState.forEach((original, id) => {
+        onUpdateComponent(id, {
+          position: { x: original.x, y: original.y },
+          size: { width: original.width, height: original.height }
+        });
+      });
+    }
+    setIsScaling(false);
+    setScaleStartState(new Map());
+    setCurrentScaleFactor(1);
+    setActiveGuides({ guides: [] });
+    // Reset precision mode state
+    precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: 0 };
+  }, [isScaling, scaleStartState, onUpdateComponent]);
+
+  // Confirm scale mode (keep current scale)
+  const confirmScaleMode = useCallback(() => {
+    setIsScaling(false);
+    setScaleStartState(new Map());
+    setCurrentScaleFactor(1);
+    setActiveGuides({ guides: [] });
+    // Reset precision mode state
+    precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: 0 };
+    onEndDragOperation?.('Scale components');
+  }, [onEndDragOperation]);
+
+  // Handle right-click to cancel scale mode
+  const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
+    if (isScaling) {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelScaleMode();
+    }
+  }, [isScaling, cancelScaleMode]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent, component: ComponentConfig) => {
+    // Handle scale mode - left click confirms, right click cancels
+    if (isScaling) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.button === 0) {
+        confirmScaleMode();
+      } else if (e.button === 2) {
+        cancelScaleMode();
+      }
+      return;
+    }
+
     // Allow middle mouse button to bubble up to canvas for panning
     if (e.button === 1) {
       return; // Don't prevent default or stop propagation - let canvas handle it
     }
-    
+
     // Prevent synthetic touch events from interfering
     if (e.type === 'touchstart') {
       e.preventDefault();
@@ -853,15 +912,18 @@ export default function Canvas({
       handleComponentSelect(currentComponent.id, true);
       setLastSelectedId(currentComponent.id);
     }
-  }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing]);
+  }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing, isScaling, confirmScaleMode, cancelScaleMode]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!canvasRef.current) return;
-    
+
     const rect = canvasRef.current.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) / scale;
     const canvasY = (e.clientY - rect.top) / scale;
-    
+
+    // Track mouse position for scale mode
+    currentMousePosRef.current = { x: canvasX, y: canvasY };
+
     // Handle viewport panning
     if (isPanning) {
       const deltaX = e.clientX - panStart.x;
@@ -876,38 +938,120 @@ export default function Canvas({
       return; // Don't process other mouse movements while panning
     }
 
-    // Handle scale mode - scale proportionally from center based on mouse distance
+    // Handle scale mode - scale proportionally from anchor based on mouse distance
     if (isScaling && scaleStartState.size > 0) {
-      // Calculate distance from mouse to scale center
+      // Calculate distance from mouse to scale anchor
       const dx = canvasX - scaleCenter.x;
       const dy = canvasY - scaleCenter.y;
       const currentDistance = Math.sqrt(dx * dx + dy * dy);
 
-      // Calculate scale factor based on distance ratio
-      const newScaleFactor = Math.max(0.1, currentDistance / scaleStartDistance);
+      // Calculate raw scale factor based on distance ratio
+      const rawScaleFactor = currentDistance / scaleStartDistance;
+
+      // Precision mode: hold Shift to slow down scaling for fine adjustments
+      // Smooth transitions - no jumps when pressing/releasing Shift
+      const PRECISION_FACTOR = 5; // How much slower precision mode is
+      let newScaleFactor: number;
+
+      if (e.shiftKey) {
+        if (!precisionModeRef.current.active) {
+          // Just entered precision mode - save the current state as our reference
+          // The current visual scale factor (including any accumulated offset)
+          const currentVisualScale = rawScaleFactor + precisionModeRef.current.scaleOffset;
+          precisionModeRef.current = {
+            active: true,
+            baseScaleFactor: currentVisualScale, // The visual scale we're currently at
+            baseDistance: currentDistance, // The mouse distance when we entered precision mode
+            scaleOffset: precisionModeRef.current.scaleOffset // Preserve existing offset
+          };
+        }
+        // In precision mode: scale changes are dampened relative to where we entered
+        const distanceChange = currentDistance - precisionModeRef.current.baseDistance;
+        const scaleChange = distanceChange / scaleStartDistance; // How much the scale would change in normal mode
+        const dampenedScaleChange = scaleChange / PRECISION_FACTOR; // Dampen it
+        newScaleFactor = Math.max(0.1, precisionModeRef.current.baseScaleFactor + dampenedScaleChange);
+      } else {
+        if (precisionModeRef.current.active) {
+          // Just exited precision mode - calculate offset to maintain visual continuity
+          // Current visual scale = baseScaleFactor + dampened change from base
+          const distanceChange = currentDistance - precisionModeRef.current.baseDistance;
+          const scaleChange = distanceChange / scaleStartDistance;
+          const dampenedScaleChange = scaleChange / PRECISION_FACTOR;
+          const currentVisualScale = precisionModeRef.current.baseScaleFactor + dampenedScaleChange;
+          // New offset = currentVisualScale - rawScaleFactor
+          const newOffset = currentVisualScale - rawScaleFactor;
+          precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: newOffset };
+        }
+        newScaleFactor = Math.max(0.1, rawScaleFactor + precisionModeRef.current.scaleOffset);
+      }
+
       setCurrentScaleFactor(newScaleFactor);
 
-      // Apply scale to all selected components
-      scaleStartState.forEach((original, id) => {
-        // Calculate the component's center offset from the scale center
-        const compCenterX = original.x + original.width / 2;
-        const compCenterY = original.y + original.height / 2;
-        const offsetX = compCenterX - scaleCenter.x;
-        const offsetY = compCenterY - scaleCenter.y;
+      // First pass: calculate all new positions and find bounding box
+      const scaledComponents: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-        // Scale the offset and size
+      scaleStartState.forEach((original, id) => {
+        // Scale size
         const newWidth = Math.max(10, original.width * newScaleFactor);
         const newHeight = Math.max(10, original.height * newScaleFactor);
-        const newCenterX = scaleCenter.x + offsetX * newScaleFactor;
-        const newCenterY = scaleCenter.y + offsetY * newScaleFactor;
 
-        // Calculate new position (top-left corner)
-        const newX = newCenterX - newWidth / 2;
-        const newY = newCenterY - newHeight / 2;
+        // Calculate position offset from anchor point
+        // The anchor point stays fixed, everything else scales away from it
+        const originalLeft = original.x;
+        const originalTop = original.y;
+        const originalRight = original.x + original.width;
+        const originalBottom = original.y + original.height;
 
+        // Calculate how far each edge is from the anchor
+        const leftOffset = originalLeft - scaleCenter.x;
+        const topOffset = originalTop - scaleCenter.y;
+        const rightOffset = originalRight - scaleCenter.x;
+        const bottomOffset = originalBottom - scaleCenter.y;
+
+        // Scale the offsets
+        const newLeft = scaleCenter.x + leftOffset * newScaleFactor;
+        const newTop = scaleCenter.y + topOffset * newScaleFactor;
+
+        scaledComponents.push({ id, x: newLeft, y: newTop, width: newWidth, height: newHeight });
+
+        minX = Math.min(minX, newLeft);
+        minY = Math.min(minY, newTop);
+        maxX = Math.max(maxX, newLeft + newWidth);
+        maxY = Math.max(maxY, newTop + newHeight);
+      });
+
+      // Apply smart snapping to the bounding box if snapping is enabled
+      let snapOffsetX = 0;
+      let snapOffsetY = 0;
+
+      if (snapToElements || snapToCanvasGuides) {
+        const boundingWidth = maxX - minX;
+        const boundingHeight = maxY - minY;
+        const selectedIds = Array.from(scaleStartState.keys());
+
+        const snapResult = smartSnap(
+          minX,
+          minY,
+          boundingWidth,
+          boundingHeight,
+          true,
+          selectedIds
+        );
+
+        snapOffsetX = snapResult.x - minX;
+        snapOffsetY = snapResult.y - minY;
+
+        setActiveGuides(snapResult.guides);
+      } else {
+        setActiveGuides({ guides: [] });
+      }
+
+      // Second pass: apply positions with snap offset
+      scaledComponents.forEach(({ id, x, y, width, height }) => {
         onUpdateComponent(id, {
-          position: { x: Math.round(newX), y: Math.round(newY) },
-          size: { width: Math.round(newWidth), height: Math.round(newHeight) }
+          position: { x: Math.round(x + snapOffsetX), y: Math.round(y + snapOffsetY) },
+          size: { width: Math.round(width), height: Math.round(height) }
         });
       });
 
@@ -1081,7 +1225,7 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance]);
+  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
@@ -1571,8 +1715,12 @@ export default function Canvas({
     const currentRight = currentLeft + currentWidth;
     const currentBottom = currentTop + currentHeight;
 
-    // Calculate original aspect ratio
-    const aspectRatio = currentWidth / currentHeight;
+    // Use stored aspect ratio if available, otherwise calculate from current dimensions
+    const aspectRatio = draggedComponent.originalAspectRatio || (currentWidth / currentHeight);
+    const scaleAnchor = draggedComponent.scaleAnchor || 'corner'; // 'corner' means use the opposite corner of the handle
+
+    // If component has a locked aspect ratio, always maintain it (even without Cmd/Ctrl)
+    const shouldMaintainAspectRatio = maintainAspectRatio || !!draggedComponent.originalAspectRatio;
 
     const minSize = 20;
 
@@ -1586,55 +1734,139 @@ export default function Canvas({
       case 'se': // Bottom-right - right and bottom edges move
         rawRight = canvasX;
         rawBottom = canvasY;
-        if (maintainAspectRatio) {
-          const newWidth = Math.max(minSize, rawRight - rawLeft);
-          rawBottom = rawTop + newWidth / aspectRatio;
-        }
         break;
       case 'sw': // Bottom-left - left and bottom edges move
         rawLeft = canvasX;
         rawBottom = canvasY;
-        if (maintainAspectRatio) {
-          const newWidth = Math.max(minSize, rawRight - rawLeft);
-          rawBottom = rawTop + newWidth / aspectRatio;
-        }
         break;
       case 'ne': // Top-right - right and top edges move
         rawRight = canvasX;
         rawTop = canvasY;
-        if (maintainAspectRatio) {
-          const newWidth = Math.max(minSize, rawRight - rawLeft);
-          rawTop = rawBottom - newWidth / aspectRatio;
-        }
         break;
       case 'nw': // Top-left - left and top edges move
         rawLeft = canvasX;
         rawTop = canvasY;
-        if (maintainAspectRatio) {
-          const newWidth = Math.max(minSize, rawRight - rawLeft);
-          rawTop = rawBottom - newWidth / aspectRatio;
-        }
         break;
     }
 
-    // Apply smart snapping to the edges being resized
-    const snapResult = smartSnapResize(
-      resizeHandle,
-      rawLeft,
-      rawTop,
-      rawRight,
-      rawBottom,
-      [draggedComponent.id] // Exclude the component being resized
-    );
+    // Apply smart snapping to the edges being resized (only when not maintaining aspect ratio)
+    let finalLeft = rawLeft;
+    let finalTop = rawTop;
+    let finalRight = rawRight;
+    let finalBottom = rawBottom;
 
-    // Update active guides for visual feedback
-    setActiveGuides(snapResult.guides);
+    if (!shouldMaintainAspectRatio) {
+      const snapResult = smartSnapResize(
+        resizeHandle,
+        rawLeft,
+        rawTop,
+        rawRight,
+        rawBottom,
+        [draggedComponent.id] // Exclude the component being resized
+      );
+      setActiveGuides(snapResult.guides);
+      finalLeft = snapResult.left;
+      finalTop = snapResult.top;
+      finalRight = snapResult.right;
+      finalBottom = snapResult.bottom;
+    } else {
+      setActiveGuides({ guides: [] });
+    }
 
-    // Calculate final dimensions from snapped edges
-    let finalLeft = snapResult.left;
-    let finalTop = snapResult.top;
-    let finalRight = snapResult.right;
-    let finalBottom = snapResult.bottom;
+    // Calculate dimensions
+    let newWidth = finalRight - finalLeft;
+    let newHeight = finalBottom - finalTop;
+
+    // Enforce aspect ratio AFTER snapping if aspect ratio should be maintained
+    if (shouldMaintainAspectRatio) {
+      // Determine anchor point for scaling
+      let anchorX: number;
+      let anchorY: number;
+
+      if (scaleAnchor === 'center') {
+        anchorX = (finalLeft + finalRight) / 2;
+        anchorY = (finalTop + finalBottom) / 2;
+      } else if (scaleAnchor === 'bottom') {
+        anchorX = (finalLeft + finalRight) / 2;
+        anchorY = finalBottom;
+      } else if (scaleAnchor === 'top') {
+        anchorX = (finalLeft + finalRight) / 2;
+        anchorY = finalTop;
+      } else if (scaleAnchor === 'left') {
+        anchorX = finalLeft;
+        anchorY = (finalTop + finalBottom) / 2;
+      } else if (scaleAnchor === 'right') {
+        anchorX = finalRight;
+        anchorY = (finalTop + finalBottom) / 2;
+      } else {
+        // 'corner' - use opposite corner of the resize handle
+        switch (resizeHandle) {
+          case 'se': anchorX = finalLeft; anchorY = finalTop; break;
+          case 'sw': anchorX = finalRight; anchorY = finalTop; break;
+          case 'ne': anchorX = finalLeft; anchorY = finalBottom; break;
+          case 'nw': anchorX = finalRight; anchorY = finalBottom; break;
+          default: anchorX = finalLeft; anchorY = finalTop;
+        }
+      }
+
+      // Calculate the desired width based on mouse movement, then derive height from aspect ratio
+      const rawWidth = Math.max(minSize, newWidth);
+      const rawHeight = Math.max(minSize, newHeight);
+
+      // Use whichever dimension changed more to drive the scaling
+      const widthRatio = rawWidth / currentWidth;
+      const heightRatio = rawHeight / currentHeight;
+
+      // Pick the larger change to determine final size
+      if (Math.abs(widthRatio - 1) >= Math.abs(heightRatio - 1)) {
+        newWidth = rawWidth;
+        newHeight = newWidth / aspectRatio;
+      } else {
+        newHeight = rawHeight;
+        newWidth = newHeight * aspectRatio;
+      }
+
+      // Recalculate position based on anchor point
+      if (scaleAnchor === 'center') {
+        finalLeft = anchorX - newWidth / 2;
+        finalTop = anchorY - newHeight / 2;
+      } else if (scaleAnchor === 'bottom') {
+        finalLeft = anchorX - newWidth / 2;
+        finalTop = anchorY - newHeight;
+      } else if (scaleAnchor === 'top') {
+        finalLeft = anchorX - newWidth / 2;
+        finalTop = anchorY;
+      } else if (scaleAnchor === 'left') {
+        finalLeft = anchorX;
+        finalTop = anchorY - newHeight / 2;
+      } else if (scaleAnchor === 'right') {
+        finalLeft = anchorX - newWidth;
+        finalTop = anchorY - newHeight / 2;
+      } else {
+        // 'corner' - anchor at opposite corner
+        switch (resizeHandle) {
+          case 'se':
+            finalLeft = anchorX;
+            finalTop = anchorY;
+            break;
+          case 'sw':
+            finalLeft = anchorX - newWidth;
+            finalTop = anchorY;
+            break;
+          case 'ne':
+            finalLeft = anchorX;
+            finalTop = anchorY - newHeight;
+            break;
+          case 'nw':
+            finalLeft = anchorX - newWidth;
+            finalTop = anchorY - newHeight;
+            break;
+        }
+      }
+
+      finalRight = finalLeft + newWidth;
+      finalBottom = finalTop + newHeight;
+    }
 
     // Enforce minimum size
     if (finalRight - finalLeft < minSize) {
@@ -1654,13 +1886,13 @@ export default function Canvas({
 
     const newX = finalLeft;
     const newY = finalTop;
-    const newWidth = finalRight - finalLeft;
-    const newHeight = finalBottom - finalTop;
+    const finalWidth = finalRight - finalLeft;
+    const finalHeight = finalBottom - finalTop;
 
     // Store pixel values directly
     onUpdateComponent(draggedComponent.id, {
       position: { x: newX, y: newY },
-      size: { width: newWidth, height: newHeight }
+      size: { width: finalWidth, height: finalHeight }
     });
   }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, getMultiSelectBounds, smartSnapResize]);
 
@@ -1704,6 +1936,14 @@ export default function Canvas({
   }, [layout.components, isAncestorHidden]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    // Handle scale mode - left click confirms, right click is handled by context menu
+    if (isScaling && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      confirmScaleMode();
+      return;
+    }
+
     // Handle middle mouse button for panning
     if (e.button === 1) { // Middle mouse button
       e.preventDefault();
@@ -1715,7 +1955,7 @@ export default function Canvas({
     // Check if the click is on the canvas or any non-component element
     const target = e.target as HTMLElement;
     const isHandleClick = target.closest('.canvas-handle');
-    
+
     if (!isHandleClick && e.button === 0) { // Left mouse button only
       const rect = canvasRef.current!.getBoundingClientRect();
       const canvasX = (e.clientX - rect.left) / scale;
@@ -1757,7 +1997,7 @@ export default function Canvas({
         e.stopPropagation();
       }
     }
-  }, [onSelectComponents, scale, getComponentAtPoint, selectedComponents, setLastSelectedId]);
+  }, [onSelectComponents, scale, getComponentAtPoint, selectedComponents, setLastSelectedId, isScaling, confirmScaleMode]);
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
     // Check if Cmd (Mac) or Ctrl (Windows/Linux) is held
@@ -1773,30 +2013,6 @@ export default function Canvas({
     }
   }, [zoomLevel]);
 
-  // Cancel scale mode and revert to original state
-  const cancelScaleMode = useCallback(() => {
-    if (isScaling && scaleStartState.size > 0) {
-      // Revert all components to their original state
-      scaleStartState.forEach((original, id) => {
-        onUpdateComponent(id, {
-          position: { x: original.x, y: original.y },
-          size: { width: original.width, height: original.height }
-        });
-      });
-    }
-    setIsScaling(false);
-    setScaleStartState(new Map());
-    setCurrentScaleFactor(1);
-  }, [isScaling, scaleStartState, onUpdateComponent]);
-
-  // Confirm scale mode (keep current scale)
-  const confirmScaleMode = useCallback(() => {
-    setIsScaling(false);
-    setScaleStartState(new Map());
-    setCurrentScaleFactor(1);
-    onEndDragOperation?.('Scale components');
-  }, [onEndDragOperation]);
-
   // Start scale mode for selected components
   const startScaleMode = useCallback(() => {
     if (selectedComponents.length === 0) return;
@@ -1804,7 +2020,7 @@ export default function Canvas({
     // Save start state for undo
     onStartDragOperation?.();
 
-    // Calculate the bounding box center of all selected components
+    // Calculate the bounding box of all selected components
     const selectedComps = layout.components.filter(c => selectedComponents.includes(c.id));
     if (selectedComps.length === 0) return;
 
@@ -1824,13 +2040,69 @@ export default function Canvas({
       });
     });
 
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
+    // Get scale anchor from first selected component (default to center)
+    const scaleAnchor = selectedComps[0]?.scaleAnchor || 'center';
+
+    // Calculate anchor position based on scaleAnchor setting
+    let anchorX: number;
+    let anchorY: number;
+
+    switch (scaleAnchor) {
+      case 'top':
+        anchorX = (minX + maxX) / 2;
+        anchorY = minY;
+        break;
+      case 'bottom':
+        anchorX = (minX + maxX) / 2;
+        anchorY = maxY;
+        break;
+      case 'left':
+        anchorX = minX;
+        anchorY = (minY + maxY) / 2;
+        break;
+      case 'right':
+        anchorX = maxX;
+        anchorY = (minY + maxY) / 2;
+        break;
+      case 'top-left':
+        anchorX = minX;
+        anchorY = minY;
+        break;
+      case 'top-right':
+        anchorX = maxX;
+        anchorY = minY;
+        break;
+      case 'bottom-left':
+        anchorX = minX;
+        anchorY = maxY;
+        break;
+      case 'bottom-right':
+        anchorX = maxX;
+        anchorY = maxY;
+        break;
+      case 'center':
+      default:
+        anchorX = (minX + maxX) / 2;
+        anchorY = (minY + maxY) / 2;
+        break;
+    }
 
     setScaleStartState(startState);
-    setScaleCenter({ x: centerX, y: centerY });
-    setScaleStartDistance(Math.max(maxX - minX, maxY - minY) / 2 || 100);
+    setScaleCenter({ x: anchorX, y: anchorY });
+
+    // Calculate initial distance from current mouse position to anchor
+    // This makes scaling relative to where the mouse is when 'S' is pressed
+    const mouseX = currentMousePosRef.current.x;
+    const mouseY = currentMousePosRef.current.y;
+    const dx = mouseX - anchorX;
+    const dy = mouseY - anchorY;
+    const initialDistance = Math.sqrt(dx * dx + dy * dy);
+
+    // Use mouse distance if valid, otherwise fall back to bounding box size
+    setScaleStartDistance(initialDistance > 10 ? initialDistance : (Math.max(maxX - minX, maxY - minY) / 2 || 100));
     setCurrentScaleFactor(1);
+    // Reset precision mode state for fresh start
+    precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: 0 };
     setIsScaling(true);
   }, [selectedComponents, layout.components, onStartDragOperation]);
 
@@ -2535,6 +2807,7 @@ export default function Canvas({
         onMouseMove={handleMouseMove}
         onMouseUp={(e) => handleMouseUp(e)}
         onMouseDown={handleCanvasMouseDown}
+        onContextMenu={handleCanvasContextMenu}
         onWheel={handleCanvasWheel}
         onDragOver={(e) => {
           e.preventDefault(); // Allow drop

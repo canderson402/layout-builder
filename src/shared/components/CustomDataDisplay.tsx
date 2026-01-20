@@ -19,6 +19,38 @@ const resolveImagePath = (path: string): string => {
   return `${BASE_URL}${path}`;
 };
 
+// =============================================================================
+// FONT CONFIGURATION
+// To add a new font:
+// 1. Add the font file to layout-builder-web/public/fonts/
+// 2. Add @font-face to layout-builder-web/src/index.css
+// 3. Add an entry to FONT_CONFIG below
+// 4. Add the option to PropertyPanel.tsx font dropdown
+// =============================================================================
+interface FontConfig {
+  // The font family name to use in web CSS
+  web: string;
+  // The dy offset for vertical centering (font-specific baseline adjustment)
+  dyOffset: string;
+}
+
+const FONT_CONFIG: Record<string, FontConfig> = {
+  'Score-Regular': {
+    web: 'Score-Regular',
+    dyOffset: '0.35em',
+  },
+  'Helvetica-Bold': {
+    web: 'Helvetica, Arial, sans-serif', // Web fallback stack
+    dyOffset: '0.35em',
+  },
+};
+
+const DEFAULT_FONT = 'Score-Regular';
+
+const getFontConfig = (fontFamily: string): FontConfig => {
+  return FONT_CONFIG[fontFamily] || FONT_CONFIG[DEFAULT_FONT];
+};
+
 interface CustomDataDisplayProps {
   dataPath: string;
   gameData?: any;
@@ -56,11 +88,15 @@ interface CustomDataDisplayProps {
   borderBottomRightRadius?: number;
   useTeamColor?: boolean;
   teamColorSide?: 'home' | 'away';
+  autoFitText?: boolean;
+  minFontScale?: number;
+  previewText?: string; // Preview text for testing auto-fit in layout builder
   canToggle?: boolean;
   toggleState?: boolean;
   state1Props?: any;
   state2Props?: any;
   autoToggle?: boolean; // Whether to automatically use boolean data values for toggle state
+  fontFamily?: string; // Font family for text display
 }
 
 // Mock data for preview in layout builder
@@ -124,6 +160,15 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   // Banner rotation state for layout builder preview
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Image retry state for handling intermittent load failures
+  const [imageRetryCount, setImageRetryCount] = useState(0);
+  const maxImageRetries = 3;
+
+  // Reset retry count when image path changes
+  useEffect(() => {
+    setImageRetryCount(0);
+  }, [defaultProps.imagePath, defaultProps.imageUrl]);
 
   // Mock banner data for layout builder preview
   const mockBannerData = {
@@ -232,7 +277,9 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     borderTopLeftRadius = 0,
     borderTopRightRadius = 0,
     borderBottomLeftRadius = 0,
-    borderBottomRightRadius = 0
+    borderBottomRightRadius = 0,
+    fontFamily = 'Score-Regular',
+    autoFitText = false
   } = activeProps;
   
   // State to track image natural dimensions for native resolution mode
@@ -272,7 +319,9 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     undefined;
 
   // Use team color if available, otherwise use the active background/text colors
-  const effectiveBackgroundColor = teamColorForBackground || backgroundColor;
+  // Use black background for banners to help identify overlap
+  const isBannerOrSequenceForBg = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';
+  const effectiveBackgroundColor = isBannerOrSequenceForBg ? '#000000' : (teamColorForBackground || backgroundColor);
   const effectiveTextColor = teamColorForBackground ? '#ffffff' : textColor;
 
   // Calculate effective tint color for image masking
@@ -307,7 +356,11 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   const formattedValue = formatValue(rawValue);
   // Don't show text for boolean toggles, just show the visual state
-  const displayText = (!dataPath || dataPath.trim() === '' || dataPath === 'none' || isBooleanToggle) ? '' : `${prefix}${formattedValue}${suffix}`;
+  // Use preview text if provided (for testing auto-fit in layout builder), otherwise use formatted data
+  const previewText = activeProps.previewText;
+  const displayText = previewText
+    ? `${prefix}${previewText}${suffix}`
+    : ((!dataPath || dataPath.trim() === '' || dataPath === 'none' || isBooleanToggle) ? '' : `${prefix}${formattedValue}${suffix}`);
 
   // Convert textAlign to flexbox alignment
   const getJustifyContent = () => {
@@ -344,6 +397,10 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   const imageSourceObj = getImageSource();
 
+  // For banner/sequence media, use 'fill' to stretch to container size
+  const isBannerOrSequence = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';
+  const effectiveObjectFit = isBannerOrSequence ? 'fill' : objectFit;
+
   // Debug logging for tint
   if (imageSourceObj && effectiveUseImageTint) {
     console.log('Tint Debug (Web):', {
@@ -379,6 +436,22 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   const anchorAlignment = getAnchorAlignment();
 
+  // Calculate final font size - only scale if autoFitText is enabled
+  const finalFontSize = React.useMemo(() => {
+    if (!autoFitText || !displayText || displayText.length === 0) {
+      return fontSize;
+    }
+
+    const availableWidth = containerWidth - paddingLeft - paddingRight;
+    const availableHeight = containerHeight - paddingTop - paddingBottom;
+
+    const charWidthRatio = 0.6;
+    const widthBasedFontSize = availableWidth / (displayText.length * charWidthRatio);
+    const heightBasedFontSize = availableHeight;
+
+    return Math.min(widthBasedFontSize, heightBasedFontSize, fontSize);
+  }, [autoFitText, displayText, fontSize, containerWidth, containerHeight, paddingLeft, paddingRight, paddingTop, paddingBottom]);
+
   return (
     <View style={{
       width: containerWidth,
@@ -386,6 +459,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       backgroundColor: effectiveBackgroundColor,
       justifyContent: imageSourceObj ? anchorAlignment.justifyContent : 'center',
       alignItems: imageSourceObj ? anchorAlignment.alignItems : 'center',
+      overflow: imageSourceObj ? 'visible' : 'hidden',
       // Apply border properties
       borderWidth: imageSourceObj ? 0 : borderWidth,
       borderColor: imageSourceObj ? 'transparent' : borderColor,
@@ -430,34 +504,53 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           )}
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             {effectiveTintColor && effectiveUseImageTint ? (
-              <div
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: effectiveTintColor,
-                  WebkitMaskImage: `url(${imageSourceObj.uri})`,
-                  maskImage: `url(${imageSourceObj.uri})`,
-                  WebkitMaskSize: objectFit === 'none' || objectFit === 'fill' ? '100% 100%' : objectFit,
-                  maskSize: objectFit === 'none' || objectFit === 'fill' ? '100% 100%' : objectFit,
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'center',
-                  maskPosition: 'center',
-                }}
-              />
+              <>
+                {/* Hidden img for preloading and error handling with mask images */}
+                <img
+                  key={`preload-${imageSourceObj.uri}-${imageRetryCount}`}
+                  src={imageSourceObj.uri}
+                  alt=""
+                  style={{ display: 'none' }}
+                  onError={() => {
+                    if (imageRetryCount < maxImageRetries) {
+                      console.warn(`Mask image load failed, retrying (${imageRetryCount + 1}/${maxImageRetries}):`, imageSourceObj.uri);
+                      setTimeout(() => {
+                        setImageRetryCount(prev => prev + 1);
+                      }, 500 * (imageRetryCount + 1));
+                    }
+                  }}
+                />
+                <div
+                  key={`mask-${imageSourceObj.uri}-${imageRetryCount}`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: effectiveTintColor,
+                    WebkitMaskImage: `url(${imageSourceObj.uri})`,
+                    maskImage: `url(${imageSourceObj.uri})`,
+                    WebkitMaskSize: effectiveObjectFit === 'none' || effectiveObjectFit === 'fill' ? '100% 100%' : effectiveObjectFit,
+                    maskSize: effectiveObjectFit === 'none' || effectiveObjectFit === 'fill' ? '100% 100%' : effectiveObjectFit,
+                    WebkitMaskRepeat: 'no-repeat',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskPosition: 'center',
+                  }}
+                />
+              </>
             ) : (
               <img
+                key={`${imageSourceObj.uri}-${imageRetryCount}`}
                 src={imageSourceObj.uri}
                 alt={label || 'Custom image'}
                 style={{
-                  ...(objectFit === 'none' ? {
+                  ...(effectiveObjectFit === 'none' ? {
                     width: '100%',
                     height: '100%',
                     objectFit: 'fill'
                   } : {
                     width: '100%',
                     height: '100%',
-                    objectFit: objectFit
+                    objectFit: effectiveObjectFit
                   }),
                   display: 'block'
                 }}
@@ -467,10 +560,22 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
                     width: img.naturalWidth,
                     height: img.naturalHeight
                   });
+                  // Reset retry count on successful load
+                  if (imageRetryCount > 0) {
+                    setImageRetryCount(0);
+                  }
                 }}
                 onError={(e) => {
-                  console.error('Failed to load image:', imageSourceObj.uri);
-                  e.currentTarget.style.display = 'none';
+                  if (imageRetryCount < maxImageRetries) {
+                    // Retry loading the image after a short delay
+                    console.warn(`Image load failed, retrying (${imageRetryCount + 1}/${maxImageRetries}):`, imageSourceObj.uri);
+                    setTimeout(() => {
+                      setImageRetryCount(prev => prev + 1);
+                    }, 500 * (imageRetryCount + 1)); // Exponential backoff: 500ms, 1000ms, 1500ms
+                  } else {
+                    console.error('Failed to load image after retries:', imageSourceObj.uri);
+                    e.currentTarget.style.display = 'none';
+                  }
                 }}
               />
             )}
@@ -487,12 +592,13 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           <text
             x={textAlign === 'left' ? paddingLeft : textAlign === 'right' ? containerWidth - paddingRight : containerWidth / 2}
             y="50%"
-            dy="0.35em"
+            dy={getFontConfig(fontFamily).dyOffset}
             textAnchor={textAlign === 'left' ? 'start' : textAlign === 'right' ? 'end' : 'middle'}
             fill={textColor}
-            fontSize={fontSize}
+            fontSize={finalFontSize}
             fontWeight="bold"
-            fontFamily="Score-Regular"
+            fontFamily={getFontConfig(fontFamily).web}
+            letterSpacing="0"
           >
             {displayText}
           </text>

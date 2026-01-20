@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutConfig } from '../types';
-import { tvDiscoveryService, DiscoveredTV } from '../services/tvDiscovery';
 import './ExportModal.css';
 
 interface ExportModalProps {

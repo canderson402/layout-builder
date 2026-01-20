@@ -5,7 +5,6 @@ import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
-import { tvDiscoveryService, DiscoveredTV } from './services/tvDiscovery';
 import './App.css';
 
 // Panel resize constants
@@ -136,9 +135,6 @@ function App() {
   // TV endpoint controls
   const [tvIpAddress, setTvIpAddress] = useState('192.168.1.100'); // Default IP
   const [isSendingToTv, setIsSendingToTv] = useState(false);
-  const [discoveredTVs, setDiscoveredTVs] = useState<DiscoveredTV[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const [selectedTvOption, setSelectedTvOption] = useState('custom');
 
   // Panel resize state
   const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_PANEL_WIDTH);
@@ -547,66 +543,6 @@ function App() {
     alert(`Preset "${nameToUse}" ${action} successfully!`);
   }, [layout]);
 
-  // TV Discovery functions
-  const scanForTVs = useCallback(async () => {
-    setIsScanning(true);
-    try {
-      const tvs = await tvDiscoveryService.discoverTVs();
-      setDiscoveredTVs(tvs);
-    } catch (error) {
-      console.error('Failed to scan for TVs:', error);
-    } finally {
-      setIsScanning(false);
-    }
-  }, []);
-
-  const handleTvSelectionChange = useCallback((value: string) => {
-    setSelectedTvOption(value);
-    
-    if (value !== 'custom') {
-      // Find the selected TV and set its IP
-      const selectedTV = discoveredTVs.find(tv => `${tv.ip}:${tv.port}` === value);
-      if (selectedTV) {
-        setTvIpAddress(selectedTV.ip);
-      }
-    }
-  }, [discoveredTVs]);
-
-  // Auto-scan for TVs when component mounts
-  useEffect(() => {
-    // Subscribe to auto-selection of first discovered TV
-    const handleAutoSelect = (tv: DiscoveredTV) => {
-      setSelectedTvOption(`${tv.ip}:${tv.port}`);
-      setTvIpAddress(tv.ip);
-      console.log(`🎯 Auto-selected TV: ${tv.name} (${tv.ip})`);
-    };
-
-    const setupTVDiscovery = () => {
-      // Subscribe to TV discovery updates
-      tvDiscoveryService.subscribe(setDiscoveredTVs);
-      tvDiscoveryService.onAutoSelect(handleAutoSelect);
-      
-      // Make tvDiscoveryService available globally for manual TV addition
-      (window as any).addTV = (ip: string, name?: string) => {
-        tvDiscoveryService.addManualTV(name || `TV (${ip})`, ip);
-        console.log(`📺 Added TV at ${ip} to discovery list`);
-      };
-      
-      // Initial scan after a short delay
-      setTimeout(() => {
-        scanForTVs();
-      }, 1000);
-    };
-
-    setupTVDiscovery();
-
-    return () => {
-      tvDiscoveryService.unsubscribe(setDiscoveredTVs);
-      tvDiscoveryService.offAutoSelect(handleAutoSelect);
-      delete (window as any).addTV;
-    };
-  }, [scanForTVs]);
-
   // Listen for canvas undo/redo events
   React.useEffect(() => {
     const handleCanvasUndo = () => {
@@ -895,51 +831,6 @@ function App() {
           </button>
         </div>
 
-        {/* DEBUG: TV Controls - Commented out for production */}
-        {/*
-        <div className="header-section header-tv">
-          <div className="header-divider" />
-          <select
-            value={selectedTvOption}
-            onChange={(e) => handleTvSelectionChange(e.target.value)}
-            className="header-select"
-            title="Select a discovered TV or enter a custom IP address"
-          >
-            <option key="custom-ip" value="custom">Custom IP</option>
-            {discoveredTVs.map((tv) => (
-              <option key={tv.id} value={`${tv.ip}:${tv.port}`}>
-                {tv.name}
-              </option>
-            ))}
-          </select>
-          {selectedTvOption === 'custom' && (
-            <input
-              type="text"
-              value={tvIpAddress}
-              onChange={(e) => setTvIpAddress(e.target.value)}
-              placeholder="192.168.1.100"
-              className="header-input"
-              title="Enter the IP address of the TV to send the layout to"
-            />
-          )}
-          <button
-            onClick={scanForTVs}
-            disabled={isScanning}
-            className="header-btn header-btn-icon"
-            title="Scan local network for ScoreVision TV displays"
-          >
-            {isScanning ? '🔄' : '🔍'}
-          </button>
-          <button
-            onClick={sendLayoutToTv}
-            disabled={isSendingToTv}
-            className="header-btn header-btn-warning"
-            title="Send current layout directly to the selected TV for live preview"
-          >
-            {isSendingToTv ? 'Sending...' : '📺 Send to TV'}
-          </button>
-        </div>
-        */}
       </header>
 
       <div className="app-body">

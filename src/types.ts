@@ -17,6 +17,8 @@ export interface ComponentConfig {
   useTeamColor?: boolean; // Whether to use team colors instead of custom colors
   teamColorSide?: 'home' | 'away'; // Which team's color to use
   parentId?: string; // ID of parent component (children move with parent)
+  originalAspectRatio?: number; // Stored aspect ratio (width/height) for precise scaling
+  scaleAnchor?: 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; // Anchor point for scaling (default: corner being dragged)
 }
 
 // Predefined layout types that the TV app can load

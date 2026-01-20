@@ -521,6 +521,7 @@ function PropertyPanel({
           width: nativeWidth,
           height: nativeHeight
         },
+        originalAspectRatio: nativeWidth / nativeHeight,
         props: propsUpdate
       });
     };
@@ -794,6 +795,57 @@ function PropertyPanel({
               />
             </div>
           </div>
+          <div className="property-field" style={{ marginTop: '12px' }}>
+            <label>Scale Anchor (Cmd/Ctrl + drag)</label>
+            <select
+              value={component?.scaleAnchor || 'center'}
+              onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                scaleAnchor: e.target.value as any
+              })}
+            >
+              <option value="center">Center (default)</option>
+              <option value="top">Top Center</option>
+              <option value="bottom">Bottom Center</option>
+              <option value="left">Left Center</option>
+              <option value="right">Right Center</option>
+              <option value="top-left">Top Left</option>
+              <option value="top-right">Top Right</option>
+              <option value="bottom-left">Bottom Left</option>
+              <option value="bottom-right">Bottom Right</option>
+            </select>
+          </div>
+          {component?.originalAspectRatio && (
+            <div className="property-field" style={{ marginTop: '8px' }}>
+              <label>Aspect Ratio</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: '#888' }}>
+                  {component.originalAspectRatio.toFixed(4)} ({Math.round(component.size.width)}:{Math.round(component.size.width / component.originalAspectRatio)})
+                </span>
+                <button
+                  onClick={() => updateComponentWithScrollPreservation(component.id, {
+                    originalAspectRatio: undefined
+                  })}
+                  style={{ fontSize: '10px', padding: '2px 6px' }}
+                  title="Clear locked aspect ratio"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+          {!component?.originalAspectRatio && (
+            <div className="property-field" style={{ marginTop: '8px' }}>
+              <button
+                onClick={() => updateComponentWithScrollPreservation(component.id, {
+                  originalAspectRatio: component.size.width / component.size.height
+                })}
+                style={{ fontSize: '11px', padding: '4px 8px' }}
+                title="Lock current aspect ratio for precise scaling"
+              >
+                Lock Aspect Ratio
+              </button>
+            </div>
+          )}
         </PropertySection>
 
         {/* TEAM SECTION (if applicable) */}
@@ -822,7 +874,59 @@ function PropertyPanel({
               onBlur={(e) => handleStatePropsBlur('fontSize', e.target.value)}
             />
           </div>
-          
+
+          <div className="property-field">
+            <label>Font Family</label>
+            <select
+              value={getStateValue('fontFamily', 'Score-Regular')}
+              onChange={(e) => updateStateProps('fontFamily', e.target.value)}
+            >
+              <option value="Score-Regular">Score-Regular (Numbers/Clocks)</option>
+              <option value="Helvetica-Bold">Helvetica Bold (Classic Text)</option>
+            </select>
+          </div>
+
+          <div className="property-field">
+            <label>
+              <input
+                type="checkbox"
+                checked={getStateValue('autoFitText', false)}
+                onChange={(e) => updateStateProps('autoFitText', e.target.checked)}
+              />
+              Auto-Fit Text to Container
+            </label>
+          </div>
+
+          {getStateValue('autoFitText', false) && (
+            <div className="property-field">
+              <label>Preview Text (test how text will fit)</label>
+              <input
+                type="text"
+                defaultValue={getStateValue('previewText', '')}
+                placeholder="e.g., Jordan's Jaguars"
+                onChange={(e) => handleStatePropsChange('previewText', e.target.value)}
+                onBlur={(e) => updateStateProps('previewText', e.target.value)}
+              />
+              {getStateValue('previewText', '') && (
+                <button
+                  onClick={() => updateStateProps('previewText', '')}
+                  style={{
+                    marginTop: '4px',
+                    padding: '4px 8px',
+                    fontSize: '11px',
+                    backgroundColor: '#444',
+                    border: '1px solid #555',
+                    borderRadius: '3px',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Clear Preview
+                </button>
+              )}
+            </div>
+          )}
+
           {isDragging ? (
             <StaticColorSwatch 
               label="Text Color" 
@@ -1139,10 +1243,11 @@ function PropertyPanel({
                           img.onload = () => {
                             // Use native image dimensions directly in pixels
                             updateComponentWithScrollPreservation(component.id, {
-                              size: { 
+                              size: {
                                 width: img.naturalWidth,
                                 height: img.naturalHeight
                               },
+                              originalAspectRatio: img.naturalWidth / img.naturalHeight,
                               props: {
                                 ...component.props,
                                 // Clear all padding to avoid constraining the image

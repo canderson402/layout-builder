@@ -154,6 +154,10 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
               borderTopRightRadius={props.borderTopRightRadius}
               borderBottomLeftRadius={props.borderBottomLeftRadius}
               borderBottomRightRadius={props.borderBottomRightRadius}
+              autoFitText={props.autoFitText}
+              minFontScale={props.minFontScale}
+              previewText={props.previewText}
+              fontFamily={props.fontFamily}
             />
           </TouchableWrapper>
         );
