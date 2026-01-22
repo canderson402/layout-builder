@@ -1,0 +1,288 @@
+/**
+ * Shader Effects System - Effect Property Section Styles
+ *
+ * Styling for the effect configuration UI in the PropertyPanel.
+ * Designed to match the existing layout builder aesthetic.
+ */
+
+.effect-property-section {
+  background: #2a2a2a;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.effect-property-section.compact {
+  font-size: 12px;
+}
+
+/* Section Header */
+.effect-section-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: #333;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.effect-section-header:hover {
+  background: #3a3a3a;
+}
+
+.effect-section-icon {
+  font-size: 10px;
+  margin-right: 8px;
+  color: #888;
+}
+
+.effect-section-title {
+  font-weight: 600;
+  color: #e0e0e0;
+  flex: 1;
+}
+
+.effect-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  background: #4a7c59;
+  color: #fff;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+/* Section Content */
+.effect-section-content {
+  padding: 12px;
+}
+
+/* Property Rows */
+.effect-property-row {
+  margin-bottom: 10px;
+}
+
+.effect-property-row label {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Select Inputs */
+.effect-select {
+  width: 100%;
+  padding: 8px 10px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.effect-select:hover {
+  border-color: #555;
+}
+
+.effect-select:focus {
+  outline: none;
+  border-color: #4a7c59;
+}
+
+.effect-select-main {
+  font-weight: 500;
+}
+
+.effect-select optgroup {
+  font-weight: 600;
+  color: #888;
+  background: #222;
+}
+
+.effect-select option {
+  padding: 4px;
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+
+/* Text Inputs */
+.effect-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.effect-input:focus {
+  outline: none;
+  border-color: #4a7c59;
+}
+
+.effect-input::placeholder {
+  color: #666;
+}
+
+/* Description */
+.effect-description {
+  font-size: 11px;
+  color: #888;
+  padding: 8px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+/* Slider Rows */
+.effect-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.effect-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #444;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.effect-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #4a7c59;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.effect-slider::-webkit-slider-thumb:hover {
+  background: #5a9c69;
+}
+
+.effect-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #4a7c59;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.effect-slider-value {
+  font-size: 12px;
+  color: #888;
+  min-width: 35px;
+  text-align: right;
+  font-family: monospace;
+}
+
+/* Color Picker */
+.effect-color-picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.effect-color-picker .effect-select {
+  flex: 1;
+}
+
+.effect-color-input {
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.effect-color-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.effect-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+/* Trigger Section */
+.effect-trigger-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #444;
+}
+
+.effect-trigger-header {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+/* Preview Button */
+.effect-preview-button {
+  width: 100%;
+  padding: 10px 16px;
+  margin-top: 16px;
+  background: linear-gradient(135deg, #4a7c59 0%, #3a6249 100%);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.effect-preview-button:hover {
+  background: linear-gradient(135deg, #5a9c69 0%, #4a7c59 100%);
+  transform: translateY(-1px);
+}
+
+.effect-preview-button:active {
+  transform: translateY(0);
+}
+
+.effect-preview-icon {
+  font-size: 10px;
+}
+
+/* Responsive / Compact Mode */
+.effect-property-section.compact .effect-section-content {
+  padding: 8px;
+}
+
+.effect-property-section.compact .effect-property-row {
+  margin-bottom: 8px;
+}
+
+.effect-property-section.compact .effect-select,
+.effect-property-section.compact .effect-input {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.effect-property-section.compact .effect-preview-button {
+  padding: 8px 12px;
+  font-size: 12px;
+}

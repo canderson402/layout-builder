@@ -10,6 +10,7 @@ import {
   getAvailableImagesForSport,
 } from '../utils/imageUtils';
 import ColorPicker from './ColorPicker';
+import { EffectPropertySection, EffectName, EffectConfig, TriggerOptions } from '../effects';
 import './PropertyPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -33,6 +34,7 @@ interface PropertyPanelProps {
   gameData?: any;
   onUpdateGameData?: (gameData: any) => void;
   panelWidth?: number;
+  onPreviewEffect?: (componentId: string, effectName: EffectName, options?: TriggerOptions) => void;
 }
 
 // Width threshold for two-column layout
@@ -48,7 +50,8 @@ function PropertyPanel({
   onUpdateLayout,
   gameData,
   onUpdateGameData,
-  panelWidth = 320
+  panelWidth = 320,
+  onPreviewEffect
 }: PropertyPanelProps) {
   const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
@@ -157,6 +160,7 @@ function PropertyPanel({
     'custom-data',
     'image',
     'borders',
+    'effects',
     'dynamic-list-data',
     'dynamic-list-active',
     'dynamic-list-inactive',
@@ -1763,6 +1767,28 @@ function PropertyPanel({
                 </div>
               </div>
             </PropertySection>
+
+            {/* SHADER EFFECTS SECTION */}
+            <PropertySection title="SHADER EFFECTS" sectionKey="effects">
+              <EffectPropertySection
+                effectConfig={component.props?.effect as EffectConfig | undefined}
+                componentId={component.id}
+                onConfigChange={(config) => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, effect: config }
+                  });
+                }}
+                onPreview={(compId, effectName, options) => {
+                  if (onPreviewEffect) {
+                    onPreviewEffect(compId, effectName, options);
+                  }
+                }}
+                teamColors={{
+                  home: gameData?.homeTeam?.color || gameData?.home_team_color || '#c41e3a',
+                  away: gameData?.awayTeam?.color || gameData?.away_team_color || '#003f7f'
+                }}
+              />
+            </PropertySection>
           </>
         )}
 
@@ -1962,6 +1988,28 @@ function PropertyPanel({
                   Reverse Order (for timeouts)
                 </label>
               </div>
+            </PropertySection>
+
+            {/* SHADER EFFECTS SECTION */}
+            <PropertySection title="SHADER EFFECTS" sectionKey="effects">
+              <EffectPropertySection
+                effectConfig={component.props?.effect as EffectConfig | undefined}
+                componentId={component.id}
+                onConfigChange={(config) => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, effect: config }
+                  });
+                }}
+                onPreview={(compId, effectName, options) => {
+                  if (onPreviewEffect) {
+                    onPreviewEffect(compId, effectName, options);
+                  }
+                }}
+                teamColors={{
+                  home: gameData?.homeTeam?.color || gameData?.home_team_color || '#c41e3a',
+                  away: gameData?.awayTeam?.color || gameData?.away_team_color || '#003f7f'
+                }}
+              />
             </PropertySection>
           </>
         )}

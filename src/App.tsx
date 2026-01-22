@@ -5,6 +5,8 @@ import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
+import ShaderCreator from './components/ShaderCreator/ShaderCreator';
+import { useStandaloneEffectPreview, ShaderPresetsProvider } from './effects';
 import './App.css';
 
 // Panel resize constants
@@ -30,12 +32,16 @@ type UndoAction = {
   previousLayout: LayoutConfig;
 };
 
+// Tab types
+type AppTab = 'layout-builder' | 'shader-creator';
+
 // Memoized child components to prevent unnecessary re-renders
 const MemoizedCanvas = React.memo(Canvas);
 const MemoizedLayerPanel = React.memo(LayerPanel);
 const MemoizedPropertyPanel = React.memo(PropertyPanel);
 const MemoizedExportModal = React.memo(ExportModal);
 const MemoizedPresetModal = React.memo(PresetModal);
+const MemoizedShaderCreator = React.memo(ShaderCreator);
 
 // Fake 404 overlay component for obfuscation
 const Fake404Overlay = ({ onDismiss }: { onDismiss: () => void }) => {
@@ -71,6 +77,9 @@ function App() {
     setIsUnlocked(true);
     sessionStorage.setItem('layout-builder-unlocked', 'true');
   }, []);
+
+  // Tab navigation state
+  const [activeTab, setActiveTab] = useState<AppTab>('layout-builder');
 
   const [layout, setLayout] = useState<LayoutConfig>({
     name: 'basketball', // Layout type identifier used by TV app
@@ -118,6 +127,9 @@ function App() {
     home_team_color: '#c41e3a',
     away_team_color: '#003f7f'
   });
+
+  // Shader effect preview system
+  const { activeEffects, triggerEffect } = useStandaloneEffectPreview();
 
   // Remove expensive console.log - causes performance issues
 
@@ -749,144 +761,179 @@ function App() {
   }
 
   return (
+    <ShaderPresetsProvider>
     <div className="app">
       <header className="app-header">
-        {/* Left: Branding & Layout Type */}
+        {/* Left: Tab Navigation & Branding */}
         <div className="header-section header-branding">
-          <h1>Layout Builder</h1>
-          <div className="header-divider" />
-          <select
-            value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
-            onChange={(e) => {
-              if (e.target.value === '__custom__') {
-                if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
-                  setLayout(prev => ({ ...prev, name: '' }));
-                }
-              } else {
-                setLayout(prev => ({ ...prev, name: e.target.value }));
-              }
-            }}
-            className="header-select"
-            title="Select the layout type - this determines which layout template the TV app will use"
-          >
-            {LAYOUT_TYPES.map(type => (
-              <option key={type.value} value={type.value}>{type.label}</option>
-            ))}
-            <option value="__custom__">Custom...</option>
-          </select>
-          {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
-            <input
-              type="text"
-              value={layout.name}
-              onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
-              className="header-input"
-              placeholder="Custom type"
-              title="Enter a custom layout type identifier for the TV app"
-            />
+          <div className="tab-navigation">
+            <button
+              className={`tab-btn ${activeTab === 'layout-builder' ? 'active' : ''}`}
+              onClick={() => setActiveTab('layout-builder')}
+            >
+              Layout Builder
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'shader-creator' ? 'active' : ''}`}
+              onClick={() => setActiveTab('shader-creator')}
+            >
+              Shader Creator
+            </button>
+          </div>
+          {activeTab === 'layout-builder' && (
+            <>
+              <div className="header-divider" />
+              <select
+                value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
+                      setLayout(prev => ({ ...prev, name: '' }));
+                    }
+                  } else {
+                    setLayout(prev => ({ ...prev, name: e.target.value }));
+                  }
+                }}
+                className="header-select"
+                title="Select the layout type - this determines which layout template the TV app will use"
+              >
+                {LAYOUT_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+                <option value="__custom__">Custom...</option>
+              </select>
+              {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
+                <input
+                  type="text"
+                  value={layout.name}
+                  onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
+                  className="header-input"
+                  placeholder="Custom type"
+                  title="Enter a custom layout type identifier for the TV app"
+                />
+              )}
+            </>
           )}
         </div>
 
-        {/* Center: Edit Operations */}
-        <div className="header-section header-edit">
-          <button
-            onClick={undo}
-            disabled={undoHistory.length === 0}
-            className="header-btn header-btn-secondary"
-            title={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'Nothing to undo'}
-          >
-            Undo {undoHistory.length > 0 && <span className="btn-badge">{undoHistory.length}</span>}
-          </button>
-          <button
-            onClick={redo}
-            disabled={redoHistory.length === 0}
-            className="header-btn header-btn-secondary"
-            title={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'Nothing to redo'}
-          >
-            Redo {redoHistory.length > 0 && <span className="btn-badge">{redoHistory.length}</span>}
-          </button>
-        </div>
+        {/* Center: Edit Operations - only show for Layout Builder */}
+        {activeTab === 'layout-builder' && (
+          <div className="header-section header-edit">
+            <button
+              onClick={undo}
+              disabled={undoHistory.length === 0}
+              className="header-btn header-btn-secondary"
+              title={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'Nothing to undo'}
+            >
+              Undo {undoHistory.length > 0 && <span className="btn-badge">{undoHistory.length}</span>}
+            </button>
+            <button
+              onClick={redo}
+              disabled={redoHistory.length === 0}
+              className="header-btn header-btn-secondary"
+              title={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'Nothing to redo'}
+            >
+              Redo {redoHistory.length > 0 && <span className="btn-badge">{redoHistory.length}</span>}
+            </button>
+          </div>
+        )}
 
-        {/* Right: File & Export Operations */}
-        <div className="header-section header-file">
-          <button
-            onClick={quickSavePreset}
-            className="header-btn header-btn-primary"
-            title="Quick save current layout as a preset with the current name"
-          >
-            Save
-          </button>
-          <button
-            onClick={() => setShowPresetModal(true)}
-            className="header-btn header-btn-secondary"
-            title="Open preset manager to save, load, import, or export layout presets"
-          >
-            Presets
-          </button>
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="header-btn header-btn-accent"
-            title="Export current layout as JSON file for use in the TV app"
-          >
-            Export
-          </button>
-        </div>
+        {/* Right: File & Export Operations - only show for Layout Builder */}
+        {activeTab === 'layout-builder' && (
+          <div className="header-section header-file">
+            <button
+              onClick={quickSavePreset}
+              className="header-btn header-btn-primary"
+              title="Quick save current layout as a preset with the current name"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setShowPresetModal(true)}
+              className="header-btn header-btn-secondary"
+              title="Open preset manager to save, load, import, or export layout presets"
+            >
+              Presets
+            </button>
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="header-btn header-btn-accent"
+              title="Export current layout as JSON file for use in the TV app"
+            >
+              Export
+            </button>
+          </div>
+        )}
+
+        {/* Spacer for Shader Creator tab to keep header balanced */}
+        {activeTab === 'shader-creator' && (
+          <div className="header-section header-spacer" />
+        )}
 
       </header>
 
       <div className="app-body">
-        <div
-          className={`panel-container left-panel ${isResizingLeft ? 'resizing' : ''}`}
-          style={{ width: leftPanelWidth }}
-        >
-          <MemoizedLayerPanel
-            layout={layout}
-            selectedComponents={selectedComponents}
-            onSelectComponents={setSelectedComponents}
-            onUpdateComponent={updateComponent}
-            onAddComponent={addComponent}
-            onStartDragOperation={startDragOperation}
-            onEndDragOperation={endDragOperation}
-          />
-          <div
-            className="panel-resize-edge right-edge"
-            onMouseDown={handleLeftResizeStart}
-          />
-        </div>
+        {activeTab === 'layout-builder' ? (
+          <>
+            <div
+              className={`panel-container left-panel ${isResizingLeft ? 'resizing' : ''}`}
+              style={{ width: leftPanelWidth }}
+            >
+              <MemoizedLayerPanel
+                layout={layout}
+                selectedComponents={selectedComponents}
+                onSelectComponents={setSelectedComponents}
+                onUpdateComponent={updateComponent}
+                onAddComponent={addComponent}
+                onStartDragOperation={startDragOperation}
+                onEndDragOperation={endDragOperation}
+              />
+              <div
+                className="panel-resize-edge right-edge"
+                onMouseDown={handleLeftResizeStart}
+              />
+            </div>
 
-        <MemoizedCanvas
-          layout={layout}
-          selectedComponents={selectedComponents}
-          onSelectComponents={setSelectedComponents}
-          onUpdateComponent={updateComponent}
-          onDeleteComponent={deleteComponent}
-          onDuplicateComponent={duplicateComponent}
-          draggedComponent={draggedComponent}
-          setDraggedComponent={setDraggedComponent}
-          onAddComponent={addComponent}
-          onStartDragOperation={startDragOperation}
-          onEndDragOperation={endDragOperation}
-          onUpdateLayout={handleUpdateLayout}
-          gameData={gameData}
-        />
+            <MemoizedCanvas
+              layout={layout}
+              selectedComponents={selectedComponents}
+              onSelectComponents={setSelectedComponents}
+              onUpdateComponent={updateComponent}
+              onDeleteComponent={deleteComponent}
+              onDuplicateComponent={duplicateComponent}
+              draggedComponent={draggedComponent}
+              setDraggedComponent={setDraggedComponent}
+              onAddComponent={addComponent}
+              onStartDragOperation={startDragOperation}
+              onEndDragOperation={endDragOperation}
+              onUpdateLayout={handleUpdateLayout}
+              gameData={gameData}
+              activeEffects={activeEffects}
+            />
 
-        <div
-          className={`panel-container right-panel ${isResizingRight ? 'resizing' : ''}`}
-          style={{ width: rightPanelWidth }}
-        >
-          <div
-            className="panel-resize-edge left-edge"
-            onMouseDown={handleRightResizeStart}
-          />
-          <MemoizedPropertyPanel
-            layout={layout}
-            selectedComponents={selectedComponents}
-            onUpdateComponent={updateComponent}
-            onUpdateLayout={handleUpdateLayout}
-            gameData={gameData}
-            onUpdateGameData={setGameData}
-            panelWidth={rightPanelWidth}
-          />
-        </div>
+            <div
+              className={`panel-container right-panel ${isResizingRight ? 'resizing' : ''}`}
+              style={{ width: rightPanelWidth }}
+            >
+              <div
+                className="panel-resize-edge left-edge"
+                onMouseDown={handleRightResizeStart}
+              />
+              <MemoizedPropertyPanel
+                layout={layout}
+                selectedComponents={selectedComponents}
+                onUpdateComponent={updateComponent}
+                onUpdateLayout={handleUpdateLayout}
+                gameData={gameData}
+                onUpdateGameData={setGameData}
+                panelWidth={rightPanelWidth}
+                onPreviewEffect={triggerEffect}
+              />
+            </div>
+          </>
+        ) : (
+          <MemoizedShaderCreator />
+        )}
       </div>
 
       {showExportModal && (
@@ -904,6 +951,7 @@ function App() {
         />
       )}
     </div>
+    </ShaderPresetsProvider>
   );
 }
 

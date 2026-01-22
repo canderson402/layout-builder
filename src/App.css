@@ -101,6 +101,41 @@
   margin: 0 4px;
 }
 
+/* Tab navigation */
+.tab-navigation {
+  display: flex;
+  gap: 4px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+  color: #888;
+}
+
+.tab-btn:hover {
+  color: #ccc;
+  background: #2a2a2a;
+}
+
+.tab-btn.active {
+  background: #4CAF50;
+  color: white;
+}
+
+.header-spacer {
+  flex: 1;
+}
+
 .header-edit {
   flex-shrink: 0;
 }

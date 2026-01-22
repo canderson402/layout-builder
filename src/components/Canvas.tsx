@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import WebPreview from './WebPreview';
+import { ActiveEffect } from '../effects';
 import './Canvas.css';
 
 interface CanvasProps {
@@ -17,6 +18,7 @@ interface CanvasProps {
   onEndDragOperation: (description: string) => void;
   onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
   gameData?: any;
+  activeEffects?: Map<string, ActiveEffect>;
 }
 
 // Pixel-based grid settings
@@ -68,7 +70,8 @@ export default function Canvas({
   onStartDragOperation,
   onEndDragOperation,
   onUpdateLayout,
-  gameData
+  gameData,
+  activeEffects
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -3088,6 +3091,7 @@ export default function Canvas({
             selectedComponents={selectedComponents}
             onSelectComponents={onSelectComponents}
             gameData={gameData}
+            activeEffects={activeEffects}
           />
           {/* Creation rectangle overlay */}
           {isCreating && (

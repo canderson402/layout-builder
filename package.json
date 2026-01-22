@@ -21,6 +21,9 @@
     "deploy": "gh-pages -d dist --repo https://github.com/canderson402/layout-builder.git"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "html2canvas": "^1.4.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-native-web": "^0.19.9"
@@ -33,6 +36,11 @@
     "typescript": "^5.0.2",
     "vite": "^4.4.5"
   },
-  "keywords": ["scoreboard", "layout", "builder", "sports"],
+  "keywords": [
+    "scoreboard",
+    "layout",
+    "builder",
+    "sports"
+  ],
   "author": ""
 }

@@ -7,12 +7,14 @@ import ClockDisplay from '../shared/components/ClockDisplay';
 import FoulsDisplay from '../shared/components/FoulsDisplay';
 import CustomDataDisplay from '../shared/components/CustomDataDisplay';
 import DynamicList from '../shared/components/DynamicList';
+import { ShaderEffectCanvas, DistortionEffectCanvas, GenerativeEffectCanvas, ActiveEffect, isDistortionEffect, isGenerativeEffect } from '../effects';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
   selectedComponents: string[];
   onSelectComponents: (ids: string[]) => void;
   gameData?: any;
+  activeEffects?: Map<string, ActiveEffect>;
 }
 
 // Mock game data for preview
@@ -51,20 +53,92 @@ const getEffectiveLayer = (component: ComponentConfig, allComponents: ComponentC
   return effectiveLayer;
 };
 
-function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }: WebPreviewProps) {
+function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, activeEffects }: WebPreviewProps) {
   // Use provided gameData or fall back to mockGameData
   const effectiveGameData = gameData || mockGameData;
+
+  // Debug: log when activeEffects changes
+  React.useEffect(() => {
+    if (activeEffects && activeEffects.size > 0) {
+      console.log('[WebPreview] activeEffects received:', activeEffects.size, Array.from(activeEffects.keys()));
+    }
+  }, [activeEffects]);
+
+  // Helper to wrap content with optional shader effect
+  const wrapWithEffect = (
+    content: React.ReactNode,
+    activeEffect: ActiveEffect | undefined,
+    baseStyle: React.CSSProperties,
+    width: number,
+    height: number,
+    key: string,
+    maskImageUrl?: string
+  ) => {
+    if (activeEffect) {
+      // Use GenerativeEffectCanvas for generative effects (like liquid)
+      if (isGenerativeEffect(activeEffect.name) && activeEffect.presetParams) {
+        return (
+          <div key={key} style={baseStyle}>
+            <GenerativeEffectCanvas
+              active={true}
+              width={width}
+              height={height}
+              params={activeEffect.presetParams}
+              intensity={activeEffect.intensity}
+              maskImageUrl={maskImageUrl}
+            >
+              {content}
+            </GenerativeEffectCanvas>
+          </div>
+        );
+      }
+
+      // Use DistortionEffectCanvas for distortion effects (texture-based)
+      // Use ShaderEffectCanvas for overlay effects (additive)
+      const EffectComponent = isDistortionEffect(activeEffect.name)
+        ? DistortionEffectCanvas
+        : ShaderEffectCanvas;
+
+      return (
+        <div key={key} style={baseStyle}>
+          <EffectComponent
+            effect={activeEffect.name}
+            active={true}
+            progress={activeEffect.progress}
+            intensity={activeEffect.intensity}
+            primaryColor={activeEffect.primaryColor}
+            secondaryColor={activeEffect.secondaryColor}
+            center={activeEffect.center}
+            width={width}
+            height={height}
+          >
+            {content}
+          </EffectComponent>
+        </div>
+      );
+    }
+
+    return (
+      <div key={key} style={baseStyle}>
+        {content}
+      </div>
+    );
+  };
+
   const renderComponent = (config: ComponentConfig, index: number, effectiveLayer: number) => {
+    // Check if there's an active effect on this component
+    const activeEffect = activeEffects?.get(config.id);
+
     const { type, position, size, props, team, id } = config;
-    
+
     // Positions and sizes are already in pixels
     const left = position.x;
     const top = position.y;
     const width = size.width;
     const height = size.height;
-    
-    const baseStyle = {
-      position: 'absolute' as const,
+
+    const baseStyle: React.CSSProperties = {
+      position: 'absolute',
       left,
       top,
       width,
@@ -72,106 +146,110 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
       zIndex: effectiveLayer,  // Use effective layer that considers parent hierarchy
     };
 
-    const TouchableWrapper = ({ children }: { children: React.ReactNode }) => (
-      <div style={baseStyle}>
-        {children}
-      </div>
-    );
+    // Use component ID as key for stable identity
+    const componentKey = id;
 
     switch (type) {
       case 'dynamicList':
-        return (
-          <TouchableWrapper key={index}>
-            <DynamicList
-              totalCountPath={props.totalCountPath}
-              activeCountPath={props.activeCountPath}
-              totalCount={props.totalCount}
-              activeCount={props.activeCount}
-              activeBackgroundColor={props.activeBackgroundColor}
-              activeTextColor={props.activeTextColor}
-              activeBorderColor={props.activeBorderColor}
-              activeBorderWidth={props.activeBorderWidth}
-              inactiveBackgroundColor={props.inactiveBackgroundColor}
-              inactiveTextColor={props.inactiveTextColor}
-              inactiveBorderColor={props.inactiveBorderColor}
-              inactiveBorderWidth={props.inactiveBorderWidth}
-              direction={props.direction}
-              itemSpacing={props.itemSpacing}
-              borderRadius={props.borderRadius}
-              showNumbers={props.showNumbers}
-              reverseOrder={props.reverseOrder}
-              borderWidth={props.borderWidth}
-              borderColor={props.borderColor}
-              width={width}
-              height={height}
-              gameData={effectiveGameData}
-            />
-          </TouchableWrapper>
+        return wrapWithEffect(
+          <DynamicList
+            totalCountPath={props.totalCountPath}
+            activeCountPath={props.activeCountPath}
+            totalCount={props.totalCount}
+            activeCount={props.activeCount}
+            activeBackgroundColor={props.activeBackgroundColor}
+            activeTextColor={props.activeTextColor}
+            activeBorderColor={props.activeBorderColor}
+            activeBorderWidth={props.activeBorderWidth}
+            inactiveBackgroundColor={props.inactiveBackgroundColor}
+            inactiveTextColor={props.inactiveTextColor}
+            inactiveBorderColor={props.inactiveBorderColor}
+            inactiveBorderWidth={props.inactiveBorderWidth}
+            direction={props.direction}
+            itemSpacing={props.itemSpacing}
+            borderRadius={props.borderRadius}
+            showNumbers={props.showNumbers}
+            reverseOrder={props.reverseOrder}
+            borderWidth={props.borderWidth}
+            borderColor={props.borderColor}
+            width={width}
+            height={height}
+            gameData={effectiveGameData}
+          />,
+          activeEffect,
+          baseStyle,
+          width,
+          height,
+          componentKey
         );
 
       case 'custom':
-        return (
-          <TouchableWrapper key={index}>
-            <CustomDataDisplay
-              dataPath={props.dataPath || ''}
-              gameData={effectiveGameData}
-              label={props.label}
-              backgroundColor={props.backgroundColor}
-              textColor={props.textColor}
-              width={width}
-              height={height}
-              fontSize={props.fontSize || 24}
-              format={props.format || 'text'}
-              prefix={props.prefix || ''}
-              suffix={props.suffix || ''}
-              textAlign={props.textAlign}
-              paddingTop={props.paddingTop}
-              paddingRight={props.paddingRight}
-              paddingBottom={props.paddingBottom}
-              paddingLeft={props.paddingLeft}
-              imageSource={props.imageSource}
-              imagePath={props.imagePath}
-              imageUrl={props.imageUrl}
-              objectFit={props.objectFit || 'fill'}
-              imageAnchor={props.imageAnchor || 'center'}
-              imageTintColor={props.imageTintColor}
-              useImageTint={props.useImageTint}
-              useTeamColor={config.useTeamColor}
-              teamColorSide={config.teamColorSide}
-              canToggle={props.canToggle}
-              toggleState={props.toggleState}
-              state1Props={props.state1Props}
-              state2Props={props.state2Props}
-              autoToggle={props.autoToggle}
-              borderWidth={props.borderWidth}
-              borderColor={props.borderColor}
-              borderStyle={props.borderStyle}
-              borderTopWidth={props.borderTopWidth}
-              borderRightWidth={props.borderRightWidth}
-              borderBottomWidth={props.borderBottomWidth}
-              borderLeftWidth={props.borderLeftWidth}
-              borderTopLeftRadius={props.borderTopLeftRadius}
-              borderTopRightRadius={props.borderTopRightRadius}
-              borderBottomLeftRadius={props.borderBottomLeftRadius}
-              borderBottomRightRadius={props.borderBottomRightRadius}
-              autoFitText={props.autoFitText}
-              minFontScale={props.minFontScale}
-              previewText={props.previewText}
-              fontFamily={props.fontFamily}
-            />
-          </TouchableWrapper>
+        return wrapWithEffect(
+          <CustomDataDisplay
+            dataPath={props.dataPath || ''}
+            gameData={effectiveGameData}
+            label={props.label}
+            backgroundColor={props.backgroundColor}
+            textColor={props.textColor}
+            width={width}
+            height={height}
+            fontSize={props.fontSize || 24}
+            format={props.format || 'text'}
+            prefix={props.prefix || ''}
+            suffix={props.suffix || ''}
+            textAlign={props.textAlign}
+            paddingTop={props.paddingTop}
+            paddingRight={props.paddingRight}
+            paddingBottom={props.paddingBottom}
+            paddingLeft={props.paddingLeft}
+            imageSource={props.imageSource}
+            imagePath={props.imagePath}
+            imageUrl={props.imageUrl}
+            objectFit={props.objectFit || 'fill'}
+            imageAnchor={props.imageAnchor || 'center'}
+            imageTintColor={props.imageTintColor}
+            useImageTint={props.useImageTint}
+            useTeamColor={config.useTeamColor}
+            teamColorSide={config.teamColorSide}
+            canToggle={props.canToggle}
+            toggleState={props.toggleState}
+            state1Props={props.state1Props}
+            state2Props={props.state2Props}
+            autoToggle={props.autoToggle}
+            borderWidth={props.borderWidth}
+            borderColor={props.borderColor}
+            borderStyle={props.borderStyle}
+            borderTopWidth={props.borderTopWidth}
+            borderRightWidth={props.borderRightWidth}
+            borderBottomWidth={props.borderBottomWidth}
+            borderLeftWidth={props.borderLeftWidth}
+            borderTopLeftRadius={props.borderTopLeftRadius}
+            borderTopRightRadius={props.borderTopRightRadius}
+            borderBottomLeftRadius={props.borderBottomLeftRadius}
+            borderBottomRightRadius={props.borderBottomRightRadius}
+            autoFitText={props.autoFitText}
+            minFontScale={props.minFontScale}
+            previewText={props.previewText}
+            fontFamily={props.fontFamily}
+          />,
+          activeEffect,
+          baseStyle,
+          width,
+          height,
+          componentKey,
+          props.imageUrl || props.imagePath  // Pass image URL for alpha mask
         );
 
       default:
         // For other component types, show a placeholder
         const placeholderBgColor = props?.backgroundColor || 'rgba(100, 100, 100, 0.5)';
         const placeholderTextColor = props?.textColor || '#fff';
-        
-        return (
-          <div 
-            key={index} 
+
+        return wrapWithEffect(
+          <div
             style={{
-              ...baseStyle,
+              width: '100%',
+              height: '100%',
               backgroundColor: placeholderBgColor,
               justifyContent: 'center',
               alignItems: 'center',
@@ -182,7 +260,12 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
               {type}
               {team && ` (${team})`}
             </Text>
-          </div>
+          </div>,
+          activeEffect,
+          baseStyle,
+          width,
+          height,
+          componentKey
         );
     }
   };
