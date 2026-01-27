@@ -1092,11 +1092,34 @@ function PropertyPanel({
                 ) : (
                   <>
                     <div className="property-field">
-                      <ColorPicker
-                        label="Background Color"
-                        value={getStateValue('backgroundColor', '#000000')}
-                        onChange={(color) => updateStateProps('backgroundColor', color)}
-                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '12px', color: '#aaa' }}>Background Color</label>
+                        <label style={{ fontSize: '11px', color: '#888', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                          <input
+                            type="checkbox"
+                            checked={(() => {
+                              // Check raw props to see if backgroundColor is explicitly set
+                              const rawBg = component?.props?.backgroundColor;
+                              return rawBg === undefined || rawBg === null || rawBg === 'none';
+                            })()}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                updateStateProps('backgroundColor', 'none');
+                              } else {
+                                updateStateProps('backgroundColor', '#000000');
+                              }
+                            }}
+                            style={{ margin: 0 }}
+                          />
+                          None
+                        </label>
+                      </div>
+                      {component?.props?.backgroundColor && component.props.backgroundColor !== 'none' && (
+                        <ColorPicker
+                          value={component.props.backgroundColor}
+                          onChange={(color) => updateStateProps('backgroundColor', color)}
+                        />
+                      )}
                     </div>
                     <div className="property-field">
                       <ColorPicker

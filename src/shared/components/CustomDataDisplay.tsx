@@ -249,7 +249,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   // Extract all properties from the active props
   const {
     label,
-    backgroundColor = '#000000',
+    backgroundColor = 'transparent',
     textColor = '#ffffff',
     fontSize = 24,
     format = 'text',
