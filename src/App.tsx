@@ -884,6 +884,7 @@ function App() {
                 selectedComponents={selectedComponents}
                 onSelectComponents={setSelectedComponents}
                 onUpdateComponent={updateComponent}
+                onDeleteComponent={deleteComponent}
                 onAddComponent={addComponent}
                 onStartDragOperation={startDragOperation}
                 onEndDragOperation={endDragOperation}

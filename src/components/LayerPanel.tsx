@@ -20,6 +20,7 @@ interface LayerPanelProps {
   selectedComponents: string[];
   onSelectComponents: (ids: string[]) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
+  onDeleteComponent: (id: string) => void;
   onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string) => void;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
@@ -36,6 +37,7 @@ export default function LayerPanel({
   selectedComponents,
   onSelectComponents,
   onUpdateComponent,
+  onDeleteComponent,
   onAddComponent,
   onStartDragOperation,
   onEndDragOperation
@@ -129,10 +131,7 @@ export default function LayerPanel({
     const result: string[] = [];
 
     const addComponentAndChildren = (component: ComponentConfig) => {
-      // Only add non-group components to the selectable list
-      if (component.type !== 'group') {
-        result.push(component.id);
-      }
+      result.push(component.id);
       // Add children if not collapsed
       if (!collapsedParents.has(component.id)) {
         const children = childrenMap.get(component.id) || [];
@@ -419,11 +418,10 @@ export default function LayerPanel({
     return (
       <div key={component.id} className="layer-component-wrapper">
         <div
-          className={`layer-component ${!isLayer && selectedComponents.includes(component.id) ? 'selected' : ''} ${!isVisible ? 'hidden-component' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? `drag-over drag-over-${dropPosition}` : ''} ${isLayer ? 'is-layer' : ''}`}
+          className={`layer-component ${selectedComponents.includes(component.id) ? 'selected' : ''} ${!isVisible ? 'hidden-component' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? `drag-over drag-over-${dropPosition}` : ''} ${isLayer ? 'is-layer' : ''}`}
           style={{ paddingLeft: depth > 0 ? `${basePadding + indentPx}px` : undefined }}
           onClick={(e) => {
-            // Layers are not selectable - only components
-            if (editingNameId !== component.id && !isLayer) {
+            if (editingNameId !== component.id) {
               handleComponentClick(component.id, e.ctrlKey || e.metaKey, e.shiftKey);
             }
           }}
@@ -591,8 +589,47 @@ export default function LayerPanel({
     img.src = resolveImagePath(defaultImagePath);
   };
 
+  const getDescendantIds = (parentId: string): string[] => {
+    const children = childrenMap.get(parentId) || [];
+    const ids: string[] = [];
+    for (const child of children) {
+      ids.push(child.id);
+      ids.push(...getDescendantIds(child.id));
+    }
+    return ids;
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedComponents.length > 0) {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      e.preventDefault();
+
+      // Collect all IDs to delete, checking for layers with children
+      const idsToDelete: string[] = [];
+      for (const id of selectedComponents) {
+        const component = layout.components.find(c => c.id === id);
+        if (!component) continue;
+
+        const descendants = getDescendantIds(id);
+        if (component.type === 'group' && descendants.length > 0) {
+          const confirmed = window.confirm(
+            `"${getComponentDisplayName(component)}" contains ${descendants.length} component${descendants.length !== 1 ? 's' : ''}. Delete the layer and all its contents?`
+          );
+          if (!confirmed) continue;
+          idsToDelete.push(...descendants);
+        }
+        idsToDelete.push(id);
+      }
+
+      // Delete unique IDs
+      const uniqueIds = [...new Set(idsToDelete)];
+      uniqueIds.forEach(id => onDeleteComponent(id));
+    }
+  };
+
   return (
-    <div className="layer-panel">
+    <div className="layer-panel" tabIndex={-1} onKeyDown={handleKeyDown}>
       <div className="layer-header">
         <div className="layer-header-title">
           <h3>Layers</h3>

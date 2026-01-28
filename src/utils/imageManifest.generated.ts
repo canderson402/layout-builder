@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-01-20T19:39:13.572Z
+// Generated: 2026-01-28T17:14:31.176Z
 
 // Available sports (auto-detected from folder structure)
 export const AVAILABLE_SPORTS = ["Badminton","Baseball","Basketball","Clock","Countdown","Equestrian","Football","Generic","Hockey","InfoBoard","Lacrosse","Leaderboard","PlayerCard","PracticeTimer","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling","break"] as const;
@@ -107,7 +107,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     hasSubsections: true,
   },
   Universal: {
-    rootImages: [],
+    rootImages: ["Full - Universal.png"],
     subsections: {"Minimized":["univ-sb-minimized-frames.png"],"Scorebug":["univ-sb-scorebug-period.png"],"ScorebugLarge":["away-logo-color-mask.png","bb-sb-scorebug-lg-frames.png","home-logo-color-mask.png"],"Stadium":["univ-sb-stadium-frames.png"],"Standard":["bb-sb-standard-frames-universal.png"]},
     hasSubsections: true,
   },
@@ -148,7 +148,7 @@ export const KNOWN_IMAGES: Record<Sport, string[]> = {
   Sequence: ["banner-mockup.png","block-mockup.png","cinema-mockup.png","double-block-mockup.png","panel-mockup.png","scorebug-framed-mockup.png","scorebug-mockup.png","sequence-scorebug-frames.png"],
   Soccer: ["large-scorebug.png"],
   Tennis: [],
-  Universal: [],
+  Universal: ["Full - Universal.png"],
   Volleyball: [],
   Wrestling: [],
   break: ["16x9-cd-ind-timeout.png","16x9-cd-score-base.png","16x9-cd-time-base.png","16x9-cd-time-tab.png"],
