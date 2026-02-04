@@ -505,3 +505,47 @@
   color: #4CAF50;
   font-size: 11px;
 }
+
+/* Header actions container */
+.layer-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Copy/Paste buttons */
+.copy-btn,
+.paste-btn {
+  background: #4a4a4a;
+  color: #ccc;
+  border: 1px solid #555;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.copy-btn:hover,
+.paste-btn:hover {
+  background: #5a5a5a;
+  color: #fff;
+  border-color: #666;
+}
+
+.copy-btn:active,
+.paste-btn:active {
+  background: #3a3a3a;
+}
+
+.paste-btn {
+  background: #3d6fa5;
+  border-color: #4a80b8;
+}
+
+.paste-btn:hover {
+  background: #4a80b8;
+  border-color: #5a90c8;
+}

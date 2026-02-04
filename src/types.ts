@@ -36,11 +36,16 @@ export const LAYOUT_TYPES = [
   { value: 'volleyball', label: 'Volleyball' },
   { value: 'waterpolo', label: 'Water Polo' },
   { value: 'wrestling', label: 'Wrestling' },
+  { value: 'wrestlingTeamScore', label: 'Wrestling Team Score' },
   // Special layouts
   { value: 'universal', label: 'Universal' },
   { value: 'timeout', label: 'Timeout' },
   { value: 'activity-timer', label: 'Activity Timer' },
   { value: 'playlist', label: 'Playlist' },
+  { value: 'leaderboard', label: 'Leaderboard' },
+  { value: 'pre-game', label: 'Pre-Game' },
+  { value: 'halftime', label: 'Halftime' },
+  { value: 'period-break', label: 'Period Break' },
 ] as const;
 
 export type LayoutType = typeof LAYOUT_TYPES[number]['value'];

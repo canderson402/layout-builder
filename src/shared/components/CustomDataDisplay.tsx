@@ -63,6 +63,7 @@ interface CustomDataDisplayProps {
   format?: 'number' | 'text' | 'time' | 'boolean';
   prefix?: string;
   suffix?: string;
+  customText?: string; // Static text that overrides dataPath value
   textAlign?: 'left' | 'center' | 'right';
   paddingTop?: number;
   paddingRight?: number;
@@ -96,7 +97,15 @@ interface CustomDataDisplayProps {
   state1Props?: any;
   state2Props?: any;
   autoToggle?: boolean; // Whether to automatically use boolean data values for toggle state
+  visibilityPath?: string; // Separate path for controlling visibility (e.g., penaltySlots.home.slot0.active)
+  isVisible?: boolean; // Pre-computed visibility from WebPreview (for smooth opacity transitions)
   fontFamily?: string; // Font family for text display
+  // Multi-state support (for penalty boxes with 0-3 states)
+  multiStateEnabled?: boolean;
+  statePath?: string; // Path to get state value (e.g., penaltySlots.home.count)
+  stateImages?: Record<string, string>; // Images for each state { '0': 'path', '1': 'path', ... }
+  // Auto contrast - automatically switch text color between black/white based on background luminance
+  autoContrastText?: boolean;
 }
 
 // Mock data for preview in layout builder
@@ -124,6 +133,8 @@ const mockData = {
   gameClock: '5:42',
   activityClock: '1:30',
   timeoutClock: '0:30',
+  preGameClock: '15:00',
+  halftimeClock: '10:00',
   timerName: 'Timer Name',
   sessionName: 'Session Name',
   nextUp: 'Next Up',
@@ -135,8 +146,35 @@ const mockData = {
   isOvertime: false,
   home_sets_won: 0,
   away_sets_won: 0,
+  home_player_points: 0,
+  away_player_points: 0,
+  home_player_name: 'Green',
+  away_player_name: 'Red',
   home_team_color: '#c41e3a',
-  away_team_color: '#003f7f'
+  away_team_color: '#003f7f',
+  // Penalty slots for lacrosse/hockey - all slots have test data
+  penaltySlots: {
+    home: {
+      count: 3,
+      isState0: false,
+      isState1: false,
+      isState2: false,
+      isState3: true, // 3 penalties active
+      slot0: { jersey: 90, time: '0:45', active: true },
+      slot1: { jersey: 3, time: '1:30', active: true },
+      slot2: { jersey: 17, time: '2:15', active: true },
+    },
+    away: {
+      count: 3,
+      isState0: false,
+      isState1: false,
+      isState2: false,
+      isState3: true,
+      slot0: { jersey: 14, time: '1:00', active: true },
+      slot1: { jersey: 22, time: '1:45', active: true },
+      slot2: { jersey: 8, time: '2:30', active: true },
+    },
+  },
 };
 
 export default function CustomDataDisplay(props: CustomDataDisplayProps) {
@@ -150,10 +188,16 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     state1Props = {},
     state2Props = {},
     autoToggle = true,
+    visibilityPath,
+    isVisible: isVisibleProp,
     useTeamColor = false,
     teamColorSide = 'home',
     imageTintColor,
     useImageTint = false,
+    multiStateEnabled = false,
+    statePath,
+    stateImages,
+    autoContrastText = true,
     ...defaultProps
   } = props;
 
@@ -228,22 +272,49 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }, obj);
   };
 
-  // Determine the effective toggle state
-  const getEffectiveToggleState = () => {
+  // Check if component should be visible - use pre-computed isVisibleProp if provided,
+  // otherwise fall back to checking visibilityPath (for backwards compatibility)
+  const isVisible = isVisibleProp !== undefined ? isVisibleProp : (() => {
+    if (visibilityPath && effectiveGameData) {
+      const visibilityValue = getNestedData(effectiveGameData, visibilityPath);
+      if (typeof visibilityValue === 'boolean') {
+        return visibilityValue;
+      }
+    }
+    return true;
+  })();
+
+  // Compute effective toggle state - use data value when autoToggle is enabled
+  const effectiveToggleState = (() => {
     if (!canToggle) return false;
-
-    // In layout builder, always use manual toggle state for preview
+    if (autoToggle && dataPath) {
+      const rawValue = getNestedData(effectiveGameData, dataPath);
+      if (typeof rawValue === 'boolean') {
+        return rawValue;
+      }
+    }
     return toggleState;
-  };
+  })();
 
-  const effectiveToggleState = getEffectiveToggleState();
+  // Multi-state image support (for penalty boxes with 0-3 states)
+  const multiStateImagePath = (() => {
+    if (!multiStateEnabled || !statePath || !stateImages) return null;
+    const stateValue = getNestedData(effectiveGameData, statePath);
+    const stateKey = String(stateValue ?? 0);
+    return stateImages[stateKey] || stateImages['0'] || null;
+  })();
+
+  // If multi-state is enabled, override the imagePath in defaultProps
+  const propsWithMultiState = multiStateEnabled && multiStateImagePath
+    ? { ...defaultProps, imagePath: multiStateImagePath }
+    : defaultProps;
 
   // Merge the appropriate state props based on effective toggle state
   // Keep dataPath at base level, only merge visual/formatting properties
   const baseProps = { dataPath, useTeamColor, teamColorSide, imageTintColor, useImageTint };
   const visualProps = canToggle ?
-    (effectiveToggleState ? { ...defaultProps, ...state2Props } : { ...defaultProps, ...state1Props }) :
-    defaultProps;
+    (effectiveToggleState ? { ...propsWithMultiState, ...state2Props } : { ...propsWithMultiState, ...state1Props }) :
+    propsWithMultiState;
   const activeProps = { ...baseProps, ...visualProps };
   
   // Extract all properties from the active props
@@ -318,11 +389,63 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     formatColor(teamColorSide === 'home' ? effectiveGameData.home_team_color : effectiveGameData.away_team_color) :
     undefined;
 
+  // Calculate relative luminance of a color for auto-contrast
+  const getLuminance = (hexColor: string | undefined): number => {
+    if (!hexColor) return 0;
+    const hex = hexColor.replace('#', '');
+    if (hex.length !== 6 && hex.length !== 3) return 0;
+
+    let r: number, g: number, b: number;
+    if (hex.length === 3) {
+      r = parseInt(hex[0] + hex[0], 16) / 255;
+      g = parseInt(hex[1] + hex[1], 16) / 255;
+      b = parseInt(hex[2] + hex[2], 16) / 255;
+    } else {
+      r = parseInt(hex.substring(0, 2), 16) / 255;
+      g = parseInt(hex.substring(2, 4), 16) / 255;
+      b = parseInt(hex.substring(4, 6), 16) / 255;
+    }
+
+    // Apply gamma correction
+    r = r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+    g = g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
+    b = b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+
+  // Get contrasting text color based on background luminance
+  const getContrastTextColor = (bgColor: string | undefined): string => {
+    const luminance = getLuminance(bgColor);
+    return luminance > 0.4 ? '#000000' : '#ffffff';
+  };
+
   // Use team color if available, otherwise use the active background/text colors
   // Use black background for banners to help identify overlap
   const isBannerOrSequenceForBg = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';
   const effectiveBackgroundColor = isBannerOrSequenceForBg ? '#000000' : (teamColorForBackground || backgroundColor);
-  const effectiveTextColor = teamColorForBackground ? '#ffffff' : textColor;
+
+  // Get the color to use for auto-contrast calculation
+  let contrastSourceColor: string | undefined = effectiveBackgroundColor;
+
+  // Always use team color for contrast calculation when autoContrastText is enabled and teamColorSide is set
+  // This handles text placed over team-colored backgrounds from other components
+  if (autoContrastText && teamColorSide && effectiveGameData) {
+    const teamColorForContrast = teamColorSide === 'home'
+      ? effectiveGameData.home_team_color
+      : effectiveGameData.away_team_color;
+    contrastSourceColor = formatColor(teamColorForContrast) || contrastSourceColor;
+  }
+
+  // Determine text color - use auto contrast if enabled, otherwise use configured color
+  let effectiveTextColor: string;
+  if (autoContrastText && contrastSourceColor && contrastSourceColor !== 'transparent') {
+    effectiveTextColor = getContrastTextColor(contrastSourceColor);
+  } else if (teamColorForBackground) {
+    effectiveTextColor = '#ffffff';
+  } else {
+    effectiveTextColor = textColor;
+  }
 
   // Calculate effective tint color for image masking
   const effectiveTintColor = effectiveUseImageTint ?
@@ -356,9 +479,12 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   const formattedValue = formatValue(rawValue);
   // Don't show text for boolean toggles, just show the visual state
-  // Use preview text if provided (for testing auto-fit in layout builder), otherwise use formatted data
+  // Priority: customText > previewText > dataPath value
+  const customText = activeProps.customText;
   const previewText = activeProps.previewText;
-  const displayText = previewText
+  const displayText = customText
+    ? `${prefix}${customText}${suffix}`
+    : previewText
     ? `${prefix}${previewText}${suffix}`
     : ((!dataPath || dataPath.trim() === '' || dataPath === 'none' || isBooleanToggle) ? '' : `${prefix}${formattedValue}${suffix}`);
 
@@ -452,6 +578,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return Math.min(widthBasedFontSize, heightBasedFontSize, fontSize);
   }, [autoFitText, displayText, fontSize, containerWidth, containerHeight, paddingLeft, paddingRight, paddingTop, paddingBottom]);
 
+  // Use opacity for smooth visibility transitions instead of returning null
   return (
     <View style={{
       width: containerWidth,
@@ -479,6 +606,9 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       paddingBottom: imageSourceObj ? 0 : (paddingBottom + 4),
       paddingLeft: imageSourceObj ? 0 : (paddingLeft + 4),
       position: 'relative',
+      // Smooth opacity transition for visibility changes
+      opacity: isVisible ? 1 : 0,
+      transition: 'opacity 150ms ease-in-out',
       flexDirection: 'column'
     }}>
       {imageSourceObj ? (
@@ -594,7 +724,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
             y="50%"
             dy={getFontConfig(fontFamily).dyOffset}
             textAnchor={textAlign === 'left' ? 'start' : textAlign === 'right' ? 'end' : 'middle'}
-            fill={textColor}
+            fill={effectiveTextColor}
             fontSize={finalFontSize}
             fontWeight="bold"
             fontFamily={getFontConfig(fontFamily).web}
@@ -603,20 +733,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
             {displayText}
           </text>
         </svg>
-      )}
-      {/* Show toggle indicator if can toggle */}
-      {canToggle && (
-        <View style={{
-          position: 'absolute',
-          top: 2,
-          right: 2,
-          backgroundColor: effectiveToggleState ? '#4CAF50' : '#666',
-          borderRadius: 6,
-          width: 12,
-          height: 12,
-          borderWidth: 1,
-          borderColor: 'rgba(255, 255, 255, 0.5)'
-        }} />
       )}
     </View>
   );

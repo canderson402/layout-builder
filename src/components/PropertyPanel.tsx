@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import {
   loadAvailableImages,
@@ -305,39 +305,23 @@ function PropertyPanel({
   // Ref to maintain scroll position
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
-  
-  // Save scroll position before updates
-  const saveScrollPosition = () => {
+
+  // Save scroll position on every scroll
+  const handleScroll = useCallback(() => {
     if (scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollTop;
     }
-  };
-  
-  // Restore scroll position after updates
-  const restoreScrollPosition = () => {
-    if (scrollContainerRef.current) {
+  }, []);
+
+  // Restore scroll after render
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current && scrollPositionRef.current > 0) {
       scrollContainerRef.current.scrollTop = scrollPositionRef.current;
     }
-  };
-  
-  // Save scroll position on every scroll
-  const handleScroll = () => {
-    saveScrollPosition();
-  };
-  
-  // Restore scroll position when component changes or after prop updates
-  useEffect(() => {
-    restoreScrollPosition();
-  }, [componentId]); // Restore when component changes
+  });
 
-  // Also restore scroll position after component props change
-  useEffect(() => {
-    restoreScrollPosition();
-  }, [component]); // Restore when component props change
-
-  // Wrapped update function that preserves scroll position
+  // Simple update - just call onUpdateComponent
   const updateComponentWithScrollPreservation = useCallback((id: string, updates: Partial<ComponentConfig>) => {
-    saveScrollPosition();
     onUpdateComponent(id, updates);
   }, [onUpdateComponent]);
 
@@ -567,16 +551,411 @@ function PropertyPanel({
   };
 
 
+  // Helper to update penalty count for preview
+  const updatePenaltyCount = (team: 'home' | 'away', count: number) => {
+    if (!onUpdateGameData || !gameData) return;
+
+    const newGameData = { ...gameData };
+    const slots = newGameData.penaltySlots?.[team] || {};
+
+    newGameData.penaltySlots = {
+      ...newGameData.penaltySlots,
+      [team]: {
+        ...slots,
+        count,
+        isState0: count === 0,
+        isState1: count === 1,
+        isState2: count === 2,
+        isState3: count === 3,
+        slot0: { ...slots.slot0, active: count >= 1 },
+        slot1: { ...slots.slot1, active: count >= 2 },
+        slot2: { ...slots.slot2, active: count >= 3 },
+      }
+    };
+
+    onUpdateGameData(newGameData);
+  };
+
+  // Helper to update a nested game data value
+  const updateGameDataValue = (path: string, value: any) => {
+    if (!onUpdateGameData || !gameData) return;
+
+    const newGameData = { ...gameData };
+    const keys = path.split('.');
+    let current: any = newGameData;
+
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!current[keys[i]]) current[keys[i]] = {};
+      current[keys[i]] = { ...current[keys[i]] };
+      current = current[keys[i]];
+    }
+    current[keys[keys.length - 1]] = value;
+
+    onUpdateGameData(newGameData);
+  };
+
+  // Collapsible section component for game data
+  const GameDataSection = ({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    return (
+      <div style={{ marginBottom: '8px', border: '1px solid #444', borderRadius: '4px' }}>
+        <div
+          onClick={() => setIsOpen(!isOpen)}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: '#333',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderRadius: isOpen ? '4px 4px 0 0' : '4px'
+          }}
+        >
+          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{title}</span>
+          <span style={{ fontSize: '10px' }}>{isOpen ? '▼' : '▶'}</span>
+        </div>
+        {isOpen && (
+          <div style={{ padding: '12px', backgroundColor: '#2a2a2a' }}>
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Input field component for game data
+  const GameDataInput = ({ label, path, type = 'text', min, max }: { label: string; path: string; type?: string; min?: number; max?: number }) => {
+    const value = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '';
+    return (
+      <div style={{ marginBottom: '8px' }}>
+        <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>{label}</label>
+        <input
+          type={type}
+          value={value}
+          min={min}
+          max={max}
+          onChange={(e) => updateGameDataValue(path, type === 'number' ? Number(e.target.value) : e.target.value)}
+          style={{
+            width: '100%',
+            padding: '6px 8px',
+            backgroundColor: '#1a1a1a',
+            border: '1px solid #444',
+            borderRadius: '4px',
+            color: 'white',
+            fontSize: '12px'
+          }}
+        />
+      </div>
+    );
+  };
+
+  // Color picker for game data
+  const GameDataColor = ({ label, path }: { label: string; path: string }) => {
+    const value = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '#ffffff';
+    return (
+      <div style={{ marginBottom: '8px' }}>
+        <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>{label}</label>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => {
+              updateGameDataValue(path, e.target.value);
+              // Also update the flat color fields for compatibility
+              if (path === 'homeTeam.color') updateGameDataValue('home_team_color', e.target.value);
+              if (path === 'awayTeam.color') updateGameDataValue('away_team_color', e.target.value);
+            }}
+            style={{ width: '40px', height: '28px', padding: '0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          />
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => {
+              updateGameDataValue(path, e.target.value);
+              if (path === 'homeTeam.color') updateGameDataValue('home_team_color', e.target.value);
+              if (path === 'awayTeam.color') updateGameDataValue('away_team_color', e.target.value);
+            }}
+            style={{
+              flex: 1,
+              padding: '6px 8px',
+              backgroundColor: '#1a1a1a',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              color: 'white',
+              fontSize: '12px'
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // Boolean toggle for game data
+  const GameDataToggle = ({ label, path }: { label: string; path: string }) => {
+    const value = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? false;
+    return (
+      <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <label style={{ fontSize: '11px', color: '#888' }}>{label}</label>
+        <button
+          onClick={() => updateGameDataValue(path, !value)}
+          style={{
+            padding: '4px 12px',
+            backgroundColor: value ? '#4CAF50' : '#555',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '11px'
+          }}
+        >
+          {value ? 'ON' : 'OFF'}
+        </button>
+      </div>
+    );
+  };
+
   if (selectedComponents.length === 0) {
     return (
       <div className={`property-panel ${useTwoColumns ? 'two-columns' : ''}`}>
         <div className="property-header">
-          <h3>Properties</h3>
+          <h3>Preview Data</h3>
         </div>
-        <div className="property-content">
-          <div className="no-selection">
-            Select a component to edit its properties
+        <div className="property-content" style={{ padding: '12px' }}>
+          <div style={{ marginBottom: '12px', color: '#888', fontSize: '11px' }}>
+            Adjust game data to preview different states
           </div>
+
+          {/* Team Names & Colors */}
+          <GameDataSection title="Team Info" defaultOpen={true}>
+            <GameDataInput label="Home Team Name" path="homeTeam.name" />
+            <GameDataColor label="Home Team Color" path="homeTeam.color" />
+            <div style={{ height: '8px' }} />
+            <GameDataInput label="Away Team Name" path="awayTeam.name" />
+            <GameDataColor label="Away Team Color" path="awayTeam.color" />
+          </GameDataSection>
+
+          {/* Scores */}
+          <GameDataSection title="Scores" defaultOpen={true}>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Score" path="homeTeam.score" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Score" path="awayTeam.score" type="number" min={0} />
+              </div>
+            </div>
+          </GameDataSection>
+
+          {/* Clock & Period */}
+          <GameDataSection title="Clock & Period" defaultOpen={true}>
+            <GameDataInput label="Game Clock" path="gameClock" />
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Period" path="period" type="number" min={1} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Quarter" path="quarter" type="number" min={1} />
+              </div>
+            </div>
+            <GameDataInput label="Shot Clock" path="shotClock" type="number" min={0} />
+            <GameDataToggle label="Overtime" path="isOvertime" />
+          </GameDataSection>
+
+          {/* Fouls & Timeouts */}
+          <GameDataSection title="Fouls & Timeouts">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Fouls" path="homeTeam.fouls" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Fouls" path="awayTeam.fouls" type="number" min={0} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Timeouts" path="homeTeam.timeouts" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Timeouts" path="awayTeam.timeouts" type="number" min={0} />
+              </div>
+            </div>
+            <GameDataToggle label="Home Bonus" path="homeTeam.bonus" />
+            <GameDataToggle label="Home Double Bonus" path="homeTeam.doubleBonus" />
+            <GameDataToggle label="Away Bonus" path="awayTeam.bonus" />
+            <GameDataToggle label="Away Double Bonus" path="awayTeam.doubleBonus" />
+          </GameDataSection>
+
+          {/* Possession */}
+          <GameDataSection title="Possession">
+            <GameDataToggle label="Home Possession" path="homeTeam.possession" />
+            <GameDataToggle label="Away Possession" path="awayTeam.possession" />
+          </GameDataSection>
+
+          {/* Penalties (Lacrosse/Hockey) */}
+          <GameDataSection title="Penalties (Lacrosse/Hockey)">
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '11px', color: '#888' }}>
+                Home Penalty Count
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[0, 1, 2, 3].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => updatePenaltyCount('home', count)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      backgroundColor: gameData?.penaltySlots?.home?.count === count ? '#4CAF50' : '#333',
+                      color: 'white',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: gameData?.penaltySlots?.home?.count === count ? 'bold' : 'normal',
+                      fontSize: '14px'
+                    }}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '11px', color: '#888' }}>
+                Away Penalty Count
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[0, 1, 2, 3].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => updatePenaltyCount('away', count)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      backgroundColor: gameData?.penaltySlots?.away?.count === count ? '#4CAF50' : '#333',
+                      color: 'white',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: gameData?.penaltySlots?.away?.count === count ? 'bold' : 'normal',
+                      fontSize: '14px'
+                    }}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Penalty slot details */}
+            {(gameData?.penaltySlots?.home?.count > 0 || gameData?.penaltySlots?.away?.count > 0) && (
+              <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#1a1a1a', borderRadius: '4px', fontSize: '11px' }}>
+                <div style={{ color: '#888', marginBottom: '8px' }}>Penalty Slot Data:</div>
+                {gameData?.penaltySlots?.home?.count > 0 && (
+                  <div style={{ marginBottom: '8px' }}>
+                    <div style={{ color: '#aaa', marginBottom: '4px' }}>Home:</div>
+                    {[0, 1, 2].slice(0, gameData?.penaltySlots?.home?.count).map((i) => (
+                      <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                        <input
+                          placeholder={`#${i + 1} Jersey`}
+                          value={gameData?.penaltySlots?.home?.[`slot${i}`]?.jersey || ''}
+                          onChange={(e) => updateGameDataValue(`penaltySlots.home.slot${i}.jersey`, e.target.value)}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="Time"
+                          value={gameData?.penaltySlots?.home?.[`slot${i}`]?.time || ''}
+                          onChange={(e) => updateGameDataValue(`penaltySlots.home.slot${i}.time`, e.target.value)}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {gameData?.penaltySlots?.away?.count > 0 && (
+                  <div>
+                    <div style={{ color: '#aaa', marginBottom: '4px' }}>Away:</div>
+                    {[0, 1, 2].slice(0, gameData?.penaltySlots?.away?.count).map((i) => (
+                      <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                        <input
+                          placeholder={`#${i + 1} Jersey`}
+                          value={gameData?.penaltySlots?.away?.[`slot${i}`]?.jersey || ''}
+                          onChange={(e) => updateGameDataValue(`penaltySlots.away.slot${i}.jersey`, e.target.value)}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="Time"
+                          value={gameData?.penaltySlots?.away?.[`slot${i}`]?.time || ''}
+                          onChange={(e) => updateGameDataValue(`penaltySlots.away.slot${i}.time`, e.target.value)}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </GameDataSection>
+
+          {/* Other Clocks */}
+          <GameDataSection title="Other Clocks">
+            <GameDataInput label="Activity Clock" path="activityClock" />
+            <GameDataInput label="Timeout Clock" path="timeoutClock" />
+            <GameDataInput label="Timer Name" path="timerName" />
+            <GameDataInput label="Session Name" path="sessionName" />
+            <GameDataInput label="Next Up" path="nextUp" />
+          </GameDataSection>
+
+          {/* Sets (Volleyball/Tennis) */}
+          <GameDataSection title="Sets (Volleyball/Tennis)">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Sets Won" path="home_sets_won" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Sets Won" path="away_sets_won" type="number" min={0} />
+              </div>
+            </div>
+            <GameDataInput label="Current Set" path="set" type="number" min={1} />
+          </GameDataSection>
+
+          {/* Player Points (Wrestling/Individual) */}
+          <GameDataSection title="Player Points (Wrestling)">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Player Name" path="home_player_name" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Player Name" path="away_player_name" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Player Points" path="home_player_points" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Player Points" path="away_player_points" type="number" min={0} />
+              </div>
+            </div>
+          </GameDataSection>
+
+          {/* Shots & Saves (Lacrosse/Hockey) */}
+          <GameDataSection title="Shots & Saves (Lacrosse/Hockey)">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Shots" path="home_shots" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Shots" path="away_shots" type="number" min={0} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Saves" path="home_saves" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Saves" path="away_saves" type="number" min={0} />
+              </div>
+            </div>
+          </GameDataSection>
         </div>
       </div>
     );
@@ -767,8 +1146,11 @@ function PropertyPanel({
               <input
                 type="number"
                 defaultValue={component ? Math.round(component.position.x) : 0}
-                onChange={(e) => handleNumberChange('x', e.target.value)}
-                onBlur={(e) => handleNumberBlur('x', e.target.value)}
+                onBlur={(e) => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    position: { ...component.position, x: parseInt(e.target.value) || 0 }
+                  });
+                }}
               />
             </div>
             <div className="property-field">
@@ -776,8 +1158,11 @@ function PropertyPanel({
               <input
                 type="number"
                 defaultValue={component ? Math.round(component.position.y) : 0}
-                onChange={(e) => handleNumberChange('y', e.target.value)}
-                onBlur={(e) => handleNumberBlur('y', e.target.value)}
+                onBlur={(e) => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    position: { ...component.position, y: parseInt(e.target.value) || 0 }
+                  });
+                }}
               />
             </div>
             <div className="property-field">
@@ -785,8 +1170,11 @@ function PropertyPanel({
               <input
                 type="number"
                 defaultValue={component ? Math.round(component.size.width) : 0}
-                onChange={(e) => handleNumberChange('width', e.target.value)}
-                onBlur={(e) => handleNumberBlur('width', e.target.value)}
+                onBlur={(e) => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    size: { ...component.size, width: parseInt(e.target.value) || 0 }
+                  });
+                }}
               />
             </div>
             <div className="property-field">
@@ -794,8 +1182,11 @@ function PropertyPanel({
               <input
                 type="number"
                 defaultValue={component ? Math.round(component.size.height) : 0}
-                onChange={(e) => handleNumberChange('height', e.target.value)}
-                onBlur={(e) => handleNumberBlur('height', e.target.value)}
+                onBlur={(e) => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    size: { ...component.size, height: parseInt(e.target.value) || 0 }
+                  });
+                }}
               />
             </div>
           </div>
@@ -931,10 +1322,21 @@ function PropertyPanel({
             </div>
           )}
 
+          <div className="property-field">
+            <label>
+              <input
+                type="checkbox"
+                checked={getStateValue('autoContrastText', false)}
+                onChange={(e) => updateStateProps('autoContrastText', e.target.checked)}
+              />
+              Auto-Contrast Text (black/white based on background)
+            </label>
+          </div>
+
           {isDragging ? (
-            <StaticColorSwatch 
-              label="Text Color" 
-              color={component?.props?.textColor || '#ffffff'} 
+            <StaticColorSwatch
+              label="Text Color"
+              color={component?.props?.textColor || '#ffffff'}
             />
           ) : (
             <div className="property-field">
@@ -971,28 +1373,40 @@ function PropertyPanel({
           )}
 
           {component.type === 'custom' && (
-            <div className="property-grid">
+            <>
               <div className="property-field">
-                <label>Prefix</label>
+                <label>Custom Text</label>
                 <input
                   type="text"
-                  defaultValue={getStateValue('prefix', '')}
-                  placeholder="e.g., '$', '#'"
-                  onChange={(e) => handleStatePropsChange('prefix', e.target.value)}
-                  onBlur={(e) => handleStatePropsBlur('prefix', e.target.value)}
+                  defaultValue={getStateValue('customText', '')}
+                  placeholder="Static text (overrides data path)"
+                  onChange={(e) => handleStatePropsChange('customText', e.target.value)}
+                  onBlur={(e) => handleStatePropsBlur('customText', e.target.value)}
                 />
               </div>
-              <div className="property-field">
-                <label>Suffix</label>
-                <input
-                  type="text"
-                  defaultValue={getStateValue('suffix', '')}
-                  placeholder="e.g., 'pts', '%'"
-                  onChange={(e) => handleStatePropsChange('suffix', e.target.value)}
-                  onBlur={(e) => handleStatePropsBlur('suffix', e.target.value)}
-                />
+              <div className="property-grid">
+                <div className="property-field">
+                  <label>Prefix</label>
+                  <input
+                    type="text"
+                    defaultValue={getStateValue('prefix', '')}
+                    placeholder="e.g., '$', '#'"
+                    onChange={(e) => handleStatePropsChange('prefix', e.target.value)}
+                    onBlur={(e) => handleStatePropsBlur('prefix', e.target.value)}
+                  />
+                </div>
+                <div className="property-field">
+                  <label>Suffix</label>
+                  <input
+                    type="text"
+                    defaultValue={getStateValue('suffix', '')}
+                    placeholder="e.g., 'pts', '%'"
+                    onChange={(e) => handleStatePropsChange('suffix', e.target.value)}
+                    onBlur={(e) => handleStatePropsBlur('suffix', e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           {component.props?.maxTimeouts !== undefined && (
@@ -1042,6 +1456,8 @@ function PropertyPanel({
                     <option value="gameClock">Game Clock</option>
                     <option value="timeoutClock">Timeout Clock</option>
                     <option value="activityClock">Activity Clock</option>
+                    <option value="preGameClock">Pre-Game Clock</option>
+                    <option value="halftimeClock">Halftime Clock</option>
                     <option value="period">Period/Quarter</option>
                     <option value="isOvertime">Overtime</option>
                     <option value="home_sets_won">Home Sets Won</option>
@@ -1069,6 +1485,42 @@ function PropertyPanel({
                     <option value="awayTeam.bonus">Away Bonus</option>
                     <option value="awayTeam.doubleBonus">Away Double Bonus</option>
                     <option value="awayTeam.possession">Away Possession</option>
+                  </optgroup>
+                  <optgroup label="Wrestling">
+                    <option value="home_player_points">Home Player Score</option>
+                    <option value="away_player_points">Away Player Score</option>
+                    <option value="home_player_name">Home Player Name</option>
+                    <option value="away_player_name">Away Player Name</option>
+                  </optgroup>
+                  <optgroup label="Shots & Saves (Lacrosse/Hockey)">
+                    <option value="home_shots">Home Shots</option>
+                    <option value="away_shots">Away Shots</option>
+                    <option value="home_saves">Home Saves</option>
+                    <option value="away_saves">Away Saves</option>
+                  </optgroup>
+                  <optgroup label="Home Penalties (Lacrosse/Hockey)">
+                    <option value="penaltySlots.home.count">Home Penalty Count</option>
+                    <option value="penaltySlots.home.slot0.jersey">Home Penalty 1 - Jersey</option>
+                    <option value="penaltySlots.home.slot0.time">Home Penalty 1 - Time</option>
+                    <option value="penaltySlots.home.slot0.active">Home Penalty 1 - Active</option>
+                    <option value="penaltySlots.home.slot1.jersey">Home Penalty 2 - Jersey</option>
+                    <option value="penaltySlots.home.slot1.time">Home Penalty 2 - Time</option>
+                    <option value="penaltySlots.home.slot1.active">Home Penalty 2 - Active</option>
+                    <option value="penaltySlots.home.slot2.jersey">Home Penalty 3 - Jersey</option>
+                    <option value="penaltySlots.home.slot2.time">Home Penalty 3 - Time</option>
+                    <option value="penaltySlots.home.slot2.active">Home Penalty 3 - Active</option>
+                  </optgroup>
+                  <optgroup label="Away Penalties (Lacrosse/Hockey)">
+                    <option value="penaltySlots.away.count">Away Penalty Count</option>
+                    <option value="penaltySlots.away.slot0.jersey">Away Penalty 1 - Jersey</option>
+                    <option value="penaltySlots.away.slot0.time">Away Penalty 1 - Time</option>
+                    <option value="penaltySlots.away.slot0.active">Away Penalty 1 - Active</option>
+                    <option value="penaltySlots.away.slot1.jersey">Away Penalty 2 - Jersey</option>
+                    <option value="penaltySlots.away.slot1.time">Away Penalty 2 - Time</option>
+                    <option value="penaltySlots.away.slot1.active">Away Penalty 2 - Active</option>
+                    <option value="penaltySlots.away.slot2.jersey">Away Penalty 3 - Jersey</option>
+                    <option value="penaltySlots.away.slot2.time">Away Penalty 3 - Time</option>
+                    <option value="penaltySlots.away.slot2.active">Away Penalty 3 - Active</option>
                   </optgroup>
                   <optgroup label="Sponsorship">
                     <option value="user_sequences.banner">Banner Ads</option>
@@ -1132,28 +1584,6 @@ function PropertyPanel({
                 )}
               </div>
 
-              {/* Toggle Controls */}
-              <div className="property-field">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={component?.props?.canToggle || false}
-                    onChange={(e) => component && updateComponentWithScrollPreservation(component.id, {
-                      props: {
-                        ...component.props,
-                        canToggle: e.target.checked,
-                        toggleState: false, // Initialize toggle state to off
-                        // Initialize state properties if not present
-                        state1Props: component.props?.state1Props || {},
-                        state2Props: component.props?.state2Props || {}
-                      }
-                    })}
-                  />
-                  Can Toggle
-                </label>
-              </div>
-
-
               {/* Team Color Controls */}
               <div className="property-field">
                 <label>
@@ -1183,6 +1613,55 @@ function PropertyPanel({
                   </select>
                 </div>
               )}
+            </PropertySection>
+
+            {/* VISIBILITY SECTION - for controlling when component is shown */}
+            <PropertySection title="VISIBILITY" sectionKey="visibility">
+              <div className="property-field">
+                <label>Visibility Path</label>
+                <small style={{ color: '#888', display: 'block', marginBottom: '4px' }}>
+                  Control when this component is shown based on game data
+                </small>
+                <select
+                  value={component.props?.visibilityPath || ''}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: {
+                      ...component.props,
+                      visibilityPath: e.target.value || undefined
+                    }
+                  })}
+                >
+                  <option value="">Always Visible</option>
+                  <optgroup label="Home Penalty State">
+                    <option value="penaltySlots.home.isState0">Home: 0 Penalties</option>
+                    <option value="penaltySlots.home.isState1">Home: 1 Penalty</option>
+                    <option value="penaltySlots.home.isState2">Home: 2 Penalties</option>
+                    <option value="penaltySlots.home.isState3">Home: 3 Penalties</option>
+                  </optgroup>
+                  <optgroup label="Away Penalty State">
+                    <option value="penaltySlots.away.isState0">Away: 0 Penalties</option>
+                    <option value="penaltySlots.away.isState1">Away: 1 Penalty</option>
+                    <option value="penaltySlots.away.isState2">Away: 2 Penalties</option>
+                    <option value="penaltySlots.away.isState3">Away: 3 Penalties</option>
+                  </optgroup>
+                  <optgroup label="Home Penalty Slot Active">
+                    <option value="penaltySlots.home.slot0.active">Home Penalty 1 Active</option>
+                    <option value="penaltySlots.home.slot1.active">Home Penalty 2 Active</option>
+                    <option value="penaltySlots.home.slot2.active">Home Penalty 3 Active</option>
+                  </optgroup>
+                  <optgroup label="Away Penalty Slot Active">
+                    <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
+                    <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
+                    <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
+                  </optgroup>
+                  <optgroup label="Team State">
+                    <option value="homeTeam.possession">Home Has Possession</option>
+                    <option value="awayTeam.possession">Away Has Possession</option>
+                    <option value="homeTeam.bonus">Home In Bonus</option>
+                    <option value="awayTeam.bonus">Away In Bonus</option>
+                  </optgroup>
+                </select>
+              </div>
             </PropertySection>
 
             {/* IMAGE SECTION */}
@@ -2033,6 +2512,56 @@ function PropertyPanel({
                   away: gameData?.awayTeam?.color || gameData?.away_team_color || '#003f7f'
                 }}
               />
+            </PropertySection>
+          </>
+        )}
+
+        {/* GROUP VISIBILITY SETTINGS */}
+        {component.type === 'group' && (
+          <>
+            <PropertySection title="GROUP VISIBILITY" sectionKey="group-visibility">
+              <div className="property-field">
+                <label>Visibility Path</label>
+                <small style={{ color: '#888', display: 'block', marginBottom: '4px' }}>
+                  Show/hide all children based on a data value
+                </small>
+                <select
+                  value={component.props?.visibilityPath || ''}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, visibilityPath: e.target.value || undefined }
+                  })}
+                >
+                  <option value="">Always Visible</option>
+                  <optgroup label="Home Penalty State">
+                    <option value="penaltySlots.home.isState0">Home: 0 Penalties</option>
+                    <option value="penaltySlots.home.isState1">Home: 1 Penalty</option>
+                    <option value="penaltySlots.home.isState2">Home: 2 Penalties</option>
+                    <option value="penaltySlots.home.isState3">Home: 3 Penalties</option>
+                  </optgroup>
+                  <optgroup label="Away Penalty State">
+                    <option value="penaltySlots.away.isState0">Away: 0 Penalties</option>
+                    <option value="penaltySlots.away.isState1">Away: 1 Penalty</option>
+                    <option value="penaltySlots.away.isState2">Away: 2 Penalties</option>
+                    <option value="penaltySlots.away.isState3">Away: 3 Penalties</option>
+                  </optgroup>
+                  <optgroup label="Home Penalty Slot Active">
+                    <option value="penaltySlots.home.slot0.active">Home Penalty 1 Active</option>
+                    <option value="penaltySlots.home.slot1.active">Home Penalty 2 Active</option>
+                    <option value="penaltySlots.home.slot2.active">Home Penalty 3 Active</option>
+                  </optgroup>
+                  <optgroup label="Away Penalty Slot Active">
+                    <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
+                    <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
+                    <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
+                  </optgroup>
+                  <optgroup label="Team State">
+                    <option value="homeTeam.possession">Home Has Possession</option>
+                    <option value="awayTeam.possession">Away Has Possession</option>
+                    <option value="homeTeam.bonus">Home In Bonus</option>
+                    <option value="awayTeam.bonus">Away In Bonus</option>
+                  </optgroup>
+                </select>
+              </div>
             </PropertySection>
           </>
         )}

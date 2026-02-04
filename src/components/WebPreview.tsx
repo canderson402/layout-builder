@@ -33,6 +33,36 @@ const mockGameData = {
   },
   gameClock: '5:42.3',
   period: 4,
+  // Mock penalty slots for lacrosse/hockey preview - all slots have test data
+  penaltySlots: {
+    home: {
+      count: 3,
+      isState0: false,
+      isState1: false,
+      isState2: false,
+      isState3: true,
+      slot0: { jersey: 90, time: '0:45', active: true },
+      slot1: { jersey: 3, time: '1:30', active: true },
+      slot2: { jersey: 17, time: '2:15', active: true },
+    },
+    away: {
+      count: 3,
+      isState0: false,
+      isState1: false,
+      isState2: false,
+      isState3: true,
+      slot0: { jersey: 14, time: '1:00', active: true },
+      slot1: { jersey: 22, time: '1:45', active: true },
+      slot2: { jersey: 8, time: '2:30', active: true },
+    },
+  },
+};
+
+// Helper function to get nested data using dot notation
+const getNestedData = (obj: any, path: string): any => {
+  return path.split('.').reduce((current, key) => {
+    return current && current[key] !== undefined ? current[key] : null;
+  }, obj);
 };
 
 // Calculate effective z-index based on hierarchy (parent layers affect children)
@@ -51,6 +81,46 @@ const getEffectiveLayer = (component: ComponentConfig, allComponents: ComponentC
   }
 
   return effectiveLayer;
+};
+
+// Check if a component's ancestors are visible (for hard visibility cutoff)
+const areAncestorsVisible = (
+  component: ComponentConfig,
+  allComponents: ComponentConfig[],
+  gameData: any
+): boolean => {
+  // Check all ancestors' visibilityPaths (for groups that control child visibility)
+  let parentId = component.parentId;
+  while (parentId) {
+    const parent = allComponents.find(c => c.id === parentId);
+    if (!parent) break;
+
+    // If parent has visibilityPath set, check if it evaluates to true
+    if (parent.props?.visibilityPath) {
+      const visibilityValue = getNestedData(gameData, parent.props.visibilityPath);
+      if (typeof visibilityValue === 'boolean' && !visibilityValue) {
+        return false;
+      }
+    }
+
+    parentId = parent.parentId;
+  }
+
+  return true;
+};
+
+// Get the visibility value for a component's own visibilityPath (for smooth opacity transitions)
+const getComponentVisibility = (
+  component: ComponentConfig,
+  gameData: any
+): boolean => {
+  if (component.props?.visibilityPath) {
+    const visibilityValue = getNestedData(gameData, component.props.visibilityPath);
+    if (typeof visibilityValue === 'boolean') {
+      return visibilityValue;
+    }
+  }
+  return true;
 };
 
 function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, activeEffects }: WebPreviewProps) {
@@ -125,7 +195,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, 
     );
   };
 
-  const renderComponent = (config: ComponentConfig, index: number, effectiveLayer: number) => {
+  const renderComponent = (config: ComponentConfig, index: number, effectiveLayer: number, isVisible: boolean = true) => {
     // Check if there's an active effect on this component
     const activeEffect = activeEffects?.get(config.id);
 
@@ -197,6 +267,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, 
             format={props.format || 'text'}
             prefix={props.prefix || ''}
             suffix={props.suffix || ''}
+            customText={props.customText}
             textAlign={props.textAlign}
             paddingTop={props.paddingTop}
             paddingRight={props.paddingRight}
@@ -216,6 +287,10 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, 
             state1Props={props.state1Props}
             state2Props={props.state2Props}
             autoToggle={props.autoToggle}
+            visibilityPath={props.visibilityPath}
+            multiStateEnabled={props.multiStateEnabled}
+            statePath={props.statePath}
+            stateImages={props.stateImages}
             borderWidth={props.borderWidth}
             borderColor={props.borderColor}
             borderStyle={props.borderStyle}
@@ -231,6 +306,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, 
             minFontScale={props.minFontScale}
             previewText={props.previewText}
             fontFamily={props.fontFamily}
+            autoContrastText={props.autoContrastText}
+            isVisible={isVisible}
           />,
           activeEffect,
           baseStyle,
@@ -285,7 +362,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, 
           if (component.visible === false) return false;
           // Don't render layers/groups - they're organizational only
           if (component.type === 'group') return false;
-          // Don't show if any ancestor is hidden
+          // Don't show if any ancestor is hidden (including static visibility)
           let parentId = component.parentId;
           while (parentId) {
             const parent = (layout.components || []).find(c => c.id === parentId);
@@ -293,14 +370,20 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, 
             if (parent.visible === false) return false;
             parentId = parent.parentId;
           }
+          // Don't show if ancestor has visibilityPath that evaluates to false
+          // (component's own visibilityPath is handled via opacity for smooth transitions)
+          if (!areAncestorsVisible(component, layout.components || [], effectiveGameData)) {
+            return false;
+          }
           return true;
         })
         .map(component => ({
           component,
-          effectiveLayer: getEffectiveLayer(component, layout.components || [])
+          effectiveLayer: getEffectiveLayer(component, layout.components || []),
+          isVisible: getComponentVisibility(component, effectiveGameData)
         }))
         .sort((a, b) => a.effectiveLayer - b.effectiveLayer)
-        .map(({ component, effectiveLayer }, index) => renderComponent(component, index, effectiveLayer))}
+        .map(({ component, effectiveLayer, isVisible }, index) => renderComponent(component, index, effectiveLayer, isVisible))}
     </View>
   );
 }

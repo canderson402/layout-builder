@@ -11,6 +11,7 @@ interface CanvasProps {
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onDeleteComponent: (id: string) => void;
   onDuplicateComponent: (id: string) => void;
+  onCopyDragComponents?: (ids: string[]) => Map<string, string>; // For Command+drag to copy
   draggedComponent: ComponentConfig | null;
   setDraggedComponent: (component: ComponentConfig | null) => void;
   onAddComponent: (type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => void;
@@ -64,6 +65,7 @@ export default function Canvas({
   onUpdateComponent,
   onDeleteComponent,
   onDuplicateComponent,
+  onCopyDragComponents,
   draggedComponent,
   setDraggedComponent,
   onAddComponent,
@@ -86,6 +88,7 @@ export default function Canvas({
   const [resizeHandle, setResizeHandle] = useState<string>('');
   const [showGrid, setShowGrid] = useState(true);
   const [showHalfwayLines, setShowHalfwayLines] = useState(false);
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(true); // Toggle for green selection outlines (default ON)
   const [gridSizeIndex, setGridSizeIndex] = useState(2); // Default to 20px grid (index 2)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [zoomLevel, setZoomLevel] = useState(60); // Zoom level from 10% to 200%
@@ -95,7 +98,9 @@ export default function Canvas({
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [hasDraggedFarEnough, setHasDraggedFarEnough] = useState(false);
   const [initialComponentPositions, setInitialComponentPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
-  
+  const [dragAxisConstraint, setDragAxisConstraint] = useState<'x' | 'y' | null>(null); // Axis-constrained dragging
+  const isCopyDragRef = useRef(false); // Track if Command was held at drag start for copy-drag
+
   // Viewport panning state
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -873,16 +878,22 @@ export default function Canvas({
     }
     e.stopPropagation();
     
-    const isCtrlClick = e.ctrlKey || e.metaKey;
+    // On Mac: Cmd (metaKey) = copy-drag, Ctrl = multi-select toggle
+    // On Windows/Linux: Ctrl = multi-select toggle (no copy-drag with Ctrl)
+    const isCopyDrag = e.metaKey && !e.ctrlKey;
+    const isCtrlClick = e.ctrlKey && !e.metaKey; // Only Ctrl (not Cmd) for multi-select
     const isAlreadySelected = selectedComponents.includes(component.id);
-    
+
     const rect = canvasRef.current!.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) / scale;
     const canvasY = (e.clientY - rect.top) / scale;
-    
+
     // Store initial mouse position for drag detection
     setDragStartPos({ x: canvasX, y: canvasY });
     setHasDraggedFarEnough(false);
+
+    // Track if Command/Meta is held for potential copy-drag
+    isCopyDragRef.current = isCopyDrag;
     
     // Find all components at this click position
     const componentsAtPosition = (layout.components || [])
@@ -916,6 +927,47 @@ export default function Canvas({
       setLastSelectedId(currentComponent.id);
     }
   }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing, isScaling, confirmScaleMode, cancelScaleMode]);
+
+  // Handler for axis-constrained drag (from arrow handles)
+  const handleAxisDragMouseDown = useCallback((e: React.MouseEvent, axis: 'x' | 'y', component: ComponentConfig) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const canvasX = (e.clientX - rect.left) / scale;
+    const canvasY = (e.clientY - rect.top) / scale;
+
+    // Set the axis constraint
+    setDragAxisConstraint(axis);
+
+    // Start dragging immediately
+    onStartDragOperation();
+    setIsDragging(true);
+    setHasDraggedFarEnough(true);
+    setDraggedComponent(component);
+    setDragOffset({
+      x: canvasX - component.position.x,
+      y: canvasY - component.position.y
+    });
+
+    // Store initial positions
+    const positions = new Map<string, { x: number, y: number }>();
+    const selectedIds = selectedComponentsRef.current.includes(component.id)
+      ? selectedComponentsRef.current
+      : [component.id];
+    const descendantIds = getAllDescendants(selectedIds, layoutRef.current.components);
+    const allIdsToMove = [...selectedIds, ...descendantIds];
+
+    allIdsToMove.forEach(componentId => {
+      const comp = layoutRef.current.components.find(c => c.id === componentId);
+      if (comp) {
+        positions.set(componentId, { x: comp.position.x, y: comp.position.y });
+      }
+    });
+    setInitialComponentPositions(positions);
+
+    window.dispatchEvent(new CustomEvent('canvas-drag-start'));
+  }, [scale, onStartDragOperation, setDraggedComponent]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!canvasRef.current) return;
@@ -1070,9 +1122,52 @@ export default function Canvas({
       
       if (hasMoved) {
         const isAlreadySelected = selectedComponents.includes(draggedComponent.id);
-        
-        if (isAlreadySelected) {
-          // Start dragging selected component
+
+        // Check if this is a copy-drag (Command held on Mac)
+        if (isCopyDragRef.current && onCopyDragComponents) {
+          // Copy-drag: duplicate selected components and drag the copies
+          const idsToCopy = isAlreadySelected ? selectedComponentsRef.current : [draggedComponent.id];
+          const idMapping = onCopyDragComponents(idsToCopy);
+
+          if (idMapping.size > 0) {
+            onStartDragOperation();
+            setIsDragging(true);
+            setHasDraggedFarEnough(true);
+
+            // Get the new IDs for the duplicated components
+            const newSelectedIds = idsToCopy.map(id => idMapping.get(id)!).filter(Boolean);
+
+            // Update selection to the new components (this happens async in copyDragComponents)
+            // Store initial positions of the NEW components
+            // We need to wait a tick for the layout to update
+            setTimeout(() => {
+              const positions = new Map<string, { x: number, y: number }>();
+              const descendantIds = getAllDescendants(newSelectedIds, layoutRef.current.components);
+              const allIdsToMove = [...newSelectedIds, ...descendantIds];
+
+              allIdsToMove.forEach(componentId => {
+                const component = layoutRef.current.components.find(c => c.id === componentId);
+                if (component) {
+                  positions.set(componentId, { x: component.position.x, y: component.position.y });
+                }
+              });
+              setInitialComponentPositions(positions);
+
+              // Update the dragged component to point to the new copy
+              const newDraggedId = idMapping.get(draggedComponent.id);
+              if (newDraggedId) {
+                const newDragged = layoutRef.current.components.find(c => c.id === newDraggedId);
+                if (newDragged) {
+                  setDraggedComponent(newDragged);
+                }
+              }
+            }, 0);
+
+            window.dispatchEvent(new CustomEvent('canvas-drag-start'));
+          }
+          isCopyDragRef.current = false; // Reset
+        } else if (isAlreadySelected) {
+          // Normal drag: Start dragging selected component
           onStartDragOperation(); // Save initial state for undo
           setIsDragging(true);
           setHasDraggedFarEnough(true);
@@ -1145,8 +1240,15 @@ export default function Canvas({
       const initialPrimaryPos = initialComponentPositions.get(draggedComponent.id) || draggedComponent.position;
 
       // Calculate the raw delta from initial position
-      const rawDeltaX = rawPrimaryX - initialPrimaryPos.x;
-      const rawDeltaY = rawPrimaryY - initialPrimaryPos.y;
+      // Apply axis constraint if dragging from an axis handle
+      let rawDeltaX = rawPrimaryX - initialPrimaryPos.x;
+      let rawDeltaY = rawPrimaryY - initialPrimaryPos.y;
+
+      if (dragAxisConstraint === 'x') {
+        rawDeltaY = 0; // Only allow horizontal movement
+      } else if (dragAxisConstraint === 'y') {
+        rawDeltaX = 0; // Only allow vertical movement
+      }
 
       // For multi-selection, calculate the bounding box of the selection and use it for snapping
       const selectedIds = selectedComponentsRef.current;
@@ -1228,7 +1330,7 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides]);
+  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides, dragAxisConstraint]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
@@ -1327,6 +1429,8 @@ export default function Canvas({
     setComponentsAtClickPosition([]); // Clear the stored components
     setInitialComponentPositions(new Map()); // Clear initial positions
     setActiveGuides({ guides: [] }); // Clear smart guides
+    setDragAxisConstraint(null); // Clear axis constraint
+    isCopyDragRef.current = false; // Clear copy-drag flag
   }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
 
   // Calculate bounding box for multiple selected components
@@ -1624,6 +1728,57 @@ export default function Canvas({
       props: {}
     } as ComponentConfig);
   }, [getMultiSelectBounds, onStartDragOperation, setDraggedComponent]);
+
+  // Handle multi-component axis-constrained drag (from arrow handles on multi-select bounds)
+  const handleMultiAxisDragMouseDown = useCallback((e: React.MouseEvent, axis: 'x' | 'y') => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const bounds = getMultiSelectBounds();
+    if (!bounds) return;
+
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const canvasX = (e.clientX - rect.left) / scale;
+    const canvasY = (e.clientY - rect.top) / scale;
+
+    // Set the axis constraint
+    setDragAxisConstraint(axis);
+
+    // Start dragging immediately
+    onStartDragOperation();
+    setIsDragging(true);
+    setHasDraggedFarEnough(true);
+
+    // Use a dummy component representing the multi-select bounds
+    const dummyComponent = {
+      id: 'multi-select',
+      type: 'custom',
+      position: { x: bounds.x, y: bounds.y },
+      size: { width: bounds.width, height: bounds.height },
+      props: {}
+    } as ComponentConfig;
+
+    setDraggedComponent(dummyComponent);
+    setDragOffset({
+      x: canvasX - bounds.x,
+      y: canvasY - bounds.y
+    });
+
+    // Store initial positions of all selected components and their descendants
+    const positions = new Map<string, { x: number, y: number }>();
+    const descendantIds = getAllDescendants(selectedComponents, layoutRef.current.components);
+    const allIdsToMove = [...selectedComponents, ...descendantIds];
+
+    allIdsToMove.forEach(id => {
+      const comp = layoutRef.current.components.find(c => c.id === id);
+      if (comp) {
+        positions.set(id, { x: comp.position.x, y: comp.position.y });
+      }
+    });
+    setInitialComponentPositions(positions);
+
+    window.dispatchEvent(new CustomEvent('canvas-drag-start'));
+  }, [getMultiSelectBounds, scale, onStartDragOperation, selectedComponents]);
 
   // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number, maintainAspectRatio: boolean = false) => {
@@ -2140,6 +2295,11 @@ export default function Canvas({
         setShowGrid(prev => !prev);
         return;
       }
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        setShowBoundingBoxes(prev => !prev);
+        return;
+      }
 
       if (e.key === 'h' || e.key === 'H') {
         e.preventDefault();
@@ -2282,7 +2442,7 @@ export default function Canvas({
       borderLeftWidth: borderLeftWidth,
       borderStyle: hasBorder ? (component.props?.borderStyle || 'solid') : 'none',
       borderColor: hasBorder ? (component.props?.borderColor || '#666') : 'transparent',
-      boxShadow: selectedComponents.includes(component.id) ? '0 0 0 2px #4CAF50' : 'none',
+      boxShadow: (showBoundingBoxes && selectedComponents.includes(component.id)) ? '0 0 0 2px #4CAF50' : 'none',
       backgroundColor: component.props?.backgroundColor || getComponentColor(component),
       borderTopLeftRadius: component.props?.borderTopLeftRadius || 0,
       borderTopRightRadius: component.props?.borderTopRightRadius || 0,
@@ -2296,7 +2456,6 @@ export default function Canvas({
     };
 
     const isSelected = selectedComponents.includes(component.id);
-    const hasParent = !!component.parentId;
     const hasChildren = layout.components.some(c => c.parentId === component.id);
 
     return (
@@ -2312,30 +2471,6 @@ export default function Canvas({
         className="canvas-handle"
       >
         {/* Parent-child relationship indicators */}
-        {hasParent && (
-          <div
-            style={{
-              position: 'absolute',
-              top: -8,
-              left: -8,
-              width: 16,
-              height: 16,
-              backgroundColor: '#ff9800',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '10px',
-              color: 'white',
-              pointerEvents: 'none',
-              zIndex: 20,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-            }}
-            title="This component is a child"
-          >
-            C
-          </div>
-        )}
         {hasChildren && (
           <div
             style={{
@@ -2383,52 +2518,95 @@ export default function Canvas({
               onMouseDown={(e) => handleResizeMouseDown(e, 'se', component)}
               style={{ bottom: -4, right: -4 }}
             />
-            
+
+            {/* Axis-constrained drag handles (arrows) */}
+            {/* Top arrow - vertical movement only */}
+            <div
+              onMouseDown={(e) => handleAxisDragMouseDown(e, 'y', component)}
+              style={{
+                position: 'absolute',
+                top: -16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 0,
+                height: 0,
+                borderLeft: '6px solid transparent',
+                borderRight: '6px solid transparent',
+                borderBottom: '10px solid #4CAF50',
+                cursor: 'ns-resize',
+                zIndex: 25,
+              }}
+              title="Drag to move vertically only"
+            />
+            {/* Bottom arrow - vertical movement only */}
+            <div
+              onMouseDown={(e) => handleAxisDragMouseDown(e, 'y', component)}
+              style={{
+                position: 'absolute',
+                bottom: -16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 0,
+                height: 0,
+                borderLeft: '6px solid transparent',
+                borderRight: '6px solid transparent',
+                borderTop: '10px solid #4CAF50',
+                cursor: 'ns-resize',
+                zIndex: 25,
+              }}
+              title="Drag to move vertically only"
+            />
+            {/* Left arrow - horizontal movement only */}
+            <div
+              onMouseDown={(e) => handleAxisDragMouseDown(e, 'x', component)}
+              style={{
+                position: 'absolute',
+                left: -16,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 0,
+                height: 0,
+                borderTop: '6px solid transparent',
+                borderBottom: '6px solid transparent',
+                borderRight: '10px solid #4CAF50',
+                cursor: 'ew-resize',
+                zIndex: 25,
+              }}
+              title="Drag to move horizontally only"
+            />
+            {/* Right arrow - horizontal movement only */}
+            <div
+              onMouseDown={(e) => handleAxisDragMouseDown(e, 'x', component)}
+              style={{
+                position: 'absolute',
+                right: -16,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 0,
+                height: 0,
+                borderTop: '6px solid transparent',
+                borderBottom: '6px solid transparent',
+                borderLeft: '10px solid #4CAF50',
+                cursor: 'ew-resize',
+                zIndex: 25,
+              }}
+              title="Drag to move horizontally only"
+            />
+
             {/* Control buttons */}
             <div className="component-controls">
               <button
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-
-                  // Create duplicate immediately at the button's position
-                  const rect = canvasRef.current!.getBoundingClientRect();
-                  const buttonX = (e.clientX - rect.left) / scale;
-                  const buttonY = (e.clientY - rect.top) / scale;
-
-                  // Create the duplicate
-                  onStartDragOperation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Duplicate in exact same position (auto-selects the new component)
                   onDuplicateComponent(component.id);
-
-                  // Set up drag state for the new component (it will be the last one added)
-                  setTimeout(() => {
-                    const components = layoutRef.current.components;
-                    const newComponent = components[components.length - 1];
-                    if (newComponent) {
-                      // Move the duplicate to where the button was clicked
-                      const newPosition = {
-                        x: buttonX - newComponent.size.width / 2,
-                        y: buttonY - newComponent.size.height / 2
-                      };
-
-                      // Update position immediately (preserve original layer)
-                      onUpdateComponent(newComponent.id, {
-                        position: newPosition
-                      });
-
-                      // Select the new component and start dragging it
-                      onSelectComponents([newComponent.id]);
-                      setDraggedComponent({ ...newComponent, position: newPosition });
-                      setIsDragging(true);
-                      setDragOffset({
-                        x: newComponent.size.width / 2,
-                        y: newComponent.size.height / 2
-                      });
-                    }
-                  }, 10);
                 }}
                 className="control-button duplicate"
-                title="Duplicate (drag to position)"
+                title="Duplicate"
               >
                 📋
               </button>
@@ -2530,9 +2708,16 @@ export default function Canvas({
           <button
             className={`grid-button ${showGrid ? 'active' : ''}`}
             onClick={() => setShowGrid(!showGrid)}
-            title="Show/hide the pixel grid overlay for precise alignment"
+            title="Show/hide the pixel grid overlay for precise alignment (G)"
           >
             Grid
+          </button>
+          <button
+            className={`grid-button ${showBoundingBoxes ? 'active' : ''}`}
+            onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
+            title="Toggle selection bounding boxes (B to hide)"
+          >
+            Bounds
           </button>
           <div className="grid-size-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button
@@ -3184,6 +3369,84 @@ export default function Canvas({
                     backgroundColor: '#4CAF50',
                     border: '1px solid #ffffff'
                   }}
+                />
+
+                {/* Multi-select axis-constrained drag handles (arrows) */}
+                {/* Top arrow - vertical movement only */}
+                <div
+                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'y')}
+                  style={{
+                    position: 'absolute',
+                    top: -16,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderLeft: '6px solid transparent',
+                    borderRight: '6px solid transparent',
+                    borderBottom: '10px solid #4CAF50',
+                    cursor: 'ns-resize',
+                    zIndex: 25,
+                    pointerEvents: 'auto',
+                  }}
+                  title="Drag to move vertically only"
+                />
+                {/* Bottom arrow - vertical movement only */}
+                <div
+                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'y')}
+                  style={{
+                    position: 'absolute',
+                    bottom: -16,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderLeft: '6px solid transparent',
+                    borderRight: '6px solid transparent',
+                    borderTop: '10px solid #4CAF50',
+                    cursor: 'ns-resize',
+                    zIndex: 25,
+                    pointerEvents: 'auto',
+                  }}
+                  title="Drag to move vertically only"
+                />
+                {/* Left arrow - horizontal movement only */}
+                <div
+                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'x')}
+                  style={{
+                    position: 'absolute',
+                    left: -16,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderTop: '6px solid transparent',
+                    borderBottom: '6px solid transparent',
+                    borderRight: '10px solid #4CAF50',
+                    cursor: 'ew-resize',
+                    zIndex: 25,
+                    pointerEvents: 'auto',
+                  }}
+                  title="Drag to move horizontally only"
+                />
+                {/* Right arrow - horizontal movement only */}
+                <div
+                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'x')}
+                  style={{
+                    position: 'absolute',
+                    right: -16,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderTop: '6px solid transparent',
+                    borderBottom: '6px solid transparent',
+                    borderLeft: '10px solid #4CAF50',
+                    cursor: 'ew-resize',
+                    zIndex: 25,
+                    pointerEvents: 'auto',
+                  }}
+                  title="Drag to move horizontally only"
                 />
 
                 {/* Multi-select info label */}

@@ -124,8 +124,40 @@ function App() {
     isOvertime: false,
     home_sets_won: 0,
     away_sets_won: 0,
+    home_player_points: 0,
+    away_player_points: 0,
+    home_player_name: 'Green',
+    away_player_name: 'Red',
     home_team_color: '#c41e3a',
-    away_team_color: '#003f7f'
+    away_team_color: '#003f7f',
+    // Lacrosse/Hockey shots and saves
+    home_shots: 0,
+    away_shots: 0,
+    home_saves: 0,
+    away_saves: 0,
+    // Penalty slots for lacrosse/hockey preview
+    penaltySlots: {
+      home: {
+        count: 0,
+        isState0: true,
+        isState1: false,
+        isState2: false,
+        isState3: false,
+        slot0: { jersey: 90, time: '0:45', active: false },
+        slot1: { jersey: 3, time: '1:30', active: false },
+        slot2: { jersey: 17, time: '2:15', active: false },
+      },
+      away: {
+        count: 0,
+        isState0: true,
+        isState1: false,
+        isState2: false,
+        isState3: false,
+        slot0: { jersey: 14, time: '1:00', active: false },
+        slot1: { jersey: 22, time: '1:45', active: false },
+        slot2: { jersey: 8, time: '2:30', active: false },
+      },
+    }
   });
 
   // Shader effect preview system
@@ -137,6 +169,9 @@ function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
+
+  // Clipboard state for copy/paste
+  const [clipboard, setClipboard] = useState<ComponentConfig[] | null>(null);
   
   // Undo/Redo system - keep track of last 50 actions each
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
@@ -721,10 +756,13 @@ function App() {
           id: duplicateId,
           displayName: uniqueName,
           position: {
-            x: original.position.x + 40, // 40px offset
-            y: original.position.y + 40  // 40px offset
+            x: original.position.x, // Exact same position (no offset, no grid snap)
+            y: original.position.y
           }
         };
+
+        // Auto-select the newly duplicated component
+        setTimeout(() => setSelectedComponents([duplicateId]), 0);
 
         return {
           ...prev,
@@ -734,6 +772,265 @@ function App() {
       return prev;
     });
   }, [saveStateForUndo, generateComponentId]);
+
+  // Duplicate multiple components for copy-drag operation (returns map of old ID to new ID)
+  const copyDragComponents = useCallback((ids: string[]): Map<string, string> => {
+    const idMapping = new Map<string, string>();
+
+    setLayout(prev => {
+      const components = prev.components || [];
+
+      // Helper to get all descendants of a component
+      const getDescendants = (parentId: string): ComponentConfig[] => {
+        const children = components.filter(c => c.parentId === parentId);
+        const descendants: ComponentConfig[] = [];
+        for (const child of children) {
+          descendants.push(child);
+          descendants.push(...getDescendants(child.id));
+        }
+        return descendants;
+      };
+
+      // Helper to check if a component is a descendant of another
+      const isDescendantOf = (componentId: string, potentialAncestorId: string): boolean => {
+        const component = components.find(c => c.id === componentId);
+        if (!component || !component.parentId) return false;
+        if (component.parentId === potentialAncestorId) return true;
+        return isDescendantOf(component.parentId, potentialAncestorId);
+      };
+
+      // Filter out selected components that are already descendants of other selected components
+      const rootSelectedIds = ids.filter(id => {
+        return !ids.some(otherId => otherId !== id && isDescendantOf(id, otherId));
+      });
+
+      // Collect all components to copy (root selected + their descendants)
+      const componentsToCopy: ComponentConfig[] = [];
+      const addedIds = new Set<string>();
+
+      for (const id of rootSelectedIds) {
+        const component = components.find(c => c.id === id);
+        if (component && !addedIds.has(id)) {
+          componentsToCopy.push(component);
+          addedIds.add(id);
+
+          const descendants = getDescendants(id);
+          for (const desc of descendants) {
+            if (!addedIds.has(desc.id)) {
+              componentsToCopy.push(desc);
+              addedIds.add(desc.id);
+            }
+          }
+        }
+      }
+
+      if (componentsToCopy.length === 0) return prev;
+
+      saveStateForUndo('COPY_DRAG', `Copy-drag ${componentsToCopy.length} component(s)`, prev);
+
+      const existingNames = new Set(
+        components.map(c => c.displayName || c.type).filter(Boolean)
+      );
+
+      // Generate new IDs for all components
+      for (const comp of componentsToCopy) {
+        idMapping.set(comp.id, generateComponentId(comp.type));
+      }
+
+      // Create new components with updated IDs and parent references
+      const newComponents: ComponentConfig[] = componentsToCopy.map(comp => {
+        const newId = idMapping.get(comp.id)!;
+        const newParentId = comp.parentId ? idMapping.get(comp.parentId) : undefined;
+
+        // Generate unique display name
+        const baseName = comp.displayName || comp.type;
+        let uniqueName = baseName;
+        if (existingNames.has(uniqueName)) {
+          let counter = 2;
+          while (existingNames.has(`${baseName}${counter}`)) {
+            counter++;
+          }
+          uniqueName = `${baseName}${counter}`;
+        }
+        existingNames.add(uniqueName);
+
+        return {
+          ...comp,
+          id: newId,
+          displayName: uniqueName,
+          parentId: newParentId,
+          position: { ...comp.position } // Same position
+        };
+      });
+
+      // Select the new root components
+      const newRootIds = rootSelectedIds.map(id => idMapping.get(id)!);
+      setTimeout(() => setSelectedComponents(newRootIds), 0);
+
+      return {
+        ...prev,
+        components: [...components, ...newComponents]
+      };
+    });
+
+    return idMapping;
+  }, [saveStateForUndo, generateComponentId]);
+
+  // Copy selected components (and their children) to clipboard
+  const copyComponents = useCallback(() => {
+    if (selectedComponents.length === 0) return;
+
+    const components = layout.components || [];
+
+    // Helper to get all descendants of a component
+    const getDescendants = (parentId: string): ComponentConfig[] => {
+      const children = components.filter(c => c.parentId === parentId);
+      const descendants: ComponentConfig[] = [];
+      for (const child of children) {
+        descendants.push(child);
+        descendants.push(...getDescendants(child.id));
+      }
+      return descendants;
+    };
+
+    // Helper to check if a component is a descendant of another
+    const isDescendantOf = (componentId: string, potentialAncestorId: string): boolean => {
+      const component = components.find(c => c.id === componentId);
+      if (!component || !component.parentId) return false;
+      if (component.parentId === potentialAncestorId) return true;
+      return isDescendantOf(component.parentId, potentialAncestorId);
+    };
+
+    // Filter out selected components that are already descendants of other selected components
+    // This prevents duplicates when both a parent and its child are selected
+    const rootSelectedIds = selectedComponents.filter(id => {
+      return !selectedComponents.some(otherId =>
+        otherId !== id && isDescendantOf(id, otherId)
+      );
+    });
+
+    // Collect all components to copy (root selected + their descendants)
+    const componentsToCopy: ComponentConfig[] = [];
+    const addedIds = new Set<string>();
+
+    for (const id of rootSelectedIds) {
+      const component = components.find(c => c.id === id);
+      if (component && !addedIds.has(id)) {
+        componentsToCopy.push(component);
+        addedIds.add(id);
+
+        // Add all descendants
+        const descendants = getDescendants(id);
+        for (const desc of descendants) {
+          if (!addedIds.has(desc.id)) {
+            componentsToCopy.push(desc);
+            addedIds.add(desc.id);
+          }
+        }
+      }
+    }
+
+    // Deep clone the components for clipboard
+    setClipboard(structuredClone(componentsToCopy));
+  }, [selectedComponents, layout.components]);
+
+  // Paste components from clipboard
+  const pasteComponents = useCallback(() => {
+    if (!clipboard || clipboard.length === 0) return;
+
+    setLayout(prev => {
+      saveStateForUndo('DUPLICATE_COMPONENT', `Paste ${clipboard.length} component(s)`, prev);
+
+      const existingNames = new Set(
+        (prev.components || [])
+          .map(c => c.displayName || c.type)
+          .filter(Boolean)
+      );
+
+      // Create ID mapping for parent-child relationships
+      const idMapping = new Map<string, string>();
+
+      // Generate new IDs for all clipboard components
+      for (const comp of clipboard) {
+        idMapping.set(comp.id, generateComponentId(comp.type));
+      }
+
+      // Find which components in clipboard are "root" (their parent is not in clipboard)
+      const clipboardIds = new Set(clipboard.map(c => c.id));
+      const rootComponents = clipboard.filter(c => !c.parentId || !clipboardIds.has(c.parentId));
+
+      // Create new components with updated IDs and positions
+      const newComponents: ComponentConfig[] = clipboard.map(comp => {
+        const newId = idMapping.get(comp.id)!;
+        const newParentId = comp.parentId ? idMapping.get(comp.parentId) : undefined;
+
+        // Generate unique display name
+        const baseName = comp.displayName || comp.type;
+        let uniqueName = baseName;
+        if (existingNames.has(uniqueName)) {
+          let counter = 2;
+          while (existingNames.has(`${baseName}${counter}`)) {
+            counter++;
+          }
+          uniqueName = `${baseName}${counter}`;
+        }
+        existingNames.add(uniqueName);
+
+        // Keep position exactly the same (no offset, no grid snap)
+        const position = { ...comp.position };
+
+        return {
+          ...comp,
+          id: newId,
+          displayName: uniqueName,
+          parentId: newParentId,
+          position
+        };
+      });
+
+      // Select the newly pasted root components
+      const newRootIds = rootComponents.map(r => idMapping.get(r.id)!);
+      setTimeout(() => setSelectedComponents(newRootIds), 0);
+
+      return {
+        ...prev,
+        components: [...(prev.components || []), ...newComponents]
+      };
+    });
+  }, [clipboard, saveStateForUndo, generateComponentId]);
+
+  // Global keyboard handler for copy/paste
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if we're in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Only handle in layout builder tab
+      if (activeTab !== 'layout-builder') return;
+
+      // Copy: Ctrl+C or Cmd+C
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        if (selectedComponents.length > 0) {
+          e.preventDefault();
+          copyComponents();
+        }
+      }
+
+      // Paste: Ctrl+V or Cmd+V
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if (clipboard && clipboard.length > 0) {
+          e.preventDefault();
+          pasteComponents();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, selectedComponents, clipboard, copyComponents, pasteComponents]);
 
 
 
@@ -888,6 +1185,9 @@ function App() {
                 onAddComponent={addComponent}
                 onStartDragOperation={startDragOperation}
                 onEndDragOperation={endDragOperation}
+                onCopyComponents={copyComponents}
+                onPasteComponents={pasteComponents}
+                hasClipboard={clipboard !== null && clipboard.length > 0}
               />
               <div
                 className="panel-resize-edge right-edge"
@@ -902,6 +1202,7 @@ function App() {
               onUpdateComponent={updateComponent}
               onDeleteComponent={deleteComponent}
               onDuplicateComponent={duplicateComponent}
+              onCopyDragComponents={copyDragComponents}
               draggedComponent={draggedComponent}
               setDraggedComponent={setDraggedComponent}
               onAddComponent={addComponent}
@@ -981,16 +1282,17 @@ function getDefaultProps(type: ComponentConfig['type']) {
     fouls: { fontSize: 18, label: 'FOULS', textColor: '#ffffff', textAlign: 'center' },
     timeouts: { maxTimeouts: 5, textColor: '#ffffff', textAlign: 'center' },
     bonus: { fontSize: 16, textColor: '#ffffff', textAlign: 'center' },
-    custom: { 
+    custom: {
       dataPath: 'none',
       label: '',
       fontSize: 24,
       format: 'text',
       prefix: '',
       suffix: '',
-      backgroundColor: '#9B59B6',
+      backgroundColor: 'transparent',
       textColor: '#ffffff',
       textAlign: 'center',
+      imageSource: 'local',
       borderWidth: 0,
       borderColor: '#ffffff',
       borderStyle: 'solid',
@@ -1017,7 +1319,7 @@ function getDefaultProps(type: ComponentConfig['type']) {
       reverseOrder: false,
       borderWidth: 0,
       borderColor: '#ffffff'
-    }
+    },
   };
   return props[type] || {};
 }

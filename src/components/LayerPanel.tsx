@@ -24,6 +24,9 @@ interface LayerPanelProps {
   onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string) => void;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
+  onCopyComponents?: () => void;
+  onPasteComponents?: () => void;
+  hasClipboard?: boolean;
 }
 
 interface DragState {
@@ -40,7 +43,10 @@ export default function LayerPanel({
   onDeleteComponent,
   onAddComponent,
   onStartDragOperation,
-  onEndDragOperation
+  onEndDragOperation,
+  onCopyComponents,
+  onPasteComponents,
+  hasClipboard
 }: LayerPanelProps) {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
@@ -641,13 +647,33 @@ export default function LayerPanel({
             })()}
           </div>
         </div>
-        <button
-          className="new-layer-btn"
-          onClick={createNewLayer}
-          title="Create new layer"
-        >
-          + Layer
-        </button>
+        <div className="layer-header-actions">
+          {selectedComponents.length > 0 && (
+            <button
+              className="copy-btn"
+              onClick={onCopyComponents}
+              title="Copy selected (Ctrl+C)"
+            >
+              Copy
+            </button>
+          )}
+          {hasClipboard && (
+            <button
+              className="paste-btn"
+              onClick={onPasteComponents}
+              title="Paste (Ctrl+V)"
+            >
+              Paste
+            </button>
+          )}
+          <button
+            className="new-layer-btn"
+            onClick={createNewLayer}
+            title="Create new layer"
+          >
+            + Layer
+          </button>
+        </div>
       </div>
 
       <div className="layer-content">
