@@ -1333,6 +1333,20 @@ function PropertyPanel({
             </label>
           </div>
 
+          {getStateValue('autoContrastText', false) && (
+            <div className="property-field">
+              <label>Contrast Color Source</label>
+              <select
+                value={getStateValue('teamColorSide', '')}
+                onChange={(e) => updateStateProps('teamColorSide', e.target.value || undefined)}
+              >
+                <option value="">Auto (infer from dataPath)</option>
+                <option value="home">Home Team Color</option>
+                <option value="away">Away Team Color</option>
+              </select>
+            </div>
+          )}
+
           {isDragging ? (
             <StaticColorSwatch
               label="Text Color"
