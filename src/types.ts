@@ -40,6 +40,7 @@ export const LAYOUT_TYPES = [
   // Special layouts
   { value: 'universal', label: 'Universal' },
   { value: 'timeout', label: 'Timeout' },
+  { value: 'timeout-no-game-time', label: 'Timeout (No Game Time)' },
   { value: 'activity-timer', label: 'Activity Timer' },
   { value: 'playlist', label: 'Playlist' },
   { value: 'leaderboard', label: 'Leaderboard' },
