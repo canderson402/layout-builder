@@ -73,7 +73,7 @@
 
 .no-selection {
   text-align: center;
-  color: #888;
+  color: var(--color-text-muted, #aaaaaa);
   padding: 40px 20px;
   font-style: italic;
 }
@@ -82,7 +82,7 @@
   font-size: 11px;
   font-weight: 600;
   margin: 0 0 12px 0;
-  color: #888;
+  color: var(--color-text-muted, #aaaaaa);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -133,7 +133,7 @@
 .property-field label {
   font-size: 10px;
   font-weight: 500;
-  color: #888;
+  color: var(--color-text-muted, #aaaaaa);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   margin-bottom: 6px;
@@ -446,7 +446,7 @@
 
 .section-toggle {
   font-size: 10px;
-  color: #666;
+  color: var(--color-text-muted, #aaaaaa);
   transition: color 0.2s;
 }
 
@@ -582,7 +582,7 @@
 
 .selected-component-item .component-type {
   font-size: 11px;
-  color: #888;
+  color: var(--color-text-muted, #aaaaaa);
 }
 
 .multi-select-actions {
@@ -639,5 +639,18 @@
   font-size: 12px;
   color: #4CAF50;
   font-weight: 500;
+}
+
+/* Screen reader only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 

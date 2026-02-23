@@ -7,6 +7,7 @@ import {
   deleteComponentTemplate,
   instantiateTemplate
 } from '../utils/componentTemplates';
+import { useToast } from './Toast';
 import './LayerPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -55,6 +56,7 @@ export default function LayerPanel({
   onPasteComponents,
   hasClipboard
 }: LayerPanelProps) {
+  const toast = useToast();
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
   const [pendingToggleComponent, setPendingToggleComponent] = useState<boolean>(false);
@@ -143,7 +145,7 @@ export default function LayerPanel({
     const renderableComponents = allComponents.filter(c => c.type !== 'group');
 
     if (renderableComponents.length === 0) {
-      alert('No renderable components found. Make sure your selection includes visual components, not just groups.');
+      toast.warning('No renderable components found. Make sure your selection includes visual components, not just groups.');
       return;
     }
 
@@ -661,7 +663,7 @@ export default function LayerPanel({
     const indentPx = depth * 20; // 20px indent per level
 
     return (
-      <div key={component.id} className="layer-component-wrapper">
+      <li key={component.id} className="layer-component-wrapper" role="treeitem" aria-selected={selectedComponents.includes(component.id)} aria-expanded={hasChildComponents ? !isCollapsed : undefined}>
         <div
           className={`layer-component ${selectedComponents.includes(component.id) ? 'selected' : ''} ${!isVisible ? 'hidden-component' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? `drag-over drag-over-${dropPosition}` : ''} ${isLayer ? 'is-layer' : ''}`}
           style={{ paddingLeft: depth > 0 ? `${basePadding + indentPx}px` : undefined }}
@@ -687,12 +689,13 @@ export default function LayerPanel({
                   toggleParentCollapsed(component.id);
                 }}
                 className="collapse-btn"
-                title={isCollapsed ? `Expand (${children.length} children)` : `Collapse (${children.length} children)`}
+                aria-label={isCollapsed ? `Expand ${getComponentDisplayName(component)} (${children.length} children)` : `Collapse ${getComponentDisplayName(component)} (${children.length} children)`}
+                aria-expanded={!isCollapsed}
               >
                 {isCollapsed ? '▶' : '▼'}
               </button>
             ) : (
-              <span className="collapse-spacer" />
+              <span className="collapse-spacer" aria-hidden="true" />
             )}
 
             {/* Visibility checkbox */}
@@ -704,6 +707,7 @@ export default function LayerPanel({
                 toggleComponentVisibility(component.id);
               }}
               className="visibility-checkbox"
+              aria-label={`${getComponentDisplayName(component)} visibility`}
               title={isVisible ? 'Hide component' : 'Show component'}
             />
 
@@ -770,11 +774,11 @@ export default function LayerPanel({
 
         {/* Render children with increased depth for indentation */}
         {hasChildComponents && !isCollapsed && (
-          <div className="layer-children">
+          <ul className="layer-children" role="group">
             {children.map(child => renderComponent(child, depth + 1))}
-          </div>
+          </ul>
         )}
-      </div>
+      </li>
     );
   };
 
@@ -874,11 +878,11 @@ export default function LayerPanel({
   };
 
   return (
-    <div className="layer-panel" tabIndex={-1} onKeyDown={handleKeyDown}>
+    <div className="layer-panel" tabIndex={-1} onKeyDown={handleKeyDown} role="region" aria-label="Layers and components">
       <div className="layer-header">
         <div className="layer-header-title">
-          <h3>Layers</h3>
-          <div className="layer-info">
+          <h2 id="layers-heading">Layers</h2>
+          <div className="layer-info" aria-live="polite">
             {(() => {
               const componentCount = (layout.components || []).filter(c => c.type !== 'group').length;
               const layerCount = (layout.components || []).filter(c => c.type === 'group').length;
@@ -886,12 +890,13 @@ export default function LayerPanel({
             })()}
           </div>
         </div>
-        <div className="layer-header-actions">
+        <div className="layer-header-actions" role="toolbar" aria-label="Layer actions">
           {selectedComponents.length > 0 && (
             <button
               className="copy-btn"
               onClick={onCopyComponents}
-              title="Copy selected (Ctrl+C)"
+              aria-label="Copy selected components"
+              aria-keyshortcuts="Control+C"
             >
               Copy
             </button>
@@ -900,7 +905,8 @@ export default function LayerPanel({
             <button
               className="paste-btn"
               onClick={onPasteComponents}
-              title="Paste (Ctrl+V)"
+              aria-label="Paste components from clipboard"
+              aria-keyshortcuts="Control+V"
             >
               Paste
             </button>
@@ -908,22 +914,22 @@ export default function LayerPanel({
           <button
             className="new-layer-btn"
             onClick={createNewLayer}
-            title="Create new layer"
+            aria-label="Create new layer"
           >
             + Layer
           </button>
         </div>
       </div>
 
-      <div className="layer-content">
+      <div className="layer-content" aria-labelledby="layers-heading">
         {rootComponents.length === 0 ? (
-          <div className="no-components">
-            No components in layout
+          <div className="no-components" role="status">
+            No components in layout. Add components from the menu below.
           </div>
         ) : (
-          <div className="layer-list">
+          <ul className="layer-list" role="tree" aria-label="Component hierarchy">
             {rootComponents.map(component => renderComponent(component))}
-          </div>
+          </ul>
         )}
 
         {/* Root drop zone - drop here to unlink from parent and place at top of root level */}
@@ -966,11 +972,11 @@ export default function LayerPanel({
       </div>
 
       {/* Component Menu */}
-      <div className="component-menu">
+      <nav className="component-menu" aria-label="Add components">
         <div className="component-menu-header">
-          <h4>Quick Add Components</h4>
+          <h3 id="quick-add-heading">Quick Add Components</h3>
         </div>
-        <div className="component-menu-grid">
+        <div className="component-menu-grid" role="toolbar" aria-labelledby="quick-add-heading">
           <button
             className="component-menu-item"
             onClick={() => {
@@ -1002,9 +1008,9 @@ export default function LayerPanel({
                 }
               }));
             }}
-            title="Basic Component (500x500px, blue background)"
+            aria-label="Add basic component (500x500px)"
           >
-            <div className="component-menu-icon"></div>
+            <div className="component-menu-icon" aria-hidden="true"></div>
             <div className="component-menu-label">Basic</div>
           </button>
 
@@ -1050,9 +1056,9 @@ export default function LayerPanel({
                 }
               }));
             }}
-            title="Toggle Component (500x500px, blue background, pre-configured toggle)"
+            aria-label="Add toggle component with two states"
           >
-            <div className="component-menu-icon"></div>
+            <div className="component-menu-icon" aria-hidden="true"></div>
             <div className="component-menu-label">Toggle</div>
           </button>
 
@@ -1066,18 +1072,18 @@ export default function LayerPanel({
                 componentType: 'dynamicList'
               }));
             }}
-            title="Dynamic List (timeouts, fouls, etc.)"
+            aria-label="Add dynamic list for timeouts or fouls"
           >
-            <div className="component-menu-icon"></div>
+            <div className="component-menu-icon" aria-hidden="true"></div>
             <div className="component-menu-label">Dynamic List</div>
           </button>
 
           <button
             className="component-menu-item"
             onClick={addImageComponent}
-            title="Image Component (centered, native resolution)"
+            aria-label="Add image component"
           >
-            <div className="component-menu-icon"></div>
+            <div className="component-menu-icon" aria-hidden="true"></div>
             <div className="component-menu-label">Image</div>
           </button>
 
@@ -1107,9 +1113,9 @@ export default function LayerPanel({
                 }
               }));
             }}
-            title="Slot List - Uses a saved template to create repeated slots with dynamic data paths"
+            aria-label="Add slot list with repeated template items"
           >
-            <div className="component-menu-icon"></div>
+            <div className="component-menu-icon" aria-hidden="true"></div>
             <div className="component-menu-label">Slot List</div>
           </button>
         </div>
@@ -1325,7 +1331,7 @@ export default function LayerPanel({
             </div>
           )}
         </div>
-      </div>
+      </nav>
 
       {/* Save Template Modal */}
       {showTemplateModal && (
@@ -1343,6 +1349,9 @@ export default function LayerPanel({
             zIndex: 9999
           }}
           onClick={() => setShowTemplateModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="slot-template-modal-title"
         >
           <div
             style={{
@@ -1353,12 +1362,14 @@ export default function LayerPanel({
             }}
             onClick={e => e.stopPropagation()}
           >
-            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Slot Template</h3>
-            <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
+            <h3 id="slot-template-modal-title" style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Slot Template</h3>
+            <p id="slot-template-desc" style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
               Saving {selectedComponents.length} component{selectedComponents.length !== 1 ? 's' : ''} as a reusable template.
               Use relative data paths (e.g., "jersey", "name", "points") for dynamic binding.
             </p>
+            <label htmlFor="slot-template-name" className="sr-only">Template name</label>
             <input
+              id="slot-template-name"
               type="text"
               placeholder="Template name"
               value={newTemplateName}
@@ -1375,6 +1386,7 @@ export default function LayerPanel({
                 boxSizing: 'border-box'
               }}
               autoFocus
+              aria-describedby="slot-template-desc"
             />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
@@ -1425,6 +1437,9 @@ export default function LayerPanel({
             zIndex: 9999
           }}
           onClick={() => setShowComponentTemplateModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="component-template-modal-title"
         >
           <div
             style={{
@@ -1435,12 +1450,14 @@ export default function LayerPanel({
             }}
             onClick={e => e.stopPropagation()}
           >
-            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Component Template</h3>
-            <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
+            <h3 id="component-template-modal-title" style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Component Template</h3>
+            <p id="component-template-desc" style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
               Saving {selectedComponents.length} component{selectedComponents.length !== 1 ? 's' : ''} (and their children) as a reusable template.
               The template preserves component hierarchy and relative positions.
             </p>
+            <label htmlFor="component-template-name" className="sr-only">Template name</label>
             <input
+              id="component-template-name"
               type="text"
               placeholder="Template name (e.g., Home Team Header)"
               value={newComponentTemplateName}
@@ -1457,6 +1474,7 @@ export default function LayerPanel({
                 boxSizing: 'border-box'
               }}
               autoFocus
+              aria-describedby="component-template-desc"
             />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button

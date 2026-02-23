@@ -1,0 +1,161 @@
+.shortcuts-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.shortcuts-modal {
+  background: var(--color-bg-secondary, #2a2a2a);
+  border-radius: 12px;
+  max-width: 700px;
+  max-height: 80vh;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--color-border-default, #444);
+}
+
+.shortcuts-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-lg, 16px) var(--space-xl, 24px);
+  border-bottom: 1px solid var(--color-border-default, #444);
+}
+
+.shortcuts-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary, #fff);
+}
+
+.shortcuts-modal-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #aaa);
+  font-size: 28px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.shortcuts-modal-close:hover {
+  color: var(--color-text-primary, #fff);
+  background: var(--color-bg-hover, #4a4a4a);
+}
+
+.shortcuts-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xl, 24px);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-xl, 24px);
+}
+
+.shortcut-group {
+  background: var(--color-bg-tertiary, #333);
+  border-radius: 8px;
+  padding: var(--space-lg, 16px);
+}
+
+.shortcut-group h3 {
+  margin: 0 0 var(--space-md, 12px) 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-accent-primary, #4CAF50);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shortcut-list {
+  margin: 0;
+  padding: 0;
+}
+
+.shortcut-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm, 8px) 0;
+  border-bottom: 1px solid var(--color-border-muted, #3a3a3a);
+}
+
+.shortcut-item:last-child {
+  border-bottom: none;
+}
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.shortcut-keys kbd {
+  display: inline-block;
+  padding: 3px 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-primary, #fff);
+  background: var(--color-bg-elevated, #3a3a3a);
+  border: 1px solid var(--color-border-default, #555);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+.key-separator {
+  color: var(--color-text-muted, #aaa);
+  font-size: 10px;
+  margin: 0 2px;
+}
+
+.shortcut-description {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary, #ccc);
+  text-align: right;
+}
+
+.shortcuts-modal-footer {
+  padding: var(--space-md, 12px) var(--space-xl, 24px);
+  border-top: 1px solid var(--color-border-default, #444);
+  text-align: center;
+}
+
+.shortcuts-modal-footer p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted, #aaa);
+}
+
+.shortcuts-modal-footer kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  font-size: 11px;
+  color: var(--color-text-primary, #fff);
+  background: var(--color-bg-elevated, #3a3a3a);
+  border: 1px solid var(--color-border-default, #555);
+  border-radius: 3px;
+  margin: 0 2px;
+}

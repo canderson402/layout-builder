@@ -2356,6 +2356,24 @@ export default function Canvas({
     setIsScaling(true);
   }, [selectedComponents, layout.components, onStartDragOperation]);
 
+  // Auto-fit canvas to available space
+  const fitCanvasToWrapper = useCallback(() => {
+    if (!wrapperRef.current) return;
+    const wrapper = wrapperRef.current;
+    const padding = 40; // 20px padding on each side
+    const availableWidth = wrapper.clientWidth - padding;
+    const availableHeight = wrapper.clientHeight - padding;
+
+    if (availableWidth <= 0 || availableHeight <= 0) return;
+
+    const scaleX = availableWidth / layout.dimensions.width;
+    const scaleY = availableHeight / layout.dimensions.height;
+    const fitScale = Math.min(scaleX, scaleY, 2.0); // Cap at 200%
+
+    setZoomLevel(Math.max(10, Math.round(fitScale * 100)));
+    setViewportOffset({ x: 0, y: 0 });
+  }, [layout.dimensions.width, layout.dimensions.height]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Check if user is typing in an input field - if so, don't intercept keys
     const activeElement = document.activeElement;
@@ -2407,8 +2425,93 @@ export default function Canvas({
       }
     }
 
-    // Only handle delete/backspace if not typing in an input field
+    // Escape key - deselect all components
+    if (!isInputFocused && e.key === 'Escape') {
+      e.preventDefault();
+      onSelectComponents([]);
+      return;
+    }
+
+    // Tab key - cycle through components
+    if (!isInputFocused && e.key === 'Tab') {
+      e.preventDefault();
+      const allComponents = layout.components || [];
+      if (allComponents.length === 0) return;
+
+      const visibleComponents = allComponents.filter(c => c.visible !== false);
+      if (visibleComponents.length === 0) return;
+
+      // Sort by layer (highest first)
+      const sortedComponents = [...visibleComponents].sort((a, b) => (b.layer || 0) - (a.layer || 0));
+
+      if (selectedComponents.length === 0) {
+        // Select the first component
+        onSelectComponents([sortedComponents[0].id]);
+      } else {
+        // Find current selection and move to next/previous
+        const currentId = selectedComponents[0];
+        const currentIndex = sortedComponents.findIndex(c => c.id === currentId);
+        const nextIndex = e.shiftKey
+          ? (currentIndex - 1 + sortedComponents.length) % sortedComponents.length
+          : (currentIndex + 1) % sortedComponents.length;
+        onSelectComponents([sortedComponents[nextIndex].id]);
+      }
+      return;
+    }
+
+    // Zoom shortcuts (when not typing)
+    if (!isInputFocused) {
+      // + or = to zoom in
+      if ((e.key === '+' || e.key === '=') && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setZoomLevel(prev => Math.min(200, prev + 10));
+        return;
+      }
+      // - to zoom out
+      if (e.key === '-' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setZoomLevel(prev => Math.max(10, prev - 10));
+        return;
+      }
+      // 0 to reset zoom to 100%
+      if (e.key === '0' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setZoomLevel(100);
+        return;
+      }
+      // f to fit canvas to screen
+      if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        fitCanvasToWrapper();
+        return;
+      }
+    }
+
+    // Only handle component-specific keys if not typing in an input field
     if (selectedComponents.length > 0 && !isInputFocused) {
+      // Arrow keys - nudge selected components
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        const nudgeAmount = e.shiftKey ? 10 : 1; // Shift = 10px, normal = 1px
+        const deltaX = e.key === 'ArrowLeft' ? -nudgeAmount : e.key === 'ArrowRight' ? nudgeAmount : 0;
+        const deltaY = e.key === 'ArrowUp' ? -nudgeAmount : e.key === 'ArrowDown' ? nudgeAmount : 0;
+
+        onStartDragOperation();
+        selectedComponents.forEach(componentId => {
+          const component = (layout.components || []).find(c => c.id === componentId);
+          if (component) {
+            onUpdateComponent(componentId, {
+              position: {
+                x: Math.round(component.position.x + deltaX),
+                y: Math.round(component.position.y + deltaY)
+              }
+            });
+          }
+        });
+        onEndDragOperation(`Nudge ${selectedComponents.length} component(s)`);
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         selectedComponents.forEach(componentId => {
@@ -2433,12 +2536,36 @@ export default function Canvas({
         }
       }
     }
-  }, [selectedComponents, onDeleteComponent, onDuplicateComponent, isScaling, confirmScaleMode, cancelScaleMode, startScaleMode]);
+  }, [selectedComponents, onDeleteComponent, onDuplicateComponent, onUpdateComponent, onStartDragOperation, onEndDragOperation, isScaling, confirmScaleMode, cancelScaleMode, startScaleMode, onSelectComponents, layout.components, fitCanvasToWrapper]);
 
   React.useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  // Document-level mouse event handling for drag operations outside canvas
+  React.useEffect(() => {
+    const isOperationActive = isDragging || isScaling || isResizing || isPanning || isCreating;
+
+    if (!isOperationActive) return;
+
+    const handleDocumentMouseMove = (e: MouseEvent) => {
+      // Cast native MouseEvent to work with our handler
+      handleMouseMove(e as unknown as React.MouseEvent);
+    };
+
+    const handleDocumentMouseUp = () => {
+      handleMouseUp();
+    };
+
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+    };
+  }, [isDragging, isScaling, isResizing, isPanning, isCreating, handleMouseMove, handleMouseUp]);
 
   // Alt key listener to temporarily disable snapping
   React.useEffect(() => {
@@ -2468,24 +2595,6 @@ export default function Canvas({
       window.removeEventListener('blur', handleBlur);
     };
   }, []);
-
-  // Auto-fit canvas to available space
-  const fitCanvasToWrapper = useCallback(() => {
-    if (!wrapperRef.current) return;
-    const wrapper = wrapperRef.current;
-    const padding = 40; // 20px padding on each side
-    const availableWidth = wrapper.clientWidth - padding;
-    const availableHeight = wrapper.clientHeight - padding;
-
-    if (availableWidth <= 0 || availableHeight <= 0) return;
-
-    const scaleX = availableWidth / layout.dimensions.width;
-    const scaleY = availableHeight / layout.dimensions.height;
-    const fitScale = Math.min(scaleX, scaleY, 2.0); // Cap at 200%
-
-    setZoomLevel(Math.max(10, Math.round(fitScale * 100)));
-    setViewportOffset({ x: 0, y: 0 });
-  }, [layout.dimensions.width, layout.dimensions.height]);
 
   // Calculate effective z-index based on hierarchy (parent layers affect children)
   const getEffectiveLayer = (component: ComponentConfig): number => {
@@ -2685,38 +2794,6 @@ export default function Canvas({
               title="Drag to move horizontally only"
             />
 
-            {/* Control buttons */}
-            <div className="component-controls">
-              <button
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Duplicate in exact same position (auto-selects the new component)
-                  onDuplicateComponent(component.id);
-                }}
-                className="control-button duplicate"
-                title="Duplicate"
-              >
-                📋
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteComponent(component.id);
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                className="control-button delete"
-                title="Delete"
-              >
-                🗑️
-              </button>
-            </div>
           </>
         )}
       </div>

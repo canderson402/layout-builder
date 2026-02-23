@@ -5,6 +5,55 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: 'Inter-Bold';
+  src: url('/fonts/Inter-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto-Bold';
+  src: url('/fonts/Roboto-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Montserrat-Bold';
+  src: url('/fonts/Montserrat-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Oswald-Bold';
+  src: url('/fonts/Oswald-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'BebasNeue';
+  src: url('/fonts/BebasNeue-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Anton';
+  src: url('/fonts/Anton-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Teko-Bold';
+  src: url('/fonts/Teko-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
 * {
   margin: 0;
   padding: 0;
