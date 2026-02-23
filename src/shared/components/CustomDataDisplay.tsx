@@ -21,27 +21,72 @@ const resolveImagePath = (path: string): string => {
 
 // =============================================================================
 // FONT CONFIGURATION
-// To add a new font:
-// 1. Add the font file to layout-builder-web/public/fonts/
-// 2. Add @font-face to layout-builder-web/src/index.css
-// 3. Add an entry to FONT_CONFIG below
-// 4. Add the option to PropertyPanel.tsx font dropdown
+// =============================================================================
+// leftBearingRatio/rightBearingRatio: The font's side bearing as a fraction of font size.
+// These values are used by React Native which doesn't have Canvas TextMetrics.
+// The web version measures dynamically but these provide fallback consistency.
 // =============================================================================
 interface FontConfig {
-  // The font family name to use in web CSS
   web: string;
-  // The dy offset for vertical centering (font-specific baseline adjustment)
   dyOffset: string;
+  leftBearingRatio: number;  // Typical left bearing as fraction of em (e.g., 0.05 = 5%)
+  rightBearingRatio: number; // Typical right bearing as fraction of em
 }
 
 const FONT_CONFIG: Record<string, FontConfig> = {
   'Score-Regular': {
     web: 'Score-Regular',
     dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
   },
   'Helvetica-Bold': {
-    web: 'Helvetica, Arial, sans-serif', // Web fallback stack
+    web: 'Helvetica, Arial, sans-serif',
     dyOffset: '0.35em',
+    leftBearingRatio: 0.06,
+    rightBearingRatio: 0.06,
+  },
+  'Inter-Bold': {
+    web: 'Inter-Bold',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
+  },
+  'Roboto-Bold': {
+    web: 'Roboto-Bold',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
+  },
+  'Montserrat-Bold': {
+    web: 'Montserrat-Bold',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
+  },
+  'Oswald-Bold': {
+    web: 'Oswald-Bold',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
+  },
+  'BebasNeue': {
+    web: 'BebasNeue',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
+  },
+  'Anton': {
+    web: 'Anton',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
+  },
+  'Teko-Bold': {
+    web: 'Teko-Bold',
+    dyOffset: '0.35em',
+    leftBearingRatio: 0.05,
+    rightBearingRatio: 0.05,
   },
 };
 
@@ -50,6 +95,57 @@ const DEFAULT_FONT = 'Score-Regular';
 const getFontConfig = (fontFamily: string): FontConfig => {
   return FONT_CONFIG[fontFamily] || FONT_CONFIG[DEFAULT_FONT];
 };
+
+// =============================================================================
+// TEXT BEARING MEASUREMENT
+// Uses Canvas TextMetrics to calculate font bearing (whitespace around glyphs).
+//
+// For textAnchor="start" (left-aligned):
+//   - Origin is at start of text box
+//   - actualBoundingBoxLeft = left bearing (space before first pixel)
+//   - Need to shift text RIGHT by this amount to flush left edge
+//
+// For textAnchor="end" (right-aligned):
+//   - Origin is at end of text box
+//   - Right bearing = advanceWidth - actualBoundingBoxRight (space after last pixel)
+//   - Need to shift text RIGHT by this amount to flush right edge
+// =============================================================================
+const getTextBearings = (text: string, fontFamily: string, fontSize: number): { leftBearing: number; rightBearing: number } => {
+  if (typeof document === 'undefined' || !text) {
+    return { leftBearing: 0, rightBearing: 0 };
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return { leftBearing: 0, rightBearing: 0 };
+  }
+
+  ctx.font = `bold ${fontSize}px ${fontFamily}`;
+  const metrics = ctx.measureText(text);
+
+  // Left bearing: distance from origin to leftmost pixel
+  const leftBearing = metrics.actualBoundingBoxLeft || 0;
+
+  // Right bearing: distance from rightmost pixel to end of advance width
+  // advanceWidth (metrics.width) = leftBearing + inkWidth + rightBearing
+  // actualBoundingBoxRight = leftBearing + inkWidth (distance from origin to rightmost pixel)
+  // Therefore: rightBearing = advanceWidth - actualBoundingBoxRight
+  const advanceWidth = metrics.width || 0;
+  const actualBoundingBoxRight = metrics.actualBoundingBoxRight || advanceWidth;
+  const rightBearing = Math.max(0, advanceWidth - actualBoundingBoxRight);
+
+  // Debug: log bearing ratios for calibrating TV lookup tables
+  const firstChar = text.charAt(0);
+  const lastChar = text.charAt(text.length - 1);
+  console.log(`[Bearings] "${text}" font=${fontFamily} size=${fontSize} | first='${firstChar}' leftRatio=${(leftBearing/fontSize).toFixed(4)} | last='${lastChar}' rightRatio=${(rightBearing/fontSize).toFixed(4)}`);
+
+  return {
+    leftBearing,
+    rightBearing,
+  };
+};
+
 
 interface CustomDataDisplayProps {
   dataPath: string;
@@ -220,7 +316,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     toggleState = false,
     state1Props = {},
     state2Props = {},
-    autoToggle = true,
+    autoToggle = false,
     visibilityPath,
     isVisible: isVisibleProp,
     useTeamColor = false,
@@ -650,8 +746,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       width: containerWidth,
       height: containerHeight,
       backgroundColor: effectiveBackgroundColor,
-      justifyContent: imageSourceObj ? anchorAlignment.justifyContent : 'center',
-      alignItems: imageSourceObj ? anchorAlignment.alignItems : 'center',
+      justifyContent: imageSourceObj ? anchorAlignment.justifyContent : 'flex-start',
+      alignItems: imageSourceObj ? anchorAlignment.alignItems : 'flex-start',
       overflow: imageSourceObj ? 'visible' : 'hidden',
       // Apply border properties
       borderWidth: imageSourceObj ? 0 : borderWidth,
@@ -665,12 +761,11 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       borderTopRightRadius: borderTopRightRadius,
       borderBottomLeftRadius: borderBottomLeftRadius,
       borderBottomRightRadius: borderBottomRightRadius,
-      // For images: use zero padding so image fills container exactly
-      // For text: add padding for readability
-      paddingTop: imageSourceObj ? 0 : (paddingTop + 4),
-      paddingRight: imageSourceObj ? 0 : (paddingRight + 4),
-      paddingBottom: imageSourceObj ? 0 : (paddingBottom + 4),
-      paddingLeft: imageSourceObj ? 0 : (paddingLeft + 4),
+      // No container padding - SVG text positioning handles padding via x coordinate
+      paddingTop: 0,
+      paddingRight: 0,
+      paddingBottom: 0,
+      paddingLeft: 0,
       position: 'relative',
       // Smooth opacity transition for visibility changes
       opacity: isVisible ? 1 : 0,
@@ -782,7 +877,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           </div>
         </>
       ) : (
-        // Render text using SVG - position at center with middle alignment
+        // Render text using SVG with bearing compensation for flush alignment
         <svg
           width={containerWidth}
           height={containerHeight}
@@ -790,7 +885,15 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           style={{ position: 'absolute', top: 0, left: 0 }}
         >
           <text
-            x={textAlign === 'left' ? paddingLeft : textAlign === 'right' ? containerWidth - paddingRight : containerWidth / 2}
+            x={(() => {
+              // Simple positioning - matches TV exactly
+              if (textAlign === 'left') {
+                return paddingLeft;
+              } else if (textAlign === 'right') {
+                return containerWidth - paddingRight;
+              }
+              return containerWidth / 2;
+            })()}
             y="50%"
             dy={getFontConfig(fontFamily).dyOffset}
             textAnchor={textAlign === 'left' ? 'start' : textAlign === 'right' ? 'end' : 'middle'}

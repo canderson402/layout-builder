@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutConfig } from '../types';
+import { useToast } from './Toast';
 import './PresetModal.css';
 
 interface PresetModalProps {
@@ -19,6 +20,7 @@ interface SavedPreset {
 const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
 
 function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
+  const toast = useToast();
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const [presetName, setPresetName] = useState(layout.name || 'My Layout');
   const [activeTab, setActiveTab] = useState<'save' | 'load' | 'json'>('save');
@@ -40,7 +42,7 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
 
   const savePreset = () => {
     if (!presetName.trim()) {
-      alert('Please enter a preset name');
+      toast.warning('Please enter a preset name');
       return;
     }
 
@@ -70,8 +72,8 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
 
     setSavedPresets(updatedPresets);
     localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
-    
-    alert('Preset saved successfully!');
+
+    toast.success('Preset saved successfully!');
     setActiveTab('load');
   };
 
@@ -123,11 +125,11 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
             const updatedPresets = [...savedPresets, ...importedPresets];
             setSavedPresets(updatedPresets);
             localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
-            alert('Presets imported successfully!');
+            toast.success('Presets imported successfully!');
           }
         }
       } catch (error) {
-        alert('Failed to import presets. Please check the file format.');
+        toast.error('Failed to import presets. Please check the file format.');
       }
     };
     reader.readAsText(file);
@@ -139,7 +141,7 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
 
   const loadFromJson = () => {
     if (!jsonInput.trim()) {
-      alert('Please enter JSON layout data');
+      toast.warning('Please enter JSON layout data');
       return;
     }
 
@@ -165,7 +167,7 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
         onClose();
       }
     } catch (error) {
-      alert(`Failed to load JSON layout: ${error instanceof Error ? error.message : 'Invalid JSON format'}`);
+      toast.error(`Failed to load JSON layout: ${error instanceof Error ? error.message : 'Invalid JSON format'}`);
     }
   };
 

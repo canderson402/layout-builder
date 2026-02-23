@@ -1,0 +1,128 @@
+.toast-container {
+  position: fixed;
+  bottom: var(--space-xl, 24px);
+  right: var(--space-xl, 24px);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-sm, 8px);
+  z-index: 10001;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md, 12px);
+  padding: var(--space-md, 12px) var(--space-lg, 16px);
+  background: var(--color-bg-tertiary, #333);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  animation: toast-enter 0.2s ease-out;
+  min-width: 280px;
+  max-width: 420px;
+}
+
+.toast-exit {
+  animation: toast-exit 0.2s ease-in forwards;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.toast-success .toast-icon {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+}
+
+.toast-error .toast-icon {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+.toast-warning .toast-icon {
+  background: rgba(255, 152, 0, 0.2);
+  color: #FF9800;
+}
+
+.toast-info .toast-icon {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196F3;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text-primary, #fff);
+  line-height: 1.4;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #aaa);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary, #fff);
+}
+
+/* Left border accent for each type */
+.toast-success {
+  border-left: 3px solid #4CAF50;
+}
+
+.toast-error {
+  border-left: 3px solid #f44336;
+}
+
+.toast-warning {
+  border-left: 3px solid #FF9800;
+}
+
+.toast-info {
+  border-left: 3px solid #2196F3;
+}

@@ -1,36 +1,46 @@
 .toolbar {
   width: 240px;
-  background: #2a2a2a;
-  border-right: 1px solid #444;
+  background: var(--color-bg-secondary, #2a2a2a);
+  border-right: 1px solid var(--color-border-default, #444);
   display: flex;
   flex-direction: column;
 }
 
 .toolbar-header {
-  padding: 16px;
-  border-bottom: 1px solid #444;
+  padding: var(--space-lg, 16px);
+  border-bottom: 1px solid var(--color-border-default, #444);
 }
 
+.toolbar-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary, #fff);
+}
+
+/* Backwards compatibility */
 .toolbar-header h3 {
   font-size: 16px;
   font-weight: 600;
   margin: 0;
+  color: var(--color-text-primary, #fff);
 }
 
 .toolbar-content {
-  padding: 16px;
+  padding: var(--space-lg, 16px);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-sm, 8px);
 }
 
 .component-button {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: #3a3a3a;
-  color: #fff;
+  gap: var(--space-md, 12px);
+  padding: var(--space-md, 12px) var(--space-lg, 16px);
+  background: var(--color-bg-elevated, #3a3a3a);
+  color: var(--color-text-primary, #fff);
+  border: 1px solid transparent;
   border-radius: 8px;
   text-align: left;
   font-size: 14px;
@@ -39,18 +49,40 @@
 }
 
 .component-button:hover {
-  background: #4a4a4a;
+  background: var(--color-bg-hover, #4a4a4a);
   transform: translateY(-1px);
+  border-color: var(--color-border-default, #555);
 }
 
 .component-button:active {
   transform: translateY(0);
 }
 
+.component-button:focus-visible {
+  outline: var(--focus-ring-width, 2px) solid var(--focus-ring-color, #4CAF50);
+  outline-offset: var(--focus-ring-offset, 2px);
+}
+
 .component-icon {
-  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--color-accent-primary, #4CAF50);
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
 .component-label {
   font-weight: 500;
+  color: var(--color-text-secondary, #ccc);
+}
+
+.component-button:hover .component-label {
+  color: var(--color-text-primary, #fff);
 }

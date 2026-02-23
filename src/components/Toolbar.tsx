@@ -7,36 +7,36 @@ interface ToolbarProps {
 }
 
 const COMPONENT_TYPES = [
-  { type: 'teamName', label: 'Team Name', icon: 'TN' },
-  { type: 'score', label: 'Score', icon: 'SC' },
-  { type: 'clock', label: 'Clock', icon: 'CK' },
-  { type: 'period', label: 'Period/Quarter', icon: 'PD' },
-  { type: 'fouls', label: 'Fouls', icon: 'FL' },
-  { type: 'timeouts', label: 'Timeouts', icon: 'TO' },
-  { type: 'bonus', label: 'Bonus', icon: 'BN' },
-  { type: 'custom', label: 'Custom', icon: 'CU' },
-  { type: 'leaderboardList', label: 'Leaderboard', icon: 'LB' },
+  { type: 'teamName', label: 'Team Name', icon: 'Aa' },
+  { type: 'score', label: 'Score', icon: '#' },
+  { type: 'clock', label: 'Clock', icon: '12:34' },
+  { type: 'period', label: 'Period/Quarter', icon: 'Q' },
+  { type: 'fouls', label: 'Fouls', icon: 'F' },
+  { type: 'timeouts', label: 'Timeouts', icon: '---' },
+  { type: 'bonus', label: 'Bonus', icon: 'B+' },
+  { type: 'custom', label: 'Custom', icon: '+' },
+  { type: 'leaderboardList', label: 'Leaderboard', icon: '#1' },
 ] as const;
 
 export default function Toolbar({ onAddComponent }: ToolbarProps) {
   return (
-    <div className="toolbar">
+    <nav className="toolbar" role="toolbar" aria-label="Add components">
       <div className="toolbar-header">
-        <h3>Components</h3>
+        <h2 id="toolbar-heading">Components</h2>
       </div>
-      <div className="toolbar-content">
+      <div className="toolbar-content" aria-labelledby="toolbar-heading">
         {COMPONENT_TYPES.map(({ type, label, icon }) => (
           <button
             key={type}
             className="component-button"
             onClick={() => onAddComponent(type)}
-            title={`Add ${label}`}
+            aria-label={`Add ${label} component`}
           >
-            <span className="component-icon">{icon}</span>
+            <span className="component-icon" aria-hidden="true">{icon}</span>
             <span className="component-label">{label}</span>
           </button>
         ))}
       </div>
-    </div>
+    </nav>
   );
 }

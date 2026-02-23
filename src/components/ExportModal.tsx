@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutConfig, ComponentConfig } from '../types';
 import { expandLayoutForExport } from '../utils/slotTemplates';
+import { measureTextBearings, getSampleTextForBearing } from '../utils/textBearings';
 import './ExportModal.css';
 
 // Clean up component props to remove unnecessary/default values
@@ -21,9 +22,27 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
   if (!roundedComponent.props) return roundedComponent;
 
   const props = { ...roundedComponent.props };
+
   const hasImage = props.imageSource && props.imageSource !== 'none' && props.imagePath;
   const hasTextDataPath = props.dataPath && props.dataPath !== 'none' && props.dataPath !== '';
   const isImageOnly = hasImage && !hasTextDataPath;
+
+  // Measure and add text bearings for non-center aligned text components
+  // This allows the TV app to position text identically without its own measurement API
+  const textAlign = props.textAlign || 'center';
+  const hasTextContent = props.dataPath || props.customText;
+
+  if (!isImageOnly && hasTextContent && (textAlign === 'left' || textAlign === 'right')) {
+    const fontSize = props.fontSize || 24;
+    const fontFamily = props.fontFamily || 'Score-Regular';
+    const sampleText = getSampleTextForBearing(props);
+
+    const bearings = measureTextBearings(sampleText, fontFamily, fontSize);
+
+    // Add measured bearings to props (TV app will use these directly)
+    props.measuredLeftBearing = bearings.leftBearing;
+    props.measuredRightBearing = bearings.rightBearing;
+  }
 
   // Remove empty strings
   const emptyStringProps = ['label', 'prefix', 'suffix', 'imagePath', 'imageUrl'];

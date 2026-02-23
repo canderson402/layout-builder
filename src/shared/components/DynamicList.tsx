@@ -20,6 +20,7 @@ interface DynamicListProps {
 
   // Layout
   direction?: 'horizontal' | 'vertical';
+  itemAlignment?: 'start' | 'center' | 'end' | 'space-between' | 'space-around';
   itemSpacing?: number;
   borderRadius?: number;
   showNumbers?: boolean; // Show numbers in each item
@@ -65,6 +66,7 @@ export default function DynamicList(props: DynamicListProps) {
     inactiveBackgroundColor = '#666666',
     inactiveTextColor = '#ffffff',
     direction = 'horizontal',
+    itemAlignment = 'start',
     itemSpacing = 4,
     borderRadius = 4,
     showNumbers = false,
@@ -75,6 +77,18 @@ export default function DynamicList(props: DynamicListProps) {
     height,
     gameData
   } = props;
+
+  // Map alignment values to flexbox justifyContent
+  const getJustifyContent = (alignment: string) => {
+    switch (alignment) {
+      case 'start': return 'flex-start';
+      case 'center': return 'center';
+      case 'end': return 'flex-end';
+      case 'space-between': return 'space-between';
+      case 'space-around': return 'space-around';
+      default: return 'flex-start';
+    }
+  };
 
   // Use provided gameData or fall back to mockData
   const effectiveGameData = gameData || mockData;
@@ -105,14 +119,32 @@ export default function DynamicList(props: DynamicListProps) {
   // Calculate item dimensions
   const isHorizontal = direction === 'horizontal';
   const totalSpacing = (safeTotal - 1) * itemSpacing;
+  const shouldFillContainer = itemAlignment === 'start';
 
-  const itemWidth = isHorizontal ?
-    Math.floor((width - totalSpacing) / safeTotal) :
-    width;
+  let itemWidth: number;
+  let itemHeight: number;
 
-  const itemHeight = isHorizontal ?
-    height :
-    Math.floor((height - totalSpacing) / safeTotal);
+  if (isHorizontal) {
+    if (shouldFillContainer) {
+      // Fill the container width with items
+      itemWidth = Math.floor((width - totalSpacing) / safeTotal);
+      itemHeight = height;
+    } else {
+      // Use square items based on height so they can be centered
+      itemHeight = height;
+      itemWidth = height; // Square items
+    }
+  } else {
+    if (shouldFillContainer) {
+      // Fill the container height with items
+      itemWidth = width;
+      itemHeight = Math.floor((height - totalSpacing) / safeTotal);
+    } else {
+      // Use square items based on width so they can be centered
+      itemWidth = width;
+      itemHeight = width; // Square items
+    }
+  }
 
   // Generate items array
   const items = Array.from({ length: safeTotal }, (_, index) => {
@@ -140,16 +172,17 @@ export default function DynamicList(props: DynamicListProps) {
       width,
       height,
       flexDirection: isHorizontal ? 'row' : 'column',
-      justifyContent: 'flex-start',
-      alignItems: 'stretch',
+      justifyContent: getJustifyContent(itemAlignment),
+      alignItems: shouldFillContainer ? 'stretch' : 'center',
       gap: itemSpacing
     }}>
       {items.map(({ index, itemNumber, isActive }) => (
         <View
           key={index}
           style={{
-            width: itemWidth,
-            height: itemHeight,
+            // Use flex: 1 when filling container to avoid rounding gaps
+            ...(shouldFillContainer ? { flex: 1 } : { width: itemWidth }),
+            height: isHorizontal ? itemHeight : (shouldFillContainer ? undefined : itemHeight),
             backgroundColor: isActive ? activeBackgroundColor : inactiveBackgroundColor,
             borderWidth: borderWidth || 0,
             borderColor: borderColor || '#ffffff',

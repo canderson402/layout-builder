@@ -5,6 +5,8 @@ import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
+import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
+import { ToastProvider, useToast } from './components/Toast';
 import { expandLayoutForExport } from './utils/slotTemplates';
 import './App.css';
 
@@ -37,6 +39,7 @@ const MemoizedLayerPanel = React.memo(LayerPanel);
 const MemoizedPropertyPanel = React.memo(PropertyPanel);
 const MemoizedExportModal = React.memo(ExportModal);
 const MemoizedPresetModal = React.memo(PresetModal);
+const MemoizedKeyboardShortcutsModal = React.memo(KeyboardShortcutsModal);
 
 // Fake 404 overlay component for obfuscation
 const Fake404Overlay = ({ onDismiss }: { onDismiss: () => void }) => {
@@ -189,10 +192,14 @@ function App() {
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
 
   // Clipboard state for copy/paste
   const [clipboard, setClipboard] = useState<ComponentConfig[] | null>(null);
+
+  // Toast notifications
+  const toast = useToast();
   
   // Undo/Redo system - keep track of last 50 actions each
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
@@ -335,7 +342,7 @@ function App() {
   // Send layout to TV endpoint
   const sendLayoutToTv = useCallback(async () => {
     if (!tvIpAddress.trim()) {
-      alert('Please enter a valid TV IP address');
+      toast.warning('Please enter a valid TV IP address');
       return;
     }
 
@@ -370,8 +377,8 @@ function App() {
           });
         }
       } catch (jsonError) {
-        console.error('❌ JSON validation failed:', jsonError);
-        alert('Invalid layout data - JSON formatting error');
+        console.error('JSON validation failed:', jsonError);
+        toast.error('Invalid layout data - JSON formatting error');
         return;
       }
 
@@ -559,22 +566,22 @@ function App() {
         throw new Error(`HTTP ${response.status}: ${response.statusText}${errorDetails}`);
       }
 
-      console.log('✅ Layout sent successfully to TV');
-      alert('Layout sent successfully to TV!');
+      console.log('Layout sent successfully to TV');
+      toast.success('Layout sent successfully to TV!');
     } catch (error) {
       console.error('Error sending layout to TV:', error);
 
       // Check if this is a network restriction error (common in Brave browser)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_ADDRESS_UNREACHABLE')) {
-        alert(`Failed to send layout to TV: Network blocked by browser.\n\nIf you're using Brave browser:\n1. Click the Brave shield icon in the address bar\n2. Turn off "Block fingerprinting"\n3. Reload the page and try again\n\nOr try using Chrome/Safari instead.`);
+        toast.error('Network blocked by browser. Try disabling Brave shields or use Chrome/Safari.', 8000);
       } else {
-        alert(`Failed to send layout to TV: ${errorMessage}`);
+        toast.error(`Failed to send layout to TV: ${errorMessage}`);
       }
     } finally {
       setIsSendingToTv(false);
     }
-  }, [layout, tvIpAddress]);
+  }, [layout, tvIpAddress, toast]);
 
   // Quick save preset function
   const quickSavePreset = useCallback(() => {
@@ -611,11 +618,11 @@ function App() {
     }
 
     localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
-    
+
     // Show brief feedback
     const action = existingIndex >= 0 ? 'updated' : 'saved';
-    alert(`Preset "${nameToUse}" ${action} successfully!`);
-  }, [layout]);
+    toast.success(`Preset "${nameToUse}" ${action} successfully!`);
+  }, [layout, toast]);
 
   // LocalStorage keys to export/import
   const LOCAL_STORAGE_KEYS = [
@@ -669,10 +676,10 @@ function App() {
             }
           });
 
-          alert(`Imported ${importedCount} settings. Refreshing page to apply changes...`);
-          window.location.reload();
+          toast.success(`Imported ${importedCount} settings. Refreshing page...`);
+          setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
-          alert('Failed to import data: Invalid JSON file');
+          toast.error('Failed to import data: Invalid JSON file');
         }
       };
       reader.readAsText(file);
@@ -1224,12 +1231,19 @@ function App() {
     });
   }, [selectedComponents, saveStateForUndo]);
 
-  // Global keyboard handler for copy/paste/group
+  // Global keyboard handler for copy/paste/group and keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle if we're in an input field
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // ? key - show keyboard shortcuts modal
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault();
+        setShowKeyboardShortcuts(prev => !prev);
         return;
       }
 
@@ -1296,13 +1310,16 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <header className="app-header">
+    <div className="app" role="application" aria-label="Layout Builder">
+      <a href="#main-canvas" className="skip-link">Skip to canvas</a>
+      <header className="app-header" role="banner">
         {/* Left: Branding & Layout Type */}
         <div className="header-section header-branding">
-          <span className="header-title">Layout Builder</span>
-          <div className="header-divider" />
+          <h1 className="header-title">Layout Builder</h1>
+          <div className="header-divider" aria-hidden="true" />
+          <label htmlFor="layout-type-select" className="sr-only">Layout Type</label>
           <select
+            id="layout-type-select"
             value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
             onChange={(e) => {
               if (e.target.value === '__custom__') {
@@ -1314,7 +1331,7 @@ function App() {
               }
             }}
             className="header-select"
-            title="Select the layout type - this determines which layout template the TV app will use"
+            aria-label="Select layout type"
           >
             {LAYOUT_TYPES.map(type => (
               <option key={type.value} value={type.value}>{type.label}</option>
@@ -1328,76 +1345,91 @@ function App() {
               onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
               className="header-input"
               placeholder="Custom type"
-              title="Enter a custom layout type identifier for the TV app"
+              aria-label="Custom layout type identifier"
             />
           )}
         </div>
 
         {/* Center: Edit Operations */}
-        <div className="header-section header-edit">
+        <div className="header-section header-edit" role="toolbar" aria-label="Edit operations">
             <button
               onClick={undo}
               disabled={undoHistory.length === 0}
               className="header-btn header-btn-secondary"
-              title={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'Nothing to undo'}
+              aria-label={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'Nothing to undo'}
+              aria-keyshortcuts="Control+Z"
             >
-              Undo {undoHistory.length > 0 && <span className="btn-badge">{undoHistory.length}</span>}
+              Undo {undoHistory.length > 0 && <span className="btn-badge" aria-label={`${undoHistory.length} actions`}>{undoHistory.length}</span>}
             </button>
             <button
               onClick={redo}
               disabled={redoHistory.length === 0}
               className="header-btn header-btn-secondary"
-              title={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'Nothing to redo'}
+              aria-label={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'Nothing to redo'}
+              aria-keyshortcuts="Control+Shift+Z"
             >
-              Redo {redoHistory.length > 0 && <span className="btn-badge">{redoHistory.length}</span>}
+              Redo {redoHistory.length > 0 && <span className="btn-badge" aria-label={`${redoHistory.length} actions`}>{redoHistory.length}</span>}
             </button>
           </div>
 
         {/* Right: File & Export Operations */}
-        <div className="header-section header-file">
+        <div className="header-section header-file" role="toolbar" aria-label="File operations">
             <button
               onClick={quickSavePreset}
               className="header-btn header-btn-primary"
-              title="Quick save current layout as a preset with the current name"
+              aria-label="Quick save current layout as a preset"
+              aria-keyshortcuts="Control+S"
             >
               Save
             </button>
             <button
               onClick={() => setShowPresetModal(true)}
               className="header-btn header-btn-secondary"
-              title="Open preset manager to save, load, import, or export layout presets"
+              aria-label="Open preset manager"
             >
               Presets
             </button>
             <button
               onClick={() => setShowExportModal(true)}
               className="header-btn header-btn-accent"
-              title="Export current layout as JSON file for use in the TV app"
+              aria-label="Export layout as JSON"
             >
               Export
             </button>
-            <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} />
+            <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} aria-hidden="true" />
             <button
               onClick={exportLocalStorage}
               className="header-btn header-btn-secondary"
-              title="Export all settings (templates, presets, preferences) to a file"
+              aria-label="Backup all settings to a file"
             >
               Backup
             </button>
             <button
               onClick={importLocalStorage}
               className="header-btn header-btn-secondary"
-              title="Import settings from a backup file"
+              aria-label="Restore settings from a backup file"
             >
               Restore
+            </button>
+            <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} aria-hidden="true" />
+            <button
+              onClick={() => setShowKeyboardShortcuts(true)}
+              className="header-btn header-btn-icon"
+              aria-label="Show keyboard shortcuts"
+              aria-keyshortcuts="?"
+              title="Keyboard Shortcuts (?)"
+            >
+              ?
             </button>
           </div>
       </header>
 
-      <div className="app-body">
-            <div
+      <main className="app-body" id="main-canvas" role="main">
+            <aside
               className={`panel-container left-panel ${isResizingLeft ? 'resizing' : ''}`}
               style={{ width: leftPanelWidth }}
+              role="complementary"
+              aria-label="Layers panel"
             >
               <MemoizedLayerPanel
                 layout={layout}
@@ -1415,8 +1447,11 @@ function App() {
               <div
                 className="panel-resize-edge right-edge"
                 onMouseDown={handleLeftResizeStart}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize layers panel"
               />
-            </div>
+            </aside>
 
             <MemoizedCanvas
               layout={layout}
@@ -1435,13 +1470,18 @@ function App() {
               gameData={gameData}
             />
 
-            <div
+            <aside
               className={`panel-container right-panel ${isResizingRight ? 'resizing' : ''}`}
               style={{ width: rightPanelWidth }}
+              role="complementary"
+              aria-label="Properties panel"
             >
               <div
                 className="panel-resize-edge left-edge"
                 onMouseDown={handleRightResizeStart}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize properties panel"
               />
               <MemoizedPropertyPanel
                 layout={layout}
@@ -1452,8 +1492,8 @@ function App() {
                 onUpdateGameData={setGameData}
                 panelWidth={rightPanelWidth}
               />
-            </div>
-      </div>
+            </aside>
+      </main>
 
       {showExportModal && (
         <MemoizedExportModal
@@ -1469,6 +1509,11 @@ function App() {
           onLoadPreset={loadCustomPreset}
         />
       )}
+
+      <MemoizedKeyboardShortcutsModal
+        isOpen={showKeyboardShortcuts}
+        onClose={() => setShowKeyboardShortcuts(false)}
+      />
     </div>
   );
 }
@@ -1530,6 +1575,7 @@ function getDefaultProps(type: ComponentConfig['type']) {
       inactiveBorderWidth: 0,
       inactiveBorderColor: '#ffffff',
       direction: 'horizontal',
+      itemAlignment: 'start',
       itemSpacing: 4,
       borderRadius: 4,
       showNumbers: false,
@@ -1569,4 +1615,13 @@ function needsTeam(type: ComponentConfig['type']): boolean {
   return ['teamName', 'score', 'fouls', 'timeouts', 'bonus'].includes(type);
 }
 
-export default App;
+// Wrap App with ToastProvider for global toast access
+function AppWithToast() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
+  );
+}
+
+export default AppWithToast;

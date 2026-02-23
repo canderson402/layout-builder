@@ -1395,28 +1395,6 @@ function PropertyPanel({
               {component.props?.toggleState ? 'ON' : 'OFF'}
             </button>
           </div>
-          {/* Auto Toggle - bind toggle state to dataPath boolean value */}
-          <div style={{ marginTop: '8px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={component.props?.autoToggle || false}
-                onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                  props: { ...component.props, autoToggle: e.target.checked }
-                })}
-              />
-              <span style={{ fontSize: '12px', color: '#fff' }}>Auto Toggle</span>
-            </label>
-            <small style={{ color: '#888', display: 'block', marginTop: '4px', marginLeft: '24px' }}>
-              When enabled, the Data Path value controls the toggle state.
-              Set Data Path to a boolean like <strong style={{ color: '#4CAF50' }}>isTopScorer</strong>.
-            </small>
-            {component.props?.autoToggle && (
-              <small style={{ color: '#4CAF50', display: 'block', marginTop: '4px', marginLeft: '24px' }}>
-                State 1 = false, State 2 = true
-              </small>
-            )}
-          </div>
         </div>
       )}
       
@@ -1753,7 +1731,14 @@ function PropertyPanel({
               onChange={(e) => updateStateProps('fontFamily', e.target.value)}
             >
               <option value="Score-Regular">Score-Regular (Numbers/Clocks)</option>
-              <option value="Helvetica-Bold">Helvetica Bold (Classic Text)</option>
+              <option value="Helvetica-Bold">Helvetica Bold (System)</option>
+              <option value="Inter-Bold">Inter Bold (Clean/Modern)</option>
+              <option value="Roboto-Bold">Roboto Bold (Versatile)</option>
+              <option value="Montserrat-Bold">Montserrat Bold (Geometric)</option>
+              <option value="Oswald-Bold">Oswald Bold (Condensed)</option>
+              <option value="BebasNeue">Bebas Neue (Athletic)</option>
+              <option value="Anton">Anton (Impact)</option>
+              <option value="Teko-Bold">Teko Bold (Tech/Sport)</option>
             </select>
           </div>
 
@@ -3007,6 +2992,22 @@ function PropertyPanel({
                 >
                   <option value="horizontal">Horizontal</option>
                   <option value="vertical">Vertical</option>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Item Alignment</label>
+                <select
+                  value={component.props?.itemAlignment || 'start'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, itemAlignment: e.target.value }
+                  })}
+                >
+                  <option value="start">Start (Left/Top)</option>
+                  <option value="center">Center</option>
+                  <option value="end">End (Right/Bottom)</option>
+                  <option value="space-between">Space Between</option>
+                  <option value="space-around">Space Around</option>
                 </select>
               </div>
 
