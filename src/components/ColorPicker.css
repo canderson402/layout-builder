@@ -217,6 +217,28 @@
   margin-left: 16px;
 }
 
+.color-picker-preview-input {
+  flex: 1;
+  font-size: 11px;
+  color: #fff;
+  font-family: 'Roboto Mono', monospace;
+  margin-left: 16px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 4px;
+  outline: none;
+}
+
+.color-picker-preview-input:hover {
+  border-color: #555;
+}
+
+.color-picker-preview-input:focus {
+  border-color: #4a7c59;
+  background: #333;
+}
+
 .color-picker-buttons {
   display: flex;
   gap: 8px;

@@ -74,6 +74,8 @@ interface CustomDataDisplayProps {
   imageUrl?: string;
   objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
   imageAnchor?: 'top-left' | 'top-right' | 'center' | 'bottom-left' | 'bottom-right';
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   imageTintColor?: string;
   useImageTint?: boolean;
   borderWidth?: number;
@@ -173,6 +175,37 @@ const mockData = {
       slot0: { jersey: 14, time: '1:00', active: true },
       slot1: { jersey: 22, time: '1:45', active: true },
       slot2: { jersey: 8, time: '2:30', active: true },
+    },
+  },
+  // Leaderboard slots for player stats
+  leaderboardSlots: {
+    home: {
+      count: 5,
+      isState0: false,
+      isState1: false,
+      isState2: false,
+      isState3: false,
+      isState4: false,
+      isState5: true,
+      slot0: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, active: true },
+      slot1: { jersey: '33', name: 'S. Pippen', points: 22, fouls: 3, isTopScorer: false, active: true },
+      slot2: { jersey: '91', name: 'D. Rodman', points: 8, fouls: 4, isTopScorer: false, active: true },
+      slot3: { jersey: '7', name: 'T. Kukoc', points: 12, fouls: 1, isTopScorer: false, active: true },
+      slot4: { jersey: '25', name: 'S. Kerr', points: 6, fouls: 0, isTopScorer: false, active: true },
+    },
+    away: {
+      count: 5,
+      isState0: false,
+      isState1: false,
+      isState2: false,
+      isState3: false,
+      isState4: false,
+      isState5: true,
+      slot0: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, active: true },
+      slot1: { jersey: '12', name: 'J. Stockton', points: 18, fouls: 2, isTopScorer: false, active: true },
+      slot2: { jersey: '4', name: 'J. Hornacek', points: 14, fouls: 1, isTopScorer: false, active: true },
+      slot3: { jersey: '53', name: 'M. Eaton', points: 4, fouls: 4, isTopScorer: false, active: true },
+      slot4: { jersey: '35', name: 'A. Carr', points: 10, fouls: 2, isTopScorer: false, active: true },
     },
   },
 };
@@ -336,6 +369,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     imageUrl,
     objectFit = 'fill',
     imageAnchor = 'center',
+    flipHorizontal = false,
+    flipVertical = false,
     imageTintColor: effectiveImageTintColor,
     useImageTint: effectiveUseImageTint = false,
     borderWidth = 0,
@@ -458,9 +493,18 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   // For boolean data paths with toggle enabled, don't show text - just show the visual state
   const isBooleanToggle = canToggle && typeof rawValue === 'boolean';
 
+  // Check for currentPlayer name paths - provide defaults when empty
+  const isCurrentPlayerName = dataPath === 'currentPlayer.home.name' || dataPath === 'currentPlayer.away.name';
+  const defaultName = dataPath === 'currentPlayer.home.name' ? 'Home' :
+                      dataPath === 'currentPlayer.away.name' ? 'Away' : '--';
+
   // Format the value based on the format type
   const formatValue = (value: any) => {
-    if (value === null || value === undefined) {
+    if (value === null || value === undefined || value === '') {
+      // Use team name defaults for currentPlayer name paths
+      if (isCurrentPlayerName) {
+        return defaultName;
+      }
       return '--';
     }
 
@@ -498,6 +542,14 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }
   };
 
+  // Check if dataPath is an image path (ends with imageUrl, image, etc.)
+  const isImageDataPath = dataPath && (
+    dataPath.endsWith('.imageUrl') ||
+    dataPath.endsWith('.image') ||
+    dataPath === 'imageUrl' ||
+    dataPath === 'image'
+  );
+
   // Get image source
   const getImageSource = () => {
     // If user has explicitly set a local or URL image, use that for preview
@@ -506,6 +558,20 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }
     if (imageSource === 'url' && imageUrl) {
       return { uri: imageUrl };
+    }
+
+    // If dataPath points to an image URL, use the value from game data
+    if (isImageDataPath && rawValue) {
+      const imageUrlValue = String(rawValue);
+      // Only use if it looks like a valid URL or path
+      if (imageUrlValue && imageUrlValue !== '--' && (
+        imageUrlValue.startsWith('http://') ||
+        imageUrlValue.startsWith('https://') ||
+        imageUrlValue.startsWith('/') ||
+        imageUrlValue.startsWith('data:')
+      )) {
+        return { uri: resolveImagePath(imageUrlValue) };
+      }
     }
 
     // Handle banner ads with mock data (only if no image explicitly set)
@@ -664,6 +730,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
                     maskRepeat: 'no-repeat',
                     WebkitMaskPosition: 'center',
                     maskPosition: 'center',
+                    transform: (flipHorizontal || flipVertical) ? `scale(${flipHorizontal ? -1 : 1}, ${flipVertical ? -1 : 1})` : undefined,
+                    transformOrigin: 'center',
                   }}
                 />
               </>
@@ -682,7 +750,9 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
                     height: '100%',
                     objectFit: effectiveObjectFit
                   }),
-                  display: 'block'
+                  display: 'block',
+                  transform: (flipHorizontal || flipVertical) ? `scale(${flipHorizontal ? -1 : 1}, ${flipVertical ? -1 : 1})` : undefined,
+                  transformOrigin: 'center',
                 }}
                 onLoad={(e) => {
                   const img = e.target as HTMLImageElement;

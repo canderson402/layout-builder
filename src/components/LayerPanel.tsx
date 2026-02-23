@@ -1,5 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { ComponentConfig, LayoutConfig } from '../types';
+import { ComponentConfig, LayoutConfig, SlotTemplate, ComponentGroupTemplate } from '../types';
+import { loadTemplates, createTemplate, deleteTemplate, calculateBoundingBox } from '../utils/slotTemplates';
+import {
+  loadComponentTemplates,
+  createComponentTemplate,
+  deleteComponentTemplate,
+  instantiateTemplate
+} from '../utils/componentTemplates';
 import './LayerPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -21,7 +28,7 @@ interface LayerPanelProps {
   onSelectComponents: (ids: string[]) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onDeleteComponent: (id: string) => void;
-  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string) => void;
+  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string, parentId?: string, customId?: string, customLayer?: number, extraProps?: Partial<ComponentConfig>) => void;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
   onCopyComponents?: () => void;
@@ -59,6 +66,238 @@ export default function LayerPanel({
   });
   const dragCounter = useRef(0);
   const lastSelectedIdRef = useRef<string | null>(null); // Anchor point for shift-click range selection
+
+  // Slot template state
+  const [templates, setTemplates] = useState<SlotTemplate[]>(() => loadTemplates());
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [templateSlotWidth, setTemplateSlotWidth] = useState(0);
+  const [templateSlotHeight, setTemplateSlotHeight] = useState(0);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+
+  // Component group template state
+  const [componentTemplates, setComponentTemplates] = useState<ComponentGroupTemplate[]>(() => loadComponentTemplates());
+  const [showComponentTemplateModal, setShowComponentTemplateModal] = useState(false);
+  const [newComponentTemplateName, setNewComponentTemplateName] = useState('');
+  const [showComponentTemplateManager, setShowComponentTemplateManager] = useState(false);
+
+  // Refresh templates from storage
+  const refreshTemplates = () => {
+    setTemplates(loadTemplates());
+  };
+
+  // Refresh component templates from storage
+  const refreshComponentTemplates = () => {
+    setComponentTemplates(loadComponentTemplates());
+  };
+
+  // Save selected components as a slot template
+  const handleSaveAsTemplate = () => {
+    if (selectedComponents.length === 0) return;
+
+    // Calculate bounding box of selected components
+    const selectedComps = layout.components.filter(c => selectedComponents.includes(c.id));
+    const collectChildren = (parentIds: string[]): ComponentConfig[] => {
+      const children = layout.components.filter(c => c.parentId && parentIds.includes(c.parentId));
+      if (children.length === 0) return [];
+      const childIds = children.map(c => c.id);
+      return [...children, ...collectChildren(childIds)];
+    };
+    const groupIds = selectedComps.filter(c => c.type === 'group').map(c => c.id);
+    const childrenOfGroups = collectChildren(groupIds);
+    const allComponents = [...selectedComps, ...childrenOfGroups];
+    const renderableComponents = allComponents.filter(c => c.type !== 'group');
+
+    if (renderableComponents.length > 0) {
+      const bounds = calculateBoundingBox(renderableComponents);
+      setTemplateSlotWidth(Math.round(bounds.width));
+      setTemplateSlotHeight(Math.round(bounds.height));
+    }
+
+    // Pre-populate with the first selected component's name
+    const firstSelected = layout.components.find(c => c.id === selectedComponents[0]);
+    const defaultName = firstSelected ? getComponentDisplayName(firstSelected) : '';
+    setNewTemplateName(defaultName);
+    setShowTemplateModal(true);
+  };
+
+  const confirmSaveTemplate = () => {
+    if (!newTemplateName.trim() || selectedComponents.length === 0) return;
+
+    // Get selected components and their children (for groups)
+    const selectedComps = layout.components.filter(c => selectedComponents.includes(c.id));
+
+    // Recursively collect all children of selected groups
+    const collectChildren = (parentIds: string[]): ComponentConfig[] => {
+      const children = layout.components.filter(c => c.parentId && parentIds.includes(c.parentId));
+      if (children.length === 0) return [];
+      const childIds = children.map(c => c.id);
+      return [...children, ...collectChildren(childIds)];
+    };
+
+    const groupIds = selectedComps.filter(c => c.type === 'group').map(c => c.id);
+    const childrenOfGroups = collectChildren(groupIds);
+
+    // Combine selected + children, then filter out groups (keep only renderable components)
+    const allComponents = [...selectedComps, ...childrenOfGroups];
+    const renderableComponents = allComponents.filter(c => c.type !== 'group');
+
+    if (renderableComponents.length === 0) {
+      alert('No renderable components found. Make sure your selection includes visual components, not just groups.');
+      return;
+    }
+
+    // Pass custom slot size if user modified it
+    const customSlotSize = templateSlotWidth > 0 && templateSlotHeight > 0
+      ? { width: templateSlotWidth, height: templateSlotHeight }
+      : undefined;
+
+    createTemplate(newTemplateName.trim(), renderableComponents, undefined, customSlotSize);
+    refreshTemplates();
+    setShowTemplateModal(false);
+    setNewTemplateName('');
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    if (confirm('Delete this template?')) {
+      deleteTemplate(id);
+      refreshTemplates();
+    }
+  };
+
+  // Load template components into the layout under a parent group
+  const handleLoadTemplate = (template: SlotTemplate) => {
+    onStartDragOperation?.();
+
+    // Calculate center position for placement
+    const centerX = (layout.dimensions.width - template.slotSize.width) / 2;
+    const centerY = (layout.dimensions.height - template.slotSize.height) / 2;
+
+    // Generate a unique ID for the parent group
+    const groupId = `group-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // First, create the parent group
+    onAddComponent(
+      'group',
+      { x: Math.max(0, centerX), y: Math.max(0, centerY) },
+      { width: template.slotSize.width, height: template.slotSize.height },
+      {},
+      template.name,
+      undefined, // no parent for the group itself
+      groupId
+    );
+
+    // Add each component from the template as children of the group, preserving layer order
+    template.components.forEach((comp, index) => {
+      const position = {
+        x: Math.max(0, centerX + comp.position.x),
+        y: Math.max(0, centerY + comp.position.y)
+      };
+
+      // Extract extra properties that need to be preserved
+      const extraProps: Partial<ComponentConfig> = {};
+      if (comp.originalSize) extraProps.originalSize = comp.originalSize;
+      if (comp.originalAspectRatio) extraProps.originalAspectRatio = comp.originalAspectRatio;
+      if (comp.scaleAnchor) extraProps.scaleAnchor = comp.scaleAnchor;
+      if (comp.visible !== undefined) extraProps.visible = comp.visible;
+      if (comp.useTeamColor) extraProps.useTeamColor = comp.useTeamColor;
+      if (comp.teamColorSide) extraProps.teamColorSide = comp.teamColorSide;
+      if (comp.slot !== undefined) extraProps.slot = comp.slot;
+
+      onAddComponent(
+        comp.type,
+        position,
+        comp.size,
+        comp.props,
+        comp.displayName,
+        groupId, // set parent to the group we just created
+        undefined, // customId - let it generate
+        comp.layer !== undefined ? comp.layer : index, // preserve layer or use index as fallback
+        Object.keys(extraProps).length > 0 ? extraProps : undefined
+      );
+    });
+
+    onEndDragOperation?.(`Load template: ${template.name}`);
+  };
+
+  // Component Group Template Handlers
+  const handleSaveAsComponentTemplate = () => {
+    if (selectedComponents.length === 0) return;
+
+    // Pre-populate with the first selected component's name
+    const firstSelected = layout.components.find(c => c.id === selectedComponents[0]);
+    const defaultName = firstSelected ? getComponentDisplayName(firstSelected) : '';
+    setNewComponentTemplateName(defaultName);
+    setShowComponentTemplateModal(true);
+  };
+
+  const confirmSaveComponentTemplate = () => {
+    if (!newComponentTemplateName.trim() || selectedComponents.length === 0) return;
+
+    createComponentTemplate(
+      newComponentTemplateName.trim(),
+      selectedComponents,
+      layout.components
+    );
+    refreshComponentTemplates();
+    setShowComponentTemplateModal(false);
+    setNewComponentTemplateName('');
+  };
+
+  const handleDeleteComponentTemplate = (id: string) => {
+    if (confirm('Delete this component template?')) {
+      deleteComponentTemplate(id);
+      refreshComponentTemplates();
+    }
+  };
+
+  const handleLoadComponentTemplate = (template: ComponentGroupTemplate) => {
+    onStartDragOperation?.();
+
+    // Calculate center position for placement
+    const centerX = (layout.dimensions.width - template.boundingBox.width) / 2;
+    const centerY = (layout.dimensions.height - template.boundingBox.height) / 2;
+
+    // Instantiate the template at the center position
+    const newComponents = instantiateTemplate(template, {
+      x: Math.max(0, centerX),
+      y: Math.max(0, centerY)
+    });
+
+    // Calculate max layer of existing root components for proper stacking
+    const existingRootComponents = (layout.components || []).filter(c => !c.parentId);
+    const maxRootLayer = existingRootComponents.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
+
+    // Add each component from the instantiated template
+    newComponents.forEach((comp, index) => {
+      // Only root components (no parentId) get layer adjusted for stacking
+      const layer = !comp.parentId ? maxRootLayer + 1 + index : comp.layer;
+
+      // Extract extra properties that need to be preserved
+      const extraProps: Partial<ComponentConfig> = {};
+      if (comp.originalSize) extraProps.originalSize = comp.originalSize;
+      if (comp.originalAspectRatio) extraProps.originalAspectRatio = comp.originalAspectRatio;
+      if (comp.scaleAnchor) extraProps.scaleAnchor = comp.scaleAnchor;
+      if (comp.visible !== undefined) extraProps.visible = comp.visible;
+      if (comp.useTeamColor) extraProps.useTeamColor = comp.useTeamColor;
+      if (comp.teamColorSide) extraProps.teamColorSide = comp.teamColorSide;
+      if (comp.slot !== undefined) extraProps.slot = comp.slot;
+
+      onAddComponent(
+        comp.type,
+        comp.position,
+        comp.size,
+        comp.props,
+        comp.displayName,
+        comp.parentId,
+        comp.id,
+        layer,
+        Object.keys(extraProps).length > 0 ? extraProps : undefined
+      );
+    });
+
+    onEndDragOperation?.(`Load component template: ${template.name}`);
+  };
 
   // Handle applying toggle properties to newly created component
   React.useEffect(() => {
@@ -841,8 +1080,416 @@ export default function LayerPanel({
             <div className="component-menu-icon"></div>
             <div className="component-menu-label">Image</div>
           </button>
+
+          <button
+            className="component-menu-item"
+            onClick={() => onAddComponent('slotList', undefined, { width: 400, height: 400 }, {
+              templateId: templates[0]?.id || '',
+              team: 'home',
+              slotCount: 5,
+              slotSpacing: 5,
+              direction: 'vertical',
+              dataPathPrefix: 'leaderboardSlots'
+            })}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', JSON.stringify({
+                type: 'preset-component',
+                componentType: 'slotList',
+                size: { width: 400, height: 400 },
+                props: {
+                  templateId: templates[0]?.id || '',
+                  team: 'home',
+                  slotCount: 5,
+                  slotSpacing: 5,
+                  direction: 'vertical',
+                  dataPathPrefix: 'leaderboardSlots'
+                }
+              }));
+            }}
+            title="Slot List - Uses a saved template to create repeated slots with dynamic data paths"
+          >
+            <div className="component-menu-icon"></div>
+            <div className="component-menu-label">Slot List</div>
+          </button>
+        </div>
+
+        {/* Save as Template buttons */}
+        {selectedComponents.length > 0 && (
+          <div style={{ padding: '8px', borderTop: '1px solid #444', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <button
+              onClick={handleSaveAsTemplate}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}
+            >
+              Save as Slot Template
+            </button>
+            <button
+              onClick={handleSaveAsComponentTemplate}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: '#9C27B0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}
+            >
+              Save as Component Template
+            </button>
+          </div>
+        )}
+
+        {/* Template Manager */}
+        <div style={{ padding: '8px', borderTop: '1px solid #444' }}>
+          <button
+            onClick={() => setShowTemplateManager(!showTemplateManager)}
+            style={{
+              width: '100%',
+              padding: '6px 12px',
+              backgroundColor: '#333',
+              color: '#aaa',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <span>Slot Templates ({templates.length})</span>
+            <span>{showTemplateManager ? '-' : '+'}</span>
+          </button>
+
+          {showTemplateManager && (
+            <div style={{ marginTop: '8px' }}>
+              {templates.length === 0 ? (
+                <div style={{ color: '#666', fontSize: '11px', textAlign: 'center', padding: '8px' }}>
+                  No templates saved. Select components and click "Save as Slot Template".
+                </div>
+              ) : (
+                templates.map(template => (
+                  <div
+                    key={template.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      backgroundColor: '#2a2a2a',
+                      borderRadius: '4px',
+                      marginBottom: '4px',
+                      fontSize: '11px'
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: '#fff', fontWeight: 'bold' }}>{template.name}</div>
+                      <div style={{ color: '#888' }}>
+                        {template.components.length} component{template.components.length !== 1 ? 's' : ''} |
+                        {template.slotSize.width}x{template.slotSize.height}px
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        onClick={() => handleLoadTemplate(template)}
+                        style={{
+                          padding: '2px 6px',
+                          backgroundColor: '#27ae60',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontSize: '10px'
+                        }}
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTemplate(template.id)}
+                        style={{
+                          padding: '2px 6px',
+                          backgroundColor: '#c0392b',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontSize: '10px'
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Component Template Manager */}
+        <div style={{ padding: '8px', borderTop: '1px solid #444' }}>
+          <button
+            onClick={() => setShowComponentTemplateManager(!showComponentTemplateManager)}
+            style={{
+              width: '100%',
+              padding: '6px 12px',
+              backgroundColor: '#333',
+              color: '#aaa',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <span>Component Templates ({componentTemplates.length})</span>
+            <span>{showComponentTemplateManager ? '-' : '+'}</span>
+          </button>
+
+          {showComponentTemplateManager && (
+            <div style={{ marginTop: '8px' }}>
+              {componentTemplates.length === 0 ? (
+                <div style={{ color: '#666', fontSize: '11px', textAlign: 'center', padding: '8px' }}>
+                  No component templates saved. Select components and click "Save as Component Template".
+                </div>
+              ) : (
+                componentTemplates.map(template => (
+                  <div
+                    key={template.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      backgroundColor: '#2a2a2a',
+                      borderRadius: '4px',
+                      marginBottom: '4px',
+                      fontSize: '11px'
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: '#fff', fontWeight: 'bold' }}>{template.name}</div>
+                      <div style={{ color: '#888' }}>
+                        {template.components.length} component{template.components.length !== 1 ? 's' : ''} |
+                        {template.boundingBox.width}x{template.boundingBox.height}px
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        onClick={() => handleLoadComponentTemplate(template)}
+                        style={{
+                          padding: '2px 6px',
+                          backgroundColor: '#27ae60',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontSize: '10px'
+                        }}
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={() => handleDeleteComponentTemplate(template.id)}
+                        style={{
+                          padding: '2px 6px',
+                          backgroundColor: '#c0392b',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontSize: '10px'
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Save Template Modal */}
+      {showTemplateModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
+          }}
+          onClick={() => setShowTemplateModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#2a2a2a',
+              padding: '20px',
+              borderRadius: '8px',
+              minWidth: '300px'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Slot Template</h3>
+            <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
+              Saving {selectedComponents.length} component{selectedComponents.length !== 1 ? 's' : ''} as a reusable template.
+              Use relative data paths (e.g., "jersey", "name", "points") for dynamic binding.
+            </p>
+            <input
+              type="text"
+              placeholder="Template name"
+              value={newTemplateName}
+              onChange={e => setNewTemplateName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmSaveTemplate()}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#333',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                color: '#fff',
+                marginBottom: '16px',
+                boxSizing: 'border-box'
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowTemplateModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#555',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSaveTemplate}
+                disabled={!newTemplateName.trim()}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: newTemplateName.trim() ? '#2196F3' : '#444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Save Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Component Template Modal */}
+      {showComponentTemplateModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
+          }}
+          onClick={() => setShowComponentTemplateModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#2a2a2a',
+              padding: '20px',
+              borderRadius: '8px',
+              minWidth: '300px'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Component Template</h3>
+            <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
+              Saving {selectedComponents.length} component{selectedComponents.length !== 1 ? 's' : ''} (and their children) as a reusable template.
+              The template preserves component hierarchy and relative positions.
+            </p>
+            <input
+              type="text"
+              placeholder="Template name (e.g., Home Team Header)"
+              value={newComponentTemplateName}
+              onChange={e => setNewComponentTemplateName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmSaveComponentTemplate()}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#333',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                color: '#fff',
+                marginBottom: '16px',
+                boxSizing: 'border-box'
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowComponentTemplateModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#555',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSaveComponentTemplate}
+                disabled={!newComponentTemplateName.trim()}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: newComponentTemplateName.trim() ? '#9C27B0' : '#444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: newComponentTemplateName.trim() ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Save Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

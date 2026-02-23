@@ -1,12 +1,11 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig, LAYOUT_TYPES } from './types';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
-import ShaderCreator from './components/ShaderCreator/ShaderCreator';
-import { useStandaloneEffectPreview, ShaderPresetsProvider } from './effects';
+import { expandLayoutForExport } from './utils/slotTemplates';
 import './App.css';
 
 // Panel resize constants
@@ -32,16 +31,12 @@ type UndoAction = {
   previousLayout: LayoutConfig;
 };
 
-// Tab types
-type AppTab = 'layout-builder' | 'shader-creator';
-
 // Memoized child components to prevent unnecessary re-renders
 const MemoizedCanvas = React.memo(Canvas);
 const MemoizedLayerPanel = React.memo(LayerPanel);
 const MemoizedPropertyPanel = React.memo(PropertyPanel);
 const MemoizedExportModal = React.memo(ExportModal);
 const MemoizedPresetModal = React.memo(PresetModal);
-const MemoizedShaderCreator = React.memo(ShaderCreator);
 
 // Fake 404 overlay component for obfuscation
 const Fake404Overlay = ({ onDismiss }: { onDismiss: () => void }) => {
@@ -77,9 +72,6 @@ function App() {
     setIsUnlocked(true);
     sessionStorage.setItem('layout-builder-unlocked', 'true');
   }, []);
-
-  // Tab navigation state
-  const [activeTab, setActiveTab] = useState<AppTab>('layout-builder');
 
   const [layout, setLayout] = useState<LayoutConfig>({
     name: 'basketball', // Layout type identifier used by TV app
@@ -157,15 +149,44 @@ function App() {
         slot1: { jersey: 22, time: '1:45', active: false },
         slot2: { jersey: 8, time: '2:30', active: false },
       },
+    },
+    // Leaderboard slots for player stats preview
+    leaderboardSlots: {
+      home: {
+        count: 5,
+        isState0: false,
+        isState1: false,
+        isState2: false,
+        isState3: false,
+        isState4: false,
+        isState5: true,
+        slot0: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, active: true },
+        slot1: { jersey: '33', name: 'S. Pippen', points: 22, fouls: 3, isTopScorer: false, active: true },
+        slot2: { jersey: '91', name: 'D. Rodman', points: 8, fouls: 4, isTopScorer: false, active: true },
+        slot3: { jersey: '7', name: 'T. Kukoc', points: 12, fouls: 1, isTopScorer: false, active: true },
+        slot4: { jersey: '25', name: 'S. Kerr', points: 6, fouls: 0, isTopScorer: false, active: true },
+      },
+      away: {
+        count: 5,
+        isState0: false,
+        isState1: false,
+        isState2: false,
+        isState3: false,
+        isState4: false,
+        isState5: true,
+        slot0: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, active: true },
+        slot1: { jersey: '12', name: 'J. Stockton', points: 18, fouls: 2, isTopScorer: false, active: true },
+        slot2: { jersey: '4', name: 'J. Hornacek', points: 14, fouls: 1, isTopScorer: false, active: true },
+        slot3: { jersey: '53', name: 'M. Eaton', points: 4, fouls: 4, isTopScorer: false, active: true },
+        slot4: { jersey: '35', name: 'A. Carr', points: 10, fouls: 2, isTopScorer: false, active: true },
+      },
     }
   });
-
-  // Shader effect preview system
-  const { activeEffects, triggerEffect } = useStandaloneEffectPreview();
 
   // Remove expensive console.log - causes performance issues
 
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
@@ -413,11 +434,17 @@ function App() {
 
       console.log('🎯 Progressive test completed, trying to fix and send full layout...');
 
+      // First expand any slotList components into concrete components for the TV
+      const expandedLayout = {
+        ...layout,
+        components: expandLayoutForExport(layout.components || [])
+      };
+
       // Comprehensive JSON cleaning system to handle ALL Swift parsing issues
-      const cleanLayoutForServer = (layout: any) => {
+      const cleanLayoutForServer = (layoutToClean: any) => {
         return {
-          name: layout.name || "basketball",
-          components: (layout.components || []).map((component: any) => {
+          name: layoutToClean.name || "basketball",
+          components: (layoutToClean.components || []).map((component: any) => {
             // Start with only the essential fields Swift expects
             const cleanComponent: any = {
               id: component.id,
@@ -497,14 +524,14 @@ function App() {
             return cleanComponent;
           }),
           dimensions: {
-            width: Number(layout.dimensions?.width || 1920),
-            height: Number(layout.dimensions?.height || 1080)
+            width: Number(layoutToClean.dimensions?.width || 1920),
+            height: Number(layoutToClean.dimensions?.height || 1080)
           },
-          backgroundColor: layout.backgroundColor || "#000000"
+          backgroundColor: layoutToClean.backgroundColor || "#000000"
         };
       };
 
-      const cleanedLayout = cleanLayoutForServer(layout);
+      const cleanedLayout = cleanLayoutForServer(expandedLayout);
 
       const cleanedJson = JSON.stringify(cleanedLayout);
       const cleanedSize = new Blob([cleanedJson]).size;
@@ -590,6 +617,69 @@ function App() {
     alert(`Preset "${nameToUse}" ${action} successfully!`);
   }, [layout]);
 
+  // LocalStorage keys to export/import
+  const LOCAL_STORAGE_KEYS = [
+    'sv-slot-templates',
+    'sv-component-templates',
+    'canvas-background-image',
+    'canvas-background-visible',
+    'scoreboard-layout-presets'
+  ];
+
+  // Export all localStorage data
+  const exportLocalStorage = useCallback(() => {
+    const exportData: Record<string, string | null> = {};
+    LOCAL_STORAGE_KEYS.forEach(key => {
+      const value = localStorage.getItem(key);
+      if (value !== null) {
+        exportData[key] = value;
+      }
+    });
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `layout-builder-data-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // Import localStorage data from file
+  const importLocalStorage = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target?.result as string);
+          let importedCount = 0;
+
+          Object.entries(data).forEach(([key, value]) => {
+            if (LOCAL_STORAGE_KEYS.includes(key) && typeof value === 'string') {
+              localStorage.setItem(key, value);
+              importedCount++;
+            }
+          });
+
+          alert(`Imported ${importedCount} settings. Refreshing page to apply changes...`);
+          window.location.reload();
+        } catch (error) {
+          alert('Failed to import data: Invalid JSON file');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
+
   // Listen for canvas undo/redo events
   React.useEffect(() => {
     const handleCanvasUndo = () => {
@@ -613,13 +703,17 @@ function App() {
     customPosition?: { x: number, y: number },
     customSize?: { width: number, height: number },
     customProps?: Record<string, any>,
-    customDisplayName?: string
+    customDisplayName?: string,
+    parentId?: string,
+    customId?: string,
+    customLayer?: number,
+    extraProps?: Partial<ComponentConfig> // Additional properties like originalSize, originalAspectRatio, etc.
   ) => {
     setLayout(prev => {
       // Save current state for undo
       saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
 
-      const componentId = generateComponentId(type);
+      const componentId = customId || generateComponentId(type);
 
       // Generate unique display name
       const baseName = customDisplayName || getDefaultDisplayName(type);
@@ -649,9 +743,12 @@ function App() {
         type,
         position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
         size: customSize || getDefaultSize(type),
-        layer: maxRootLayer + 1, // New components get highest layer so they appear on top
+        layer: customLayer !== undefined ? customLayer : maxRootLayer + 1,
         props: customProps || getDefaultProps(type),
-        team: needsTeam(type) ? 'home' : undefined
+        team: needsTeam(type) ? 'home' : undefined,
+        parentId,
+        // Merge in extra properties (originalSize, originalAspectRatio, scaleAnchor, visible, etc.)
+        ...extraProps
       };
 
       return {
@@ -666,23 +763,38 @@ function App() {
   const dragStartStateRef = React.useRef<LayoutConfig | null>(null);
 
   const updateComponent = useCallback((id: string, updates: Partial<ComponentConfig>) => {
-    // Removed expensive console.log with stack trace - major performance issue
+    // Round position and size values to integers to prevent sub-pixel rendering differences
+    // between web (CSS) and React Native (tvOS)
+    const roundedUpdates = { ...updates };
+    if (roundedUpdates.position) {
+      roundedUpdates.position = {
+        x: Math.round(roundedUpdates.position.x),
+        y: Math.round(roundedUpdates.position.y),
+      };
+    }
+    if (roundedUpdates.size) {
+      roundedUpdates.size = {
+        width: Math.round(roundedUpdates.size.width),
+        height: Math.round(roundedUpdates.size.height),
+      };
+    }
+
     setLayout(prev => {
       const component = (prev.components || []).find(c => c.id === id);
       if (component) {
         // Check if this is a position/size update (drag/resize operation)
-        const isPropertyUpdate = Object.keys(updates).some(key => !['position', 'size'].includes(key));
-        
+        const isPropertyUpdate = Object.keys(roundedUpdates).some(key => !['position', 'size'].includes(key));
+
         if (isPropertyUpdate) {
           // Property updates always save undo state
           saveStateForUndo('UPDATE_COMPONENT', `Update ${component.type} properties`, prev);
         }
       }
-      
+
       return {
         ...prev,
-        components: (prev.components || []).map(comp => 
-          comp.id === id ? { ...comp, ...updates } : comp
+        components: (prev.components || []).map(comp =>
+          comp.id === id ? { ...comp, ...roundedUpdates } : comp
         )
       };
     });
@@ -999,7 +1111,120 @@ function App() {
     });
   }, [clipboard, saveStateForUndo, generateComponentId]);
 
-  // Global keyboard handler for copy/paste
+  // Group selected components together
+  const groupSelectedComponents = useCallback(() => {
+    if (selectedComponents.length === 0) return;
+
+    setLayout(prev => {
+      const components = prev.components || [];
+      const selectedComps = components.filter(c => selectedComponents.includes(c.id));
+
+      if (selectedComps.length === 0) return prev;
+
+      saveStateForUndo('GROUP_COMPONENTS', `Group ${selectedComps.length} components`, prev);
+
+      // Calculate bounding box of selected components
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      selectedComps.forEach(c => {
+        minX = Math.min(minX, c.position.x);
+        minY = Math.min(minY, c.position.y);
+        maxX = Math.max(maxX, c.position.x + c.size.width);
+        maxY = Math.max(maxY, c.position.y + c.size.height);
+      });
+
+      // Generate group ID and name
+      const groupId = generateComponentId('group');
+      const existingNames = new Set(components.map(c => c.displayName || c.type).filter(Boolean));
+      let groupName = 'Group';
+      if (existingNames.has(groupName)) {
+        let counter = 2;
+        while (existingNames.has(`Group${counter}`)) counter++;
+        groupName = `Group${counter}`;
+      }
+
+      // Find the max layer among root components to place group on top
+      const rootComponents = components.filter(c => !c.parentId);
+      const maxLayer = rootComponents.reduce((max, c) => Math.max(max, c.layer || 0), -1);
+
+      // Create the group component
+      const groupComponent: ComponentConfig = {
+        id: groupId,
+        type: 'group',
+        displayName: groupName,
+        position: { x: Math.round(minX), y: Math.round(minY) },
+        size: { width: Math.round(maxX - minX), height: Math.round(maxY - minY) },
+        layer: maxLayer + 1
+      };
+
+      // Update selected components to be children of the group
+      // Also store their relative position within the group
+      const updatedComponents = components.map(c => {
+        if (selectedComponents.includes(c.id)) {
+          return {
+            ...c,
+            parentId: groupId,
+            // Position is now relative to group (but we keep absolute for now)
+          };
+        }
+        return c;
+      });
+
+      // Select the new group
+      setTimeout(() => setSelectedComponents([groupId]), 0);
+
+      return {
+        ...prev,
+        components: [...updatedComponents, groupComponent]
+      };
+    });
+  }, [selectedComponents, saveStateForUndo, generateComponentId]);
+
+  // Ungroup selected groups - move children to root level
+  const ungroupSelectedComponents = useCallback(() => {
+    if (selectedComponents.length === 0) return;
+
+    setLayout(prev => {
+      const components = prev.components || [];
+      const selectedGroups = components.filter(
+        c => selectedComponents.includes(c.id) && c.type === 'group'
+      );
+
+      if (selectedGroups.length === 0) return prev;
+
+      saveStateForUndo('UNGROUP_COMPONENTS', `Ungroup ${selectedGroups.length} group(s)`, prev);
+
+      const groupIds = new Set(selectedGroups.map(g => g.id));
+
+      // Find all children of the selected groups
+      const childrenIds: string[] = [];
+      components.forEach(c => {
+        if (c.parentId && groupIds.has(c.parentId)) {
+          childrenIds.push(c.id);
+        }
+      });
+
+      // Update children to remove parent reference (move to root)
+      // and remove the group components
+      const updatedComponents = components
+        .filter(c => !groupIds.has(c.id)) // Remove group components
+        .map(c => {
+          if (c.parentId && groupIds.has(c.parentId)) {
+            return { ...c, parentId: undefined };
+          }
+          return c;
+        });
+
+      // Select the former children
+      setTimeout(() => setSelectedComponents(childrenIds), 0);
+
+      return {
+        ...prev,
+        components: updatedComponents
+      };
+    });
+  }, [selectedComponents, saveStateForUndo]);
+
+  // Global keyboard handler for copy/paste/group
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle if we're in an input field
@@ -1007,9 +1232,6 @@ function App() {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
-
-      // Only handle in layout builder tab
-      if (activeTab !== 'layout-builder') return;
 
       // Copy: Ctrl+C or Cmd+C
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
@@ -1026,11 +1248,27 @@ function App() {
           pasteComponents();
         }
       }
+
+      // Group: Ctrl+G or Cmd+G
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && !e.shiftKey) {
+        if (selectedComponents.length > 0) {
+          e.preventDefault();
+          groupSelectedComponents();
+        }
+      }
+
+      // Ungroup: Ctrl+Shift+G or Cmd+Shift+G
+      if ((e.ctrlKey || e.metaKey) && e.key === 'G' && e.shiftKey) {
+        if (selectedComponents.length > 0) {
+          e.preventDefault();
+          ungroupSelectedComponents();
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, selectedComponents, clipboard, copyComponents, pasteComponents]);
+  }, [selectedComponents, clipboard, copyComponents, pasteComponents, groupSelectedComponents, ungroupSelectedComponents]);
 
 
 
@@ -1058,64 +1296,45 @@ function App() {
   }
 
   return (
-    <ShaderPresetsProvider>
     <div className="app">
       <header className="app-header">
-        {/* Left: Tab Navigation & Branding */}
+        {/* Left: Branding & Layout Type */}
         <div className="header-section header-branding">
-          <div className="tab-navigation">
-            <button
-              className={`tab-btn ${activeTab === 'layout-builder' ? 'active' : ''}`}
-              onClick={() => setActiveTab('layout-builder')}
-            >
-              Layout Builder
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'shader-creator' ? 'active' : ''}`}
-              onClick={() => setActiveTab('shader-creator')}
-            >
-              Shader Creator
-            </button>
-          </div>
-          {activeTab === 'layout-builder' && (
-            <>
-              <div className="header-divider" />
-              <select
-                value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
-                onChange={(e) => {
-                  if (e.target.value === '__custom__') {
-                    if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
-                      setLayout(prev => ({ ...prev, name: '' }));
-                    }
-                  } else {
-                    setLayout(prev => ({ ...prev, name: e.target.value }));
-                  }
-                }}
-                className="header-select"
-                title="Select the layout type - this determines which layout template the TV app will use"
-              >
-                {LAYOUT_TYPES.map(type => (
-                  <option key={type.value} value={type.value}>{type.label}</option>
-                ))}
-                <option value="__custom__">Custom...</option>
-              </select>
-              {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
-                <input
-                  type="text"
-                  value={layout.name}
-                  onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
-                  className="header-input"
-                  placeholder="Custom type"
-                  title="Enter a custom layout type identifier for the TV app"
-                />
-              )}
-            </>
+          <span className="header-title">Layout Builder</span>
+          <div className="header-divider" />
+          <select
+            value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
+            onChange={(e) => {
+              if (e.target.value === '__custom__') {
+                if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
+                  setLayout(prev => ({ ...prev, name: '' }));
+                }
+              } else {
+                setLayout(prev => ({ ...prev, name: e.target.value }));
+              }
+            }}
+            className="header-select"
+            title="Select the layout type - this determines which layout template the TV app will use"
+          >
+            {LAYOUT_TYPES.map(type => (
+              <option key={type.value} value={type.value}>{type.label}</option>
+            ))}
+            <option value="__custom__">Custom...</option>
+          </select>
+          {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
+            <input
+              type="text"
+              value={layout.name}
+              onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
+              className="header-input"
+              placeholder="Custom type"
+              title="Enter a custom layout type identifier for the TV app"
+            />
           )}
         </div>
 
-        {/* Center: Edit Operations - only show for Layout Builder */}
-        {activeTab === 'layout-builder' && (
-          <div className="header-section header-edit">
+        {/* Center: Edit Operations */}
+        <div className="header-section header-edit">
             <button
               onClick={undo}
               disabled={undoHistory.length === 0}
@@ -1133,11 +1352,9 @@ function App() {
               Redo {redoHistory.length > 0 && <span className="btn-badge">{redoHistory.length}</span>}
             </button>
           </div>
-        )}
 
-        {/* Right: File & Export Operations - only show for Layout Builder */}
-        {activeTab === 'layout-builder' && (
-          <div className="header-section header-file">
+        {/* Right: File & Export Operations */}
+        <div className="header-section header-file">
             <button
               onClick={quickSavePreset}
               className="header-btn header-btn-primary"
@@ -1159,19 +1376,25 @@ function App() {
             >
               Export
             </button>
+            <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} />
+            <button
+              onClick={exportLocalStorage}
+              className="header-btn header-btn-secondary"
+              title="Export all settings (templates, presets, preferences) to a file"
+            >
+              Backup
+            </button>
+            <button
+              onClick={importLocalStorage}
+              className="header-btn header-btn-secondary"
+              title="Import settings from a backup file"
+            >
+              Restore
+            </button>
           </div>
-        )}
-
-        {/* Spacer for Shader Creator tab to keep header balanced */}
-        {activeTab === 'shader-creator' && (
-          <div className="header-section header-spacer" />
-        )}
-
       </header>
 
       <div className="app-body">
-        {activeTab === 'layout-builder' ? (
-          <>
             <div
               className={`panel-container left-panel ${isResizingLeft ? 'resizing' : ''}`}
               style={{ width: leftPanelWidth }}
@@ -1210,7 +1433,6 @@ function App() {
               onEndDragOperation={endDragOperation}
               onUpdateLayout={handleUpdateLayout}
               gameData={gameData}
-              activeEffects={activeEffects}
             />
 
             <div
@@ -1229,13 +1451,8 @@ function App() {
                 gameData={gameData}
                 onUpdateGameData={setGameData}
                 panelWidth={rightPanelWidth}
-                onPreviewEffect={triggerEffect}
               />
             </div>
-          </>
-        ) : (
-          <MemoizedShaderCreator />
-        )}
       </div>
 
       {showExportModal && (
@@ -1253,7 +1470,6 @@ function App() {
         />
       )}
     </div>
-    </ShaderPresetsProvider>
   );
 }
 
@@ -1268,7 +1484,8 @@ function getDefaultSize(type: ComponentConfig['type']) {
     timeouts: { width: 384, height: 86 },   // 384px width, 86px height
     bonus: { width: 154, height: 130 },     // 154px width, 130px height
     custom: { width: 192, height: 108 },    // 192px width, 108px height
-    dynamicList: { width: 300, height: 60 } // 300px width, 60px height
+    dynamicList: { width: 300, height: 60 }, // 300px width, 60px height
+    leaderboardList: { width: 300, height: 340 } // 300px width, 340px height
   };
   return sizes[type] || { width: 192, height: 108 };
 }
@@ -1289,7 +1506,7 @@ function getDefaultProps(type: ComponentConfig['type']) {
       format: 'text',
       prefix: '',
       suffix: '',
-      backgroundColor: 'transparent',
+      backgroundColor: '#333333',
       textColor: '#ffffff',
       textAlign: 'center',
       imageSource: 'local',
@@ -1319,6 +1536,24 @@ function getDefaultProps(type: ComponentConfig['type']) {
       reverseOrder: false,
       borderWidth: 0,
       borderColor: '#ffffff'
+    },
+    leaderboardList: {
+      visibleCount: 5,
+      rowHeight: 60,
+      rowSpacing: 8,
+      backgroundColor: 'transparent',
+      rowBackgroundColor: 'rgba(0, 0, 0, 0.5)',
+      textColor: '#ffffff',
+      fontSize: 24,
+      showRank: true,
+      showScore: true,
+      rankWidth: 40,
+      scoreWidth: 60,
+      borderRadius: 4,
+      cycleEnabled: false,
+      cycleInterval: 5000,
+      cycleTransition: 'fade',
+      cycleDuration: 500
     },
   };
   return props[type] || {};

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
-import { ComponentConfig, LayoutConfig } from '../types';
+import { ComponentConfig, LayoutConfig, SlotTemplate } from '../types';
+import { loadTemplates, saveTemplates } from '../utils/slotTemplates';
 import {
   loadAvailableImages,
   getImagePath,
@@ -10,7 +11,6 @@ import {
   getAvailableImagesForSport,
 } from '../utils/imageUtils';
 import ColorPicker from './ColorPicker';
-import { EffectPropertySection, EffectName, EffectConfig, TriggerOptions } from '../effects';
 import './PropertyPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -34,14 +34,83 @@ interface PropertyPanelProps {
   gameData?: any;
   onUpdateGameData?: (gameData: any) => void;
   panelWidth?: number;
-  onPreviewEffect?: (componentId: string, effectName: EffectName, options?: TriggerOptions) => void;
 }
 
 // Width threshold for two-column layout
 const TWO_COLUMN_THRESHOLD = 450;
 
+// Collapsible section component for game data - defined outside to prevent re-creation on render
+const GameDataSection = ({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) => {
+  const [isOpen, setIsOpen] = React.useState(defaultOpen);
+  return (
+    <div style={{ marginBottom: '8px', border: '1px solid #444', borderRadius: '4px' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          padding: '8px 12px',
+          backgroundColor: '#333',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderRadius: isOpen ? '4px 4px 0 0' : '4px'
+        }}
+      >
+        <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{title}</span>
+        <span style={{ fontSize: '10px' }}>{isOpen ? '▼' : '▶'}</span>
+      </div>
+      {isOpen && (
+        <div style={{ padding: '12px', backgroundColor: '#2a2a2a' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
 
-// Simple number input handlers - no complex hook needed
+// Reusable debounced input component - prevents form reset on every keystroke
+// Uses local state and only commits on blur or Enter
+interface DebouncedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
+  value: string | number;
+  onCommit: (value: string) => void;
+}
+
+const DebouncedInput = React.memo(({ value, onCommit, ...props }: DebouncedInputProps) => {
+  const [localValue, setLocalValue] = React.useState(String(value ?? ''));
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Sync local state when external value changes (e.g., different component selected)
+  // But only if the input isn't focused (user isn't actively typing)
+  React.useEffect(() => {
+    if (document.activeElement !== inputRef.current) {
+      setLocalValue(String(value ?? ''));
+    }
+  }, [value]);
+
+  const handleBlur = React.useCallback(() => {
+    onCommit(localValue);
+  }, [localValue, onCommit]);
+
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      onCommit(localValue);
+      inputRef.current?.blur();
+    }
+  }, [localValue, onCommit]);
+
+  return (
+    <input
+      ref={inputRef}
+      {...props}
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+    />
+  );
+});
+
+DebouncedInput.displayName = 'DebouncedInput';
 
 function PropertyPanel({
   layout,
@@ -50,8 +119,7 @@ function PropertyPanel({
   onUpdateLayout,
   gameData,
   onUpdateGameData,
-  panelWidth = 320,
-  onPreviewEffect
+  panelWidth = 320
 }: PropertyPanelProps) {
   const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
@@ -77,7 +145,68 @@ function PropertyPanel({
   
   // State for tracking which state properties we're editing (1 or 2)
   const [editingState, setEditingState] = useState<1 | 2>(1);
-  
+
+  // Slot templates state - refresh whenever selection changes
+  const [slotTemplates, setSlotTemplates] = useState<SlotTemplate[]>(() => loadTemplates());
+
+  // Refresh templates whenever component selection changes
+  useEffect(() => {
+    setSlotTemplates(loadTemplates());
+  }, [selectedComponents]);
+
+  // Helper to calculate and update slotList size based on template and props
+  const updateSlotListSize = useCallback((
+    componentId: string,
+    templateId: string | undefined,
+    slotCount: number,
+    slotSpacing: number,
+    direction: 'vertical' | 'horizontal'
+  ) => {
+    if (!templateId) return;
+    const template = slotTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    const naturalWidth = direction === 'horizontal'
+      ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
+      : template.slotSize.width;
+    const naturalHeight = direction === 'vertical'
+      ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
+      : template.slotSize.height;
+
+    onUpdateComponent(componentId, {
+      size: { width: naturalWidth, height: naturalHeight }
+    });
+  }, [slotTemplates, onUpdateComponent]);
+
+  // Auto-sync slotList sizes when templates change
+  useEffect(() => {
+    const slotListComponents = (layout.components || []).filter(c => c.type === 'slotList');
+    slotListComponents.forEach(comp => {
+      const templateId = comp.props?.templateId;
+      if (!templateId) return;
+      const template = slotTemplates.find(t => t.id === templateId);
+      if (!template) return;
+
+      const slotCount = comp.props?.slotCount || 5;
+      const slotSpacing = comp.props?.slotSpacing || 5;
+      const direction = comp.props?.direction || 'vertical';
+
+      const naturalWidth = direction === 'horizontal'
+        ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
+        : template.slotSize.width;
+      const naturalHeight = direction === 'vertical'
+        ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
+        : template.slotSize.height;
+
+      // Only update if size is different
+      if (comp.size.width !== naturalWidth || comp.size.height !== naturalHeight) {
+        onUpdateComponent(comp.id, {
+          size: { width: naturalWidth, height: naturalHeight }
+        });
+      }
+    });
+  }, [slotTemplates, layout.components, onUpdateComponent]);
+
   // Update frozen component only when not dragging
   useEffect(() => {
     if (!isDragging) {
@@ -165,7 +294,10 @@ function PropertyPanel({
     'dynamic-list-active',
     'dynamic-list-inactive',
     'dynamic-list-borders',
-    'dynamic-list-layout'
+    'dynamic-list-layout',
+    'leaderboard-display',
+    'leaderboard-styling',
+    'leaderboard-cycling'
   ]));
   
   // Memoized update functions with minimal dependencies
@@ -509,7 +641,7 @@ function PropertyPanel({
           width: nativeWidth,
           height: nativeHeight
         },
-        originalAspectRatio: nativeWidth / nativeHeight,
+        // Don't auto-lock aspect ratio - user can lock it manually if needed
         props: propsUpdate
       });
     };
@@ -576,6 +708,35 @@ function PropertyPanel({
     onUpdateGameData(newGameData);
   };
 
+  // Helper to update leaderboard count for preview
+  const updateLeaderboardCount = (team: 'home' | 'away', count: number) => {
+    if (!onUpdateGameData || !gameData) return;
+
+    const newGameData = { ...gameData };
+    const slots = newGameData.leaderboardSlots?.[team] || {};
+
+    newGameData.leaderboardSlots = {
+      ...newGameData.leaderboardSlots,
+      [team]: {
+        ...slots,
+        count,
+        isState0: count === 0,
+        isState1: count === 1,
+        isState2: count === 2,
+        isState3: count === 3,
+        isState4: count === 4,
+        isState5: count >= 5,
+        slot0: { ...slots.slot0, active: count >= 1 },
+        slot1: { ...slots.slot1, active: count >= 2 },
+        slot2: { ...slots.slot2, active: count >= 3 },
+        slot3: { ...slots.slot3, active: count >= 4 },
+        slot4: { ...slots.slot4, active: count >= 5 },
+      }
+    };
+
+    onUpdateGameData(newGameData);
+  };
+
   // Helper to update a nested game data value
   const updateGameDataValue = (path: string, value: any) => {
     if (!onUpdateGameData || !gameData) return;
@@ -592,35 +753,6 @@ function PropertyPanel({
     current[keys[keys.length - 1]] = value;
 
     onUpdateGameData(newGameData);
-  };
-
-  // Collapsible section component for game data
-  const GameDataSection = ({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-      <div style={{ marginBottom: '8px', border: '1px solid #444', borderRadius: '4px' }}>
-        <div
-          onClick={() => setIsOpen(!isOpen)}
-          style={{
-            padding: '8px 12px',
-            backgroundColor: '#333',
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            borderRadius: isOpen ? '4px 4px 0 0' : '4px'
-          }}
-        >
-          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{title}</span>
-          <span style={{ fontSize: '10px' }}>{isOpen ? '▼' : '▶'}</span>
-        </div>
-        {isOpen && (
-          <div style={{ padding: '12px', backgroundColor: '#2a2a2a' }}>
-            {children}
-          </div>
-        )}
-      </div>
-    );
   };
 
   // Input field component for game data
@@ -895,6 +1027,154 @@ function PropertyPanel({
             )}
           </GameDataSection>
 
+          {/* Leaderboard Slots */}
+          <GameDataSection title="Leaderboard Slots">
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '11px', color: '#888' }}>
+                Home Player Count
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[0, 1, 2, 3, 4, 5].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => updateLeaderboardCount('home', count)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      backgroundColor: gameData?.leaderboardSlots?.home?.count === count ? '#4CAF50' : '#333',
+                      color: 'white',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: gameData?.leaderboardSlots?.home?.count === count ? 'bold' : 'normal',
+                      fontSize: '14px'
+                    }}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '11px', color: '#888' }}>
+                Away Player Count
+              </label>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[0, 1, 2, 3, 4, 5].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => updateLeaderboardCount('away', count)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      backgroundColor: gameData?.leaderboardSlots?.away?.count === count ? '#4CAF50' : '#333',
+                      color: 'white',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: gameData?.leaderboardSlots?.away?.count === count ? 'bold' : 'normal',
+                      fontSize: '14px'
+                    }}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Leaderboard slot details */}
+            {(gameData?.leaderboardSlots?.home?.count > 0 || gameData?.leaderboardSlots?.away?.count > 0) && (
+              <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#1a1a1a', borderRadius: '4px', fontSize: '11px' }}>
+                <div style={{ color: '#888', marginBottom: '8px' }}>Leaderboard Slot Data:</div>
+                {gameData?.leaderboardSlots?.home?.count > 0 && (
+                  <div style={{ marginBottom: '8px' }}>
+                    <div style={{ color: '#aaa', marginBottom: '4px' }}>Home:</div>
+                    {[0, 1, 2, 3, 4].slice(0, gameData?.leaderboardSlots?.home?.count).map((i) => (
+                      <div key={i} style={{ display: 'flex', gap: '4px', marginBottom: '4px', alignItems: 'center' }}>
+                        <input
+                          placeholder="#"
+                          value={gameData?.leaderboardSlots?.home?.[`slot${i}`]?.jersey || ''}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.home.slot${i}.jersey`, e.target.value)}
+                          style={{ width: '36px', padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="Name"
+                          value={gameData?.leaderboardSlots?.home?.[`slot${i}`]?.name || ''}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.home.slot${i}.name`, e.target.value)}
+                          style={{ flex: 2, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="Pts"
+                          type="number"
+                          value={gameData?.leaderboardSlots?.home?.[`slot${i}`]?.points || 0}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.home.slot${i}.points`, parseInt(e.target.value) || 0)}
+                          style={{ width: '40px', padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="F"
+                          type="number"
+                          value={gameData?.leaderboardSlots?.home?.[`slot${i}`]?.fouls || 0}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.home.slot${i}.fouls`, parseInt(e.target.value) || 0)}
+                          style={{ width: '32px', padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#888', fontSize: '10px' }}>
+                          <input
+                            type="checkbox"
+                            checked={gameData?.leaderboardSlots?.home?.[`slot${i}`]?.isTopScorer || false}
+                            onChange={(e) => updateGameDataValue(`leaderboardSlots.home.slot${i}.isTopScorer`, e.target.checked)}
+                          />
+                          Top
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {gameData?.leaderboardSlots?.away?.count > 0 && (
+                  <div>
+                    <div style={{ color: '#aaa', marginBottom: '4px' }}>Away:</div>
+                    {[0, 1, 2, 3, 4].slice(0, gameData?.leaderboardSlots?.away?.count).map((i) => (
+                      <div key={i} style={{ display: 'flex', gap: '4px', marginBottom: '4px', alignItems: 'center' }}>
+                        <input
+                          placeholder="#"
+                          value={gameData?.leaderboardSlots?.away?.[`slot${i}`]?.jersey || ''}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.away.slot${i}.jersey`, e.target.value)}
+                          style={{ width: '36px', padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="Name"
+                          value={gameData?.leaderboardSlots?.away?.[`slot${i}`]?.name || ''}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.away.slot${i}.name`, e.target.value)}
+                          style={{ flex: 2, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="Pts"
+                          type="number"
+                          value={gameData?.leaderboardSlots?.away?.[`slot${i}`]?.points || 0}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.away.slot${i}.points`, parseInt(e.target.value) || 0)}
+                          style={{ width: '40px', padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <input
+                          placeholder="F"
+                          type="number"
+                          value={gameData?.leaderboardSlots?.away?.[`slot${i}`]?.fouls || 0}
+                          onChange={(e) => updateGameDataValue(`leaderboardSlots.away.slot${i}.fouls`, parseInt(e.target.value) || 0)}
+                          style={{ width: '32px', padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                        />
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#888', fontSize: '10px' }}>
+                          <input
+                            type="checkbox"
+                            checked={gameData?.leaderboardSlots?.away?.[`slot${i}`]?.isTopScorer || false}
+                            onChange={(e) => updateGameDataValue(`leaderboardSlots.away.slot${i}.isTopScorer`, e.target.checked)}
+                          />
+                          Top
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </GameDataSection>
+
           {/* Other Clocks */}
           <GameDataSection title="Other Clocks">
             <GameDataInput label="Activity Clock" path="activityClock" />
@@ -980,7 +1260,8 @@ function PropertyPanel({
                 <div key={component.id} className="selected-component-item">
                   <span className="component-icon">
                     {component.type === 'custom' ? '[C]' :
-                     component.type === 'dynamicList' ? '[L]' : '[T]'}
+                     component.type === 'dynamicList' ? '[L]' :
+                     component.type === 'leaderboardList' ? '[LB]' : '[T]'}
                   </span>
                   <span className="component-name">
                     {component.displayName || component.type}
@@ -1059,61 +1340,83 @@ function PropertyPanel({
       {/* State Selector for toggleable components */}
       {component.props?.canToggle && (
         <div style={{
-          display: 'flex',
-          gap: '8px',
           padding: '8px',
           backgroundColor: '#2a2a2a',
           borderBottom: '1px solid #444'
         }}>
-          <button
-            onClick={() => setEditingState(1)}
-            style={{
-              flex: 1,
-              padding: '8px',
-              backgroundColor: editingState === 1 ? '#4CAF50' : '#333',
-              color: 'white',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: editingState === 1 ? 'bold' : 'normal'
-            }}
-          >
-            Edit State 1
-          </button>
-          <button
-            onClick={() => setEditingState(2)}
-            style={{
-              flex: 1,
-              padding: '8px',
-              backgroundColor: editingState === 2 ? '#4CAF50' : '#333',
-              color: 'white',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: editingState === 2 ? 'bold' : 'normal'
-            }}
-          >
-            Edit State 2
-          </button>
-          <button
-            onClick={() => updateComponentWithScrollPreservation(component.id, {
-              props: { 
-                ...component.props, 
-                toggleState: !component.props?.toggleState 
-              }
-            })}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: component.props?.toggleState ? '#FF9800' : '#607D8B',
-              color: 'white',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            {component.props?.toggleState ? 'ON' : 'OFF'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <button
+              onClick={() => setEditingState(1)}
+              style={{
+                flex: 1,
+                padding: '8px',
+                backgroundColor: editingState === 1 ? '#4CAF50' : '#333',
+                color: 'white',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: editingState === 1 ? 'bold' : 'normal'
+              }}
+            >
+              Edit State 1
+            </button>
+            <button
+              onClick={() => setEditingState(2)}
+              style={{
+                flex: 1,
+                padding: '8px',
+                backgroundColor: editingState === 2 ? '#4CAF50' : '#333',
+                color: 'white',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: editingState === 2 ? 'bold' : 'normal'
+              }}
+            >
+              Edit State 2
+            </button>
+            <button
+              onClick={() => updateComponentWithScrollPreservation(component.id, {
+                props: {
+                  ...component.props,
+                  toggleState: !component.props?.toggleState
+                }
+              })}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: component.props?.toggleState ? '#FF9800' : '#607D8B',
+                color: 'white',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {component.props?.toggleState ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          {/* Auto Toggle - bind toggle state to dataPath boolean value */}
+          <div style={{ marginTop: '8px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={component.props?.autoToggle || false}
+                onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                  props: { ...component.props, autoToggle: e.target.checked }
+                })}
+              />
+              <span style={{ fontSize: '12px', color: '#fff' }}>Auto Toggle</span>
+            </label>
+            <small style={{ color: '#888', display: 'block', marginTop: '4px', marginLeft: '24px' }}>
+              When enabled, the Data Path value controls the toggle state.
+              Set Data Path to a boolean like <strong style={{ color: '#4CAF50' }}>isTopScorer</strong>.
+            </small>
+            {component.props?.autoToggle && (
+              <small style={{ color: '#4CAF50', display: 'block', marginTop: '4px', marginLeft: '24px' }}>
+                State 1 = false, State 2 = true
+              </small>
+            )}
+          </div>
         </div>
       )}
       
@@ -1121,11 +1424,11 @@ function PropertyPanel({
       <div className="property-section">
         <div className="property-field">
           <label>Display Name</label>
-          <input
+          <DebouncedInput
             type="text"
             value={component.displayName || ''}
-            onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-              displayName: e.target.value
+            onCommit={(val) => updateComponentWithScrollPreservation(component.id, {
+              displayName: val
             })}
             placeholder={`${component.type} component`}
             style={{ maxWidth: '200px' }}
@@ -1143,62 +1446,235 @@ function PropertyPanel({
           <div className="property-grid">
             <div className="property-field">
               <label>X (px)</label>
-              <input
+              <DebouncedInput
                 type="number"
-                defaultValue={component ? Math.round(component.position.x) : 0}
-                onBlur={(e) => {
+                value={component ? Math.round(component.position.x) : 0}
+                onCommit={(val) => {
                   updateComponentWithScrollPreservation(component.id, {
-                    position: { ...component.position, x: parseInt(e.target.value) || 0 }
+                    position: { ...component.position, x: parseInt(val) || 0 }
                   });
                 }}
               />
             </div>
             <div className="property-field">
               <label>Y (px)</label>
-              <input
+              <DebouncedInput
                 type="number"
-                defaultValue={component ? Math.round(component.position.y) : 0}
-                onBlur={(e) => {
+                value={component ? Math.round(component.position.y) : 0}
+                onCommit={(val) => {
                   updateComponentWithScrollPreservation(component.id, {
-                    position: { ...component.position, y: parseInt(e.target.value) || 0 }
+                    position: { ...component.position, y: parseInt(val) || 0 }
                   });
                 }}
               />
             </div>
             <div className="property-field">
               <label>Width (px)</label>
-              <input
+              <DebouncedInput
                 type="number"
-                defaultValue={component ? Math.round(component.size.width) : 0}
-                onBlur={(e) => {
+                value={component ? Math.round(component.size.width) : 0}
+                onCommit={(val) => {
                   updateComponentWithScrollPreservation(component.id, {
-                    size: { ...component.size, width: parseInt(e.target.value) || 0 }
+                    size: { ...component.size, width: parseInt(val) || 0 }
                   });
                 }}
               />
             </div>
             <div className="property-field">
               <label>Height (px)</label>
-              <input
+              <DebouncedInput
                 type="number"
-                defaultValue={component ? Math.round(component.size.height) : 0}
-                onBlur={(e) => {
+                value={component ? Math.round(component.size.height) : 0}
+                onCommit={(val) => {
                   updateComponentWithScrollPreservation(component.id, {
-                    size: { ...component.size, height: parseInt(e.target.value) || 0 }
+                    size: { ...component.size, height: parseInt(val) || 0 }
                   });
                 }}
               />
             </div>
           </div>
+
+          {/* Scale Percentage Section */}
           <div className="property-field" style={{ marginTop: '12px' }}>
-            <label>Scale Anchor (Cmd/Ctrl + drag)</label>
+            <label>Scale %</label>
+            {component?.originalSize ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <DebouncedInput
+                    type="number"
+                    step="0.1"
+                    style={{ width: '70px' }}
+                    value={Math.round((component.size.width / component.originalSize.width) * 1000) / 10}
+                    onCommit={(val) => {
+                      const scale = (parseFloat(val) || 100) / 100;
+                      updateComponentWithScrollPreservation(component.id, {
+                        size: {
+                          width: Math.round(component.originalSize!.width * scale),
+                          height: Math.round(component.originalSize!.height * scale)
+                        }
+                      });
+                    }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#888' }}>%</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[25, 50, 75, 100].map(pct => (
+                      <button
+                        key={pct}
+                        onClick={() => {
+                          const scale = pct / 100;
+                          updateComponentWithScrollPreservation(component.id, {
+                            size: {
+                              width: Math.round(component.originalSize!.width * scale),
+                              height: Math.round(component.originalSize!.height * scale)
+                            }
+                          });
+                        }}
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          backgroundColor: Math.abs((component.size.width / component.originalSize.width) * 100 - pct) < 0.1 ? '#4CAF50' : '#444',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Grid-aligned scale options (both dimensions divisible by 10) */}
+                {(() => {
+                  const w = component.originalSize.width;
+                  const h = component.originalSize.height;
+
+                  // Find scales where both w*scale and h*scale are divisible by 10
+                  // Use GCD to find the denominator constraint for valid fractional scales
+                  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+                  const wDiv = w / gcd(w, 10);
+                  const hDiv = h / gcd(h, 10);
+                  const g = gcd(wDiv, hDiv);
+
+                  // Generate valid percentages between 20% and 100%
+                  const validScales: { pct: number; width: number; height: number }[] = [];
+                  for (let n = 1; n <= g * 5; n++) {
+                    const scale = n / g;
+                    if (scale < 0.2 || scale > 1.0) continue;
+                    const newW = Math.round(w * scale);
+                    const newH = Math.round(h * scale);
+                    if (newW % 10 === 0 && newH % 10 === 0) {
+                      const pct = Math.round(scale * 10000) / 100; // Round to 2 decimal places
+                      // Avoid duplicates
+                      if (!validScales.some(s => Math.abs(s.pct - pct) < 0.01)) {
+                        validScales.push({ pct, width: newW, height: newH });
+                      }
+                    }
+                    if (validScales.length >= 8) break;
+                  }
+
+                  // Sort by percentage
+                  validScales.sort((a, b) => a.pct - b.pct);
+
+                  if (validScales.length === 0) return null;
+
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '10px', color: '#666' }}>Grid (10px):</span>
+                      {validScales.map(({ pct, width: newW, height: newH }) => {
+                        const currentPct = Math.round((component.size.width / w) * 10000) / 100;
+                        return (
+                          <button
+                            key={pct}
+                            onClick={() => {
+                              updateComponentWithScrollPreservation(component.id, {
+                                size: { width: newW, height: newH }
+                              });
+                            }}
+                            style={{
+                              fontSize: '9px',
+                              padding: '2px 4px',
+                              backgroundColor: Math.abs(currentPct - pct) < 0.1 ? '#2196F3' : '#333',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '3px',
+                              cursor: 'pointer'
+                            }}
+                            title={`${newW} x ${newH}`}
+                          >
+                            {pct % 1 === 0 ? pct : pct.toFixed(1)}%
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <div style={{ fontSize: '11px', color: '#888', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>
+                    Original: {component.originalSize.width} x {component.originalSize.height}
+                  </span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      onClick={() => {
+                        updateComponentWithScrollPreservation(component.id, {
+                          size: { ...component.originalSize! }
+                        });
+                      }}
+                      style={{ fontSize: '10px', padding: '2px 6px' }}
+                      title="Reset to original size"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      onClick={() => {
+                        updateComponentWithScrollPreservation(component.id, {
+                          originalSize: { ...component.size }
+                        });
+                      }}
+                      style={{ fontSize: '10px', padding: '2px 6px' }}
+                      title="Set current size as the new original"
+                    >
+                      Set as Original
+                    </button>
+                    <button
+                      onClick={() => {
+                        updateComponentWithScrollPreservation(component.id, {
+                          originalSize: undefined
+                        });
+                      }}
+                      style={{ fontSize: '10px', padding: '2px 6px' }}
+                      title="Remove original size reference"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  updateComponentWithScrollPreservation(component.id, {
+                    originalSize: { ...component.size }
+                  });
+                }}
+                style={{ fontSize: '11px', padding: '4px 8px' }}
+                title="Set current size as the original for percentage-based scaling"
+              >
+                Set Current as Original Size
+              </button>
+            )}
+          </div>
+
+          <div className="property-field" style={{ marginTop: '12px' }}>
+            <label>Resize Anchor</label>
             <select
-              value={component?.scaleAnchor || 'center'}
+              value={component?.scaleAnchor || 'corner'}
               onChange={(e) => updateComponentWithScrollPreservation(component.id, {
                 scaleAnchor: e.target.value as any
               })}
             >
-              <option value="center">Center (default)</option>
+              <option value="corner">Opposite Corner (default)</option>
+              <option value="center">Center</option>
               <option value="top">Top Center</option>
               <option value="bottom">Bottom Center</option>
               <option value="left">Left Center</option>
@@ -1461,9 +1937,22 @@ function PropertyPanel({
                 <label>Data Path</label>
                 <select
                   value={component.props?.dataPath || 'none'}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, dataPath: e.target.value }
-                  })}
+                  onChange={(e) => {
+                    const newDataPath = e.target.value;
+                    // Check if this is an image data path
+                    const isImagePath = newDataPath.endsWith('.imageUrl') ||
+                                        newDataPath.endsWith('.image') ||
+                                        newDataPath === 'imageUrl' ||
+                                        newDataPath === 'image';
+                    // If it's an image path and imageSource is 'local' (without a path), set to 'none'
+                    // This allows the dataPath image to be used instead
+                    const updatedProps: any = { ...component.props, dataPath: newDataPath };
+                    if (isImagePath && component.props?.imageSource === 'local' && !component.props?.imagePath) {
+                      updatedProps.imageSource = 'none';
+                      updatedProps.objectFit = 'cover'; // Default to cover for player images
+                    }
+                    updateComponentWithScrollPreservation(component.id, { props: updatedProps });
+                  }}
                 >
                   <option value="none">No Data (Display Only)</option>
                   <optgroup label="Game Info">
@@ -1535,6 +2024,24 @@ function PropertyPanel({
                     <option value="penaltySlots.away.slot2.jersey">Away Penalty 3 - Jersey</option>
                     <option value="penaltySlots.away.slot2.time">Away Penalty 3 - Time</option>
                     <option value="penaltySlots.away.slot2.active">Away Penalty 3 - Active</option>
+                  </optgroup>
+                  <optgroup label="Leaderboard (for Slot Templates)">
+                    <option value="jersey">Player Jersey</option>
+                    <option value="name">Player Name</option>
+                    <option value="points">Player Points</option>
+                    <option value="fouls">Player Fouls</option>
+                    <option value="isTopScorer">Is Top Scorer (boolean)</option>
+                    <option value="imageUrl">Player Image</option>
+                  </optgroup>
+                  <optgroup label="Active Player (Current Slot 0)">
+                    <option value="currentPlayer.home.name">Home Active Player Name</option>
+                    <option value="currentPlayer.home.jersey">Home Active Player Jersey</option>
+                    <option value="currentPlayer.home.points">Home Active Player Points</option>
+                    <option value="currentPlayer.home.imageUrl">Home Active Player Image</option>
+                    <option value="currentPlayer.away.name">Away Active Player Name</option>
+                    <option value="currentPlayer.away.jersey">Away Active Player Jersey</option>
+                    <option value="currentPlayer.away.points">Away Active Player Points</option>
+                    <option value="currentPlayer.away.imageUrl">Away Active Player Image</option>
                   </optgroup>
                   <optgroup label="Sponsorship">
                     <option value="user_sequences.banner">Banner Ads</option>
@@ -1668,6 +2175,10 @@ function PropertyPanel({
                     <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
                     <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
                   </optgroup>
+                  <optgroup label="Leaderboard Slot Template">
+                    <option value="isTopScorer">Is Top Scorer</option>
+                    <option value="active">Slot Active</option>
+                  </optgroup>
                   <optgroup label="Team State">
                     <option value="homeTeam.possession">Home Has Possession</option>
                     <option value="awayTeam.possession">Away Has Possession</option>
@@ -1762,12 +2273,15 @@ function PropertyPanel({
                           const img = new Image();
                           img.onload = () => {
                             // Use native image dimensions directly in pixels
+                            const nativeSize = {
+                              width: img.naturalWidth,
+                              height: img.naturalHeight
+                            };
                             updateComponentWithScrollPreservation(component.id, {
-                              size: {
-                                width: img.naturalWidth,
-                                height: img.naturalHeight
-                              },
-                              originalAspectRatio: img.naturalWidth / img.naturalHeight,
+                              size: nativeSize,
+                              // Also set originalSize for percentage-based scaling
+                              originalSize: nativeSize,
+                              // Don't lock aspect ratio by default - user can lock it manually if needed
                               props: {
                                 ...component.props,
                                 // Clear all padding to avoid constraining the image
@@ -1789,7 +2303,49 @@ function PropertyPanel({
                         }
                       }}
                     >
-                      📐 Native Resolution
+                      Native Resolution
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Image Flip Buttons */}
+              {(getStateValue('imageSource', 'none') === 'local' && getStateValue('imagePath', '')) ||
+               (getStateValue('imageSource', 'none') === 'url' && getStateValue('imageUrl', '')) ? (
+                <div className="property-field">
+                  <label>Flip Image</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => updateStateProps('flipHorizontal', !getStateValue('flipHorizontal', false))}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        backgroundColor: getStateValue('flipHorizontal', false) ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: getStateValue('flipHorizontal', false) ? 'bold' : 'normal',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Horizontal
+                    </button>
+                    <button
+                      onClick={() => updateStateProps('flipVertical', !getStateValue('flipVertical', false))}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        backgroundColor: getStateValue('flipVertical', false) ? '#4CAF50' : '#333',
+                        color: 'white',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: getStateValue('flipVertical', false) ? 'bold' : 'normal',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Vertical
                     </button>
                   </div>
                 </div>
@@ -1945,11 +2501,32 @@ function PropertyPanel({
                   value={getStateValue('imageSource', 'none')}
                   onChange={(e) => updateStateProps('imageSource', e.target.value)}
                 >
-                  <option value="none">No Image</option>
+                  <option value="none">No Image / Data Path</option>
                   <option value="local">Local Image</option>
                   <option value="url">URL</option>
                 </select>
+                {/* Show hint when using image dataPath */}
+                {(() => {
+                  const dataPath = component.props?.dataPath || '';
+                  const isImagePath = dataPath.endsWith('.imageUrl') || dataPath.endsWith('.image') || dataPath === 'imageUrl' || dataPath === 'image';
+                  if (isImagePath && getStateValue('imageSource', 'none') === 'none') {
+                    return (
+                      <small style={{ color: '#4CAF50', display: 'block', marginTop: '4px' }}>
+                        Using image from Data Path: {dataPath}
+                      </small>
+                    );
+                  }
+                  if (isImagePath && getStateValue('imageSource', 'none') !== 'none') {
+                    return (
+                      <small style={{ color: '#ff9800', display: 'block', marginTop: '4px' }}>
+                        Tip: Set to "No Image / Data Path" to use image from Data Path
+                      </small>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
+
             </PropertySection>
 
             {/* BORDERS SECTION */}
@@ -2159,11 +2736,11 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderTopLeftRadius', 0);
-                        updateStateProps('borderTopLeftRadius', Math.max(0, currentValue - 25));
+                        updateStateProps('borderTopLeftRadius', Math.max(0, currentValue - 5));
                       }}
                       className="radius-quick-button minus"
                     >
-                      -25
+                      -5
                     </button>
                     <input
                       type="number"
@@ -2176,12 +2753,12 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderTopLeftRadius', 0);
-                        const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
+                        const nextValue = currentValue >= 100 ? 0 : currentValue + 5;
                         updateStateProps('borderTopLeftRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
-                      +25
+                      +5
                     </button>
                   </div>
                 </div>
@@ -2191,11 +2768,11 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderTopRightRadius', 0);
-                        updateStateProps('borderTopRightRadius', Math.max(0, currentValue - 25));
+                        updateStateProps('borderTopRightRadius', Math.max(0, currentValue - 5));
                       }}
                       className="radius-quick-button minus"
                     >
-                      -25
+                      -5
                     </button>
                     <input
                       type="number"
@@ -2208,12 +2785,12 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderTopRightRadius', 0);
-                        const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
+                        const nextValue = currentValue >= 100 ? 0 : currentValue + 5;
                         updateStateProps('borderTopRightRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
-                      +25
+                      +5
                     </button>
                   </div>
                 </div>
@@ -2223,11 +2800,11 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderBottomLeftRadius', 0);
-                        updateStateProps('borderBottomLeftRadius', Math.max(0, currentValue - 25));
+                        updateStateProps('borderBottomLeftRadius', Math.max(0, currentValue - 5));
                       }}
                       className="radius-quick-button minus"
                     >
-                      -25
+                      -5
                     </button>
                     <input
                       type="number"
@@ -2240,12 +2817,12 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderBottomLeftRadius', 0);
-                        const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
+                        const nextValue = currentValue >= 100 ? 0 : currentValue + 5;
                         updateStateProps('borderBottomLeftRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
-                      +25
+                      +5
                     </button>
                   </div>
                 </div>
@@ -2255,11 +2832,11 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderBottomRightRadius', 0);
-                        updateStateProps('borderBottomRightRadius', Math.max(0, currentValue - 25));
+                        updateStateProps('borderBottomRightRadius', Math.max(0, currentValue - 5));
                       }}
                       className="radius-quick-button minus"
                     >
-                      -25
+                      -5
                     </button>
                     <input
                       type="number"
@@ -2272,38 +2849,16 @@ function PropertyPanel({
                     <button
                       onClick={() => {
                         const currentValue = getStateValue('borderBottomRightRadius', 0);
-                        const nextValue = currentValue >= 100 ? 0 : currentValue + 25;
+                        const nextValue = currentValue >= 100 ? 0 : currentValue + 5;
                         updateStateProps('borderBottomRightRadius', nextValue);
                       }}
                       className="radius-quick-button"
                     >
-                      +25
+                      +5
                     </button>
                   </div>
                 </div>
               </div>
-            </PropertySection>
-
-            {/* SHADER EFFECTS SECTION */}
-            <PropertySection title="SHADER EFFECTS" sectionKey="effects">
-              <EffectPropertySection
-                effectConfig={component.props?.effect as EffectConfig | undefined}
-                componentId={component.id}
-                onConfigChange={(config) => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, effect: config }
-                  });
-                }}
-                onPreview={(compId, effectName, options) => {
-                  if (onPreviewEffect) {
-                    onPreviewEffect(compId, effectName, options);
-                  }
-                }}
-                teamColors={{
-                  home: gameData?.homeTeam?.color || gameData?.home_team_color || '#c41e3a',
-                  away: gameData?.awayTeam?.color || gameData?.away_team_color || '#003f7f'
-                }}
-              />
             </PropertySection>
           </>
         )}
@@ -2505,27 +3060,561 @@ function PropertyPanel({
                 </label>
               </div>
             </PropertySection>
+          </>
+        )}
 
-            {/* SHADER EFFECTS SECTION */}
-            <PropertySection title="SHADER EFFECTS" sectionKey="effects">
-              <EffectPropertySection
-                effectConfig={component.props?.effect as EffectConfig | undefined}
-                componentId={component.id}
-                onConfigChange={(config) => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, effect: config }
-                  });
-                }}
-                onPreview={(compId, effectName, options) => {
-                  if (onPreviewEffect) {
-                    onPreviewEffect(compId, effectName, options);
+        {/* LEADERBOARD LIST SETTINGS */}
+        {component.type === 'leaderboardList' && (
+          <>
+            {/* LEADERBOARD DISPLAY */}
+            <PropertySection title="LEADERBOARD DISPLAY" sectionKey="leaderboard-display">
+              <div className="property-field">
+                <label>Team</label>
+                <select
+                  value={component.team || 'home'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    team: e.target.value as 'home' | 'away'
+                  })}
+                >
+                  <option value="home">Home Team</option>
+                  <option value="away">Away Team</option>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Max Visible Players</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="15"
+                  defaultValue={component.props?.maxVisible || 5}
+                  onChange={(e) => handleNumberChange('maxVisible', e.target.value)}
+                  onBlur={(e) => updateProp('maxVisible', parseInt(e.target.value) || 5)}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.showJersey !== false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, showJersey: e.target.checked }
+                    })}
+                  />
+                  Show Jersey Number
+                </label>
+              </div>
+
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.showName !== false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, showName: e.target.checked }
+                    })}
+                  />
+                  Show Player Name
+                </label>
+              </div>
+
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.showPoints !== false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, showPoints: e.target.checked }
+                    })}
+                  />
+                  Show Points
+                </label>
+              </div>
+
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.showFouls || false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, showFouls: e.target.checked }
+                    })}
+                  />
+                  Show Fouls
+                </label>
+              </div>
+            </PropertySection>
+
+            {/* LEADERBOARD STYLING */}
+            <PropertySection title="LEADERBOARD STYLING" sectionKey="leaderboard-styling">
+              <div className="property-field">
+                <label>Slot Height (px)</label>
+                <input
+                  type="number"
+                  min="20"
+                  max="120"
+                  defaultValue={component.props?.slotHeight || 60}
+                  onChange={(e) => handleNumberChange('slotHeight', e.target.value)}
+                  onBlur={(e) => updateProp('slotHeight', parseInt(e.target.value) || 60)}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>Slot Spacing (px)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="32"
+                  defaultValue={component.props?.slotSpacing || 5}
+                  onChange={(e) => handleNumberChange('slotSpacing', e.target.value)}
+                  onBlur={(e) => updateProp('slotSpacing', parseInt(e.target.value) || 8)}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>Font Size</label>
+                <input
+                  type="number"
+                  min="10"
+                  max="72"
+                  defaultValue={component.props?.fontSize || 24}
+                  onChange={(e) => handleNumberChange('fontSize', e.target.value)}
+                  onBlur={(e) => updateProp('fontSize', parseInt(e.target.value) || 24)}
+                />
+              </div>
+
+              <div className="property-field">
+                <ColorPicker
+                  label="Text Color"
+                  value={component.props?.textColor || '#ffffff'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, textColor: color }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <ColorPicker
+                  label="Background Color"
+                  value={component.props?.backgroundColor || 'transparent'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, backgroundColor: color }
+                  })}
+                />
+              </div>
+
+              <div className="property-field">
+                <ColorPicker
+                  label="Highlight Color (Top Scorer)"
+                  value={component.props?.highlightColor || '#FFD700'}
+                  onChange={(color) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, highlightColor: color }
+                  })}
+                />
+              </div>
+            </PropertySection>
+
+            {/* LEADERBOARD CYCLING */}
+            <PropertySection title="LEADERBOARD CYCLING" sectionKey="leaderboard-cycling">
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component.props?.cycleEnabled || false}
+                    onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, cycleEnabled: e.target.checked }
+                    })}
+                  />
+                  Enable Cycling
+                </label>
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Automatically cycles through players when there are more than max visible
+                </small>
+              </div>
+
+              {component.props?.cycleEnabled && (
+                <div className="property-field">
+                  <label>Cycle Interval (ms)</label>
+                  <input
+                    type="number"
+                    min="1000"
+                    max="30000"
+                    step="500"
+                    defaultValue={component.props?.cycleInterval || 5000}
+                    onChange={(e) => handleNumberChange('cycleInterval', e.target.value)}
+                    onBlur={(e) => updateProp('cycleInterval', parseInt(e.target.value) || 5000)}
+                  />
+                </div>
+              )}
+            </PropertySection>
+          </>
+        )}
+
+        {/* SLOT LIST SETTINGS */}
+        {component.type === 'slotList' && (
+          <>
+            <PropertySection title="SLOT LIST CONFIGURATION" sectionKey="slotlist-config">
+              <div className="property-field">
+                <label>Template</label>
+                <select
+                  value={component.props?.templateId || ''}
+                  onChange={(e) => {
+                    const newTemplateId = e.target.value;
+                    updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, templateId: newTemplateId }
+                    });
+                    // Auto-update size when template changes
+                    updateSlotListSize(
+                      component.id,
+                      newTemplateId,
+                      component.props?.slotCount || 5,
+                      component.props?.slotSpacing || 5,
+                      component.props?.direction || 'vertical'
+                    );
+                  }}
+                >
+                  <option value="">-- Select Template --</option>
+                  {slotTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Create templates by selecting components and clicking "Save Selection as Slot Template"
+                </small>
+              </div>
+
+              <div className="property-field">
+                <label>Team</label>
+                <select
+                  value={component.props?.team || 'home'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, team: e.target.value }
+                  })}
+                >
+                  <option value="home">Home Team</option>
+                  <option value="away">Away Team</option>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Data Path Prefix</label>
+                <select
+                  value={component.props?.dataPathPrefix || 'leaderboardSlots'}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, dataPathPrefix: e.target.value }
+                  })}
+                >
+                  <option value="leaderboardSlots">Leaderboard Slots</option>
+                  <option value="penaltySlots">Penalty Slots</option>
+                </select>
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Template data paths will be prefixed with this + team + slot number
+                </small>
+              </div>
+
+              <div className="property-field">
+                <label>Number of Slots</label>
+                <DebouncedInput
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={component.props?.slotCount || 5}
+                  onCommit={(val) => {
+                    const newSlotCount = parseInt(val) || 5;
+                    updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, slotCount: newSlotCount }
+                    });
+                    updateSlotListSize(
+                      component.id,
+                      component.props?.templateId,
+                      newSlotCount,
+                      component.props?.slotSpacing || 5,
+                      component.props?.direction || 'vertical'
+                    );
+                  }}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>Slot Spacing (px)</label>
+                <DebouncedInput
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={component.props?.slotSpacing || 5}
+                  onCommit={(val) => {
+                    const newSpacing = parseInt(val) || 5;
+                    updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, slotSpacing: newSpacing }
+                    });
+                    updateSlotListSize(
+                      component.id,
+                      component.props?.templateId,
+                      component.props?.slotCount || 5,
+                      newSpacing,
+                      component.props?.direction || 'vertical'
+                    );
+                  }}
+                />
+              </div>
+
+              <div className="property-field">
+                <label>Direction</label>
+                <select
+                  value={component.props?.direction || 'vertical'}
+                  onChange={(e) => {
+                    const newDirection = e.target.value as 'vertical' | 'horizontal';
+                    updateComponentWithScrollPreservation(component.id, {
+                      props: { ...component.props, direction: newDirection }
+                    });
+                    updateSlotListSize(
+                      component.id,
+                      component.props?.templateId,
+                      component.props?.slotCount || 5,
+                      component.props?.slotSpacing || 5,
+                      newDirection
+                    );
+                  }}
+                >
+                  <option value="vertical">Vertical (stack down)</option>
+                  <option value="horizontal">Horizontal (stack right)</option>
+                </select>
+              </div>
+
+              <div className="property-field">
+                <label>Slot Size</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <small style={{ color: '#888' }}>Width</small>
+                    <DebouncedInput
+                      type="number"
+                      value={(() => {
+                        const templateId = component.props?.templateId;
+                        const template = templateId ? slotTemplates.find(t => t.id === templateId) : null;
+                        return template?.slotSize.width || '';
+                      })()}
+                      onCommit={(val) => {
+                        const newWidth = parseInt(val, 10);
+                        if (isNaN(newWidth) || newWidth < 1) return;
+                        const templateId = component.props?.templateId;
+                        if (!templateId) return;
+                        const template = slotTemplates.find(t => t.id === templateId);
+                        if (!template) return;
+                        const scale = newWidth / template.slotSize.width;
+                        const updatedTemplates = slotTemplates.map(t => {
+                          if (t.id !== templateId) return t;
+                          return {
+                            ...t,
+                            slotSize: { ...t.slotSize, width: newWidth },
+                            components: t.components.map(c => ({
+                              ...c,
+                              position: { ...c.position, x: Math.round(c.position.x * scale) },
+                              size: { ...c.size, width: Math.round(c.size.width * scale) },
+                            })),
+                            updatedAt: Date.now(),
+                          };
+                        });
+                        saveTemplates(updatedTemplates);
+                        setSlotTemplates(updatedTemplates);
+                      }}
+                      style={{ width: '100%', padding: '4px' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <small style={{ color: '#888' }}>Height</small>
+                    <DebouncedInput
+                      type="number"
+                      value={(() => {
+                        const templateId = component.props?.templateId;
+                        const template = templateId ? slotTemplates.find(t => t.id === templateId) : null;
+                        return template?.slotSize.height || '';
+                      })()}
+                      onCommit={(val) => {
+                        const newHeight = parseInt(val, 10);
+                        if (isNaN(newHeight) || newHeight < 1) return;
+                        const templateId = component.props?.templateId;
+                        if (!templateId) return;
+                        const template = slotTemplates.find(t => t.id === templateId);
+                        if (!template) return;
+                        const scale = newHeight / template.slotSize.height;
+                        const updatedTemplates = slotTemplates.map(t => {
+                          if (t.id !== templateId) return t;
+                          return {
+                            ...t,
+                            slotSize: { ...t.slotSize, height: newHeight },
+                            components: t.components.map(c => ({
+                              ...c,
+                              position: { ...c.position, y: Math.round(c.position.y * scale) },
+                              size: { ...c.size, height: Math.round(c.size.height * scale) },
+                            })),
+                            updatedAt: Date.now(),
+                          };
+                        });
+                        saveTemplates(updatedTemplates);
+                        setSlotTemplates(updatedTemplates);
+                      }}
+                      style={{ width: '100%', padding: '4px' }}
+                    />
+                  </div>
+                </div>
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Directly set slot dimensions (scales template components proportionally)
+                </small>
+              </div>
+
+              {/* Scale by Percentage */}
+              {(() => {
+                const templateId = component.props?.templateId;
+                const template = templateId ? slotTemplates.find(t => t.id === templateId) : null;
+                if (!template) return null;
+
+                // Initialize originalSlotSize if not set
+                const originalWidth = template.originalSlotSize?.width || template.slotSize.width;
+                const originalHeight = template.originalSlotSize?.height || template.slotSize.height;
+                const currentScale = (template.slotSize.width / originalWidth) * 100;
+
+                // Calculate grid-aligned scale percentages (5px increments)
+                const getValidScales = () => {
+                  const scales: number[] = [];
+                  // Check percentages from 20% to 200%
+                  for (let pct = 20; pct <= 200; pct += 5) {
+                    const scaledW = Math.round(originalWidth * pct / 100);
+                    const scaledH = Math.round(originalHeight * pct / 100);
+                    // Only include if both dimensions are divisible by 5
+                    if (scaledW % 5 === 0 && scaledH % 5 === 0 && scaledW >= 10 && scaledH >= 10) {
+                      scales.push(pct);
+                    }
                   }
-                }}
-                teamColors={{
-                  home: gameData?.homeTeam?.color || gameData?.home_team_color || '#c41e3a',
-                  away: gameData?.awayTeam?.color || gameData?.away_team_color || '#003f7f'
-                }}
-              />
+                  return scales;
+                };
+
+                const validScales = getValidScales();
+
+                const applyScale = (scalePercent: number) => {
+                  const newWidth = Math.round(originalWidth * scalePercent / 100);
+                  const newHeight = Math.round(originalHeight * scalePercent / 100);
+                  const scaleX = newWidth / template.slotSize.width;
+                  const scaleY = newHeight / template.slotSize.height;
+
+                  const updatedTemplates = slotTemplates.map(t => {
+                    if (t.id !== templateId) return t;
+                    return {
+                      ...t,
+                      slotSize: { width: newWidth, height: newHeight },
+                      originalSlotSize: t.originalSlotSize || { width: originalWidth, height: originalHeight },
+                      components: t.components.map(c => ({
+                        ...c,
+                        position: {
+                          x: Math.round(c.position.x * scaleX),
+                          y: Math.round(c.position.y * scaleY)
+                        },
+                        size: {
+                          width: Math.round(c.size.width * scaleX),
+                          height: Math.round(c.size.height * scaleY)
+                        },
+                      })),
+                      updatedAt: Date.now(),
+                    };
+                  });
+                  saveTemplates(updatedTemplates);
+                  setSlotTemplates(updatedTemplates);
+                };
+
+                return (
+                  <div className="property-field" style={{ marginTop: '12px' }}>
+                    <label>Scale %</label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <DebouncedInput
+                        type="number"
+                        value={currentScale.toFixed(1)}
+                        onCommit={(val) => {
+                          const pct = parseFloat(val);
+                          if (isNaN(pct) || pct < 10 || pct > 500) return;
+                          applyScale(pct);
+                        }}
+                        style={{ width: '70px', padding: '4px' }}
+                        step={0.1}
+                      />
+                      <span style={{ color: '#888', fontSize: '12px' }}>%</span>
+                      <span style={{ color: '#666', fontSize: '11px', marginLeft: '8px' }}>
+                        Original: {originalWidth}x{originalHeight}
+                      </span>
+                    </div>
+                    {/* Quick scale buttons */}
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      {[25, 50, 75, 100, 125, 150].map(pct => (
+                        <button
+                          key={pct}
+                          onClick={() => applyScale(pct)}
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: '11px',
+                            backgroundColor: Math.abs(currentScale - pct) < 0.5 ? '#4CAF50' : '#3a3a3a',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </div>
+                    {/* Grid-aligned scale options (5px increments) */}
+                    {validScales.length > 0 && (
+                      <div style={{ marginTop: '8px' }}>
+                        <small style={{ color: '#888', display: 'block', marginBottom: '4px' }}>
+                          Grid-aligned (5px increments):
+                        </small>
+                        <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', maxHeight: '60px', overflowY: 'auto' }}>
+                          {validScales.filter(pct => pct >= 50 && pct <= 150).map(pct => {
+                            const w = Math.round(originalWidth * pct / 100);
+                            const h = Math.round(originalHeight * pct / 100);
+                            return (
+                              <button
+                                key={pct}
+                                onClick={() => applyScale(pct)}
+                                title={`${w}x${h}`}
+                                style={{
+                                  padding: '2px 6px',
+                                  fontSize: '10px',
+                                  backgroundColor: Math.abs(currentScale - pct) < 0.5 ? '#2196F3' : '#2a2a2a',
+                                  color: 'white',
+                                  border: '1px solid #444',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {pct}%
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {/* Reset to original */}
+                    {template.originalSlotSize && Math.abs(currentScale - 100) > 0.5 && (
+                      <button
+                        onClick={() => applyScale(100)}
+                        style={{
+                          marginTop: '8px',
+                          padding: '4px 12px',
+                          fontSize: '11px',
+                          backgroundColor: '#ff9800',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '3px',
+                          cursor: 'pointer',
+                          width: '100%'
+                        }}
+                      >
+                        Reset to Original Size ({originalWidth}x{originalHeight})
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </PropertySection>
           </>
         )}
@@ -2567,6 +3656,10 @@ function PropertyPanel({
                     <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
                     <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
                     <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
+                  </optgroup>
+                  <optgroup label="Leaderboard Slot Template">
+                    <option value="isTopScorer">Is Top Scorer</option>
+                    <option value="active">Slot Active</option>
                   </optgroup>
                   <optgroup label="Team State">
                     <option value="homeTeam.possession">Home Has Possession</option>

@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-02-03T20:31:34.276Z
+// Generated: 2026-02-23T15:48:29.025Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Badminton","Baseball","Basketball","Clock","Countdown","Equestrian","Football","Generic","Hockey","InfoBoard","Lacrosse","Leaderboard","PlayerCard","PracticeTimer","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling","break"] as const;
+export const AVAILABLE_SPORTS = ["Badminton","Baseball","Basketball","Clock","Countdown","Equestrian","Football","Generic","Hockey","InfoBoard","Lacrosse","Leaderboard","PlayerCard","PracticeTimer","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling","break","fill","mocks","test_leaderboard"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -53,7 +53,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
   },
   Generic: {
     rootImages: [],
-    subsections: {"Countdown":["generic-countdown-base.png","generic-countdown-score-mask.png","generic-countdown-team-color-left.png","generic-countdown-team-color-right.png","generic-countdown-vs-overlay.png"],"Simple":["fb-simple-away-score-animation-mask.png","fb-simple-clock-stopped.png","fb-simple-halftime-overlay.png","fb-simple-home-score-animation-mask.png","fb-simple-left-arrow.png","fb-simple-pregame-overlay.png","fb-simple-preiod-break_overlay.png","fb-simple-right-arrow.png","fb-simple-timeout-overlay.png","generic-simple-away-color-mask-soccer.png","generic-simple-base-soccer.png","generic-simple-home-color-mask-soccer.png"],"StreamBug":["_Timeouts/generic-stream-bug-timeout-l-off.png","_Timeouts/generic-stream-bug-timeout-l-on.png","_Timeouts/generic-stream-bug-timeout-m-off.png","_Timeouts/generic-stream-bug-timeout-m-on.png","_Timeouts/generic-stream-bug-timeout-orange-l-off.png","_Timeouts/generic-stream-bug-timeout-orange-l-on.png","_Timeouts/generic-stream-bug-timeout-orange-m-off.png","_Timeouts/generic-stream-bug-timeout-orange-m-on.png","_Timeouts/generic-stream-bug-timeout-orange-r-off.png","_Timeouts/generic-stream-bug-timeout-orange-r-on.png","_Timeouts/generic-stream-bug-timeout-r-off.png","_Timeouts/generic-stream-bug-timeout-r-on.png","generic-stream-bug-base.png","generic-stream-bug-color-mask-left.png","generic-stream-bug-color-mask-right.png"],"StreamBugCondensed":["_Timeouts/generic-stream-bug-condensed-timeout-l-off.png","_Timeouts/generic-stream-bug-condensed-timeout-l-on.png","_Timeouts/generic-stream-bug-condensed-timeout-m-off.png","_Timeouts/generic-stream-bug-condensed-timeout-m-on.png","_Timeouts/generic-stream-bug-condensed-timeout-r-off.png","_Timeouts/generic-stream-bug-condensed-timeout-r-on.png","generic-stream-bug-condensed-base.png","generic-stream-bug-condensed-color-mask-left.png","generic-stream-bug-condensed-color-mask-right.png"],"Utility":["16x9-cd-clock-stopped.png","16x9-cd-ind-break.png","16x9-cd-ind-halftime.png","16x9-cd-ind-pregame.png","16x9-cd-ind-timeout.png","16x9-cd-score-base.png","16x9-cd-team-color-border.png","16x9-cd-team-color-mask.png","16x9-cd-ticker-bg.png","16x9-cd-time-base.png","16x9-cd-time-tab.png","cd-standard-vs.png"]},
+    subsections: {"Countdown":["generic-countdown-base.png","generic-countdown-score-mask.png","generic-countdown-team-color-left.png","generic-countdown-team-color-right.png","generic-countdown-vs-overlay.png"],"Simple":["fb-simple-away-score-animation-mask.png","fb-simple-clock-stopped.png","fb-simple-halftime-overlay.png","fb-simple-home-score-animation-mask.png","fb-simple-left-arrow.png","fb-simple-pregame-overlay.png","fb-simple-preiod-break_overlay.png","fb-simple-right-arrow.png","fb-simple-timeout-overlay.png","generic-simple-away-color-mask-soccer.png","generic-simple-base-soccer.png","generic-simple-home-color-mask-soccer.png"],"StreamBug":["_Timeouts/generic-stream-bug-timeout-l-off.png","_Timeouts/generic-stream-bug-timeout-l-on.png","_Timeouts/generic-stream-bug-timeout-m-off.png","_Timeouts/generic-stream-bug-timeout-m-on.png","_Timeouts/generic-stream-bug-timeout-orange-l-off.png","_Timeouts/generic-stream-bug-timeout-orange-l-on.png","_Timeouts/generic-stream-bug-timeout-orange-m-off.png","_Timeouts/generic-stream-bug-timeout-orange-m-on.png","_Timeouts/generic-stream-bug-timeout-orange-r-off.png","_Timeouts/generic-stream-bug-timeout-orange-r-on.png","_Timeouts/generic-stream-bug-timeout-r-off.png","_Timeouts/generic-stream-bug-timeout-r-on.png","generic-stream-bug-base.png","generic-stream-bug-color-mask-left.png","generic-stream-bug-color-mask-right.png"],"StreamBugCondensed":["_Timeouts/generic-stream-bug-condensed-timeout-l-off.png","_Timeouts/generic-stream-bug-condensed-timeout-l-on.png","_Timeouts/generic-stream-bug-condensed-timeout-m-off.png","_Timeouts/generic-stream-bug-condensed-timeout-m-on.png","_Timeouts/generic-stream-bug-condensed-timeout-r-off.png","_Timeouts/generic-stream-bug-condensed-timeout-r-on.png","generic-stream-bug-condensed-base.png","generic-stream-bug-condensed-color-mask-left.png","generic-stream-bug-condensed-color-mask-right.png"],"Utility":["16x9-cd-clock-stopped.png","16x9-cd-ind-break.png","16x9-cd-ind-halftime.png","16x9-cd-ind-pregame.png","16x9-cd-ind-timeout.png","16x9-cd-score-base.png","16x9-cd-team-color-border.png","16x9-cd-team-color-mask.png","16x9-cd-ticker-bg.png","16x9-cd-time-base.png","16x9-cd-time-tab.png","background_test.jpeg","cd-standard-vs.png"]},
     hasSubsections: true,
   },
   Hockey: {
@@ -126,6 +126,21 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  fill: {
+    rootImages: ["mesh-pattern_grunge.png","mesh_pattern.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
+  mocks: {
+    rootImages: [],
+    subsections: {"baseball":["lineup/overlay.png","lineup/realistic.png","lineup/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"basketball":["lb/overlay.png","lb/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","sb+lb/overlay.png","sb+lb/realistic.png","sb+lb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png"],"equestrian":["player_card/overlay.png","player_card/realistic.png","player_card/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png"],"football":["sb/overlay.png","sb/realistic.png","sb/stylized.png","stadium/overlay.png","stadium/realistic.png","stadium/stylized.png"],"general":["countdown_indoor/overlay.png","countdown_indoor/realistic.png","countdown_indoor/stylized.png","countdown_outdoor/overlay.png","countdown_outdoor/realistic.png","countdown_outdoor/stylized.png"],"hockey":["sb/overlay.png","sb/realistic.png","sb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"universal":["sb/overlay.png","sb/realistic.png","sb/stylized.png"],"volleyball":["lb/overlay.png","lb/realistic.png","lb/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","sb+lb/overlay.png","sb+lb/realistic.png","sb+lb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"water_polo":["sb+sc/overlay.png","sb+sc/realistic.png","sb+sc/stylized.png"],"wrestling":["sb/overlay.png","sb/realistic.png","sb/stylized.png"]},
+    hasSubsections: true,
+  },
+  test_leaderboard: {
+    rootImages: ["lb_arrow_border.png","lb_arrow_border_away.png","lb_arrow_border_home.png","lb_arrow_fill.png","lb_arrow_fill_away.png","lb_arrow_fill_home.png","lb_bb_away_highlight_border.png","lb_bb_away_slot.png","lb_bb_home_highlight_border.png","lb_bb_home_slot.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
 };
 
 // Legacy flat manifest (root images only, for backwards compatibility)
@@ -152,6 +167,9 @@ export const KNOWN_IMAGES: Record<Sport, string[]> = {
   Volleyball: [],
   Wrestling: [],
   break: ["16x9-cd-ind-timeout.png","16x9-cd-score-base.png","16x9-cd-time-base.png","16x9-cd-time-tab.png"],
+  fill: ["mesh-pattern_grunge.png","mesh_pattern.png"],
+  mocks: [],
+  test_leaderboard: ["lb_arrow_border.png","lb_arrow_border_away.png","lb_arrow_border_home.png","lb_arrow_fill.png","lb_arrow_fill_away.png","lb_arrow_fill_home.png","lb_bb_away_highlight_border.png","lb_bb_away_slot.png","lb_bb_home_highlight_border.png","lb_bb_home_slot.png"],
 };
 
 /**

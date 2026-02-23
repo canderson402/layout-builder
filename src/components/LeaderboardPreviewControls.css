@@ -1,0 +1,212 @@
+.leaderboard-preview-controls {
+  background-color: #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.leaderboard-preview-controls .controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #444;
+}
+
+.leaderboard-preview-controls .controls-header h4 {
+  margin: 0;
+  color: #fff;
+  font-size: 14px;
+}
+
+.leaderboard-preview-controls .controls-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.leaderboard-preview-controls .controls-actions button {
+  padding: 4px 10px;
+  font-size: 11px;
+  background-color: #444;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.leaderboard-preview-controls .controls-actions button:hover {
+  background-color: #555;
+}
+
+.leaderboard-preview-controls .cycle-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background-color: #333;
+  border-radius: 4px;
+}
+
+.leaderboard-preview-controls .cycle-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ccc;
+  font-size: 12px;
+}
+
+.leaderboard-preview-controls .cycle-interval {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leaderboard-preview-controls .cycle-interval input {
+  width: 80px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background-color: #444;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #fff;
+}
+
+.leaderboard-preview-controls .players-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.leaderboard-preview-controls .player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background-color: #333;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+.leaderboard-preview-controls .player-row.top-scorer {
+  background-color: rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.leaderboard-preview-controls .player-rank {
+  width: 20px;
+  color: #888;
+  font-size: 11px;
+  text-align: center;
+}
+
+.leaderboard-preview-controls .player-jersey {
+  width: 40px;
+  color: #aaa;
+  font-size: 12px;
+}
+
+.leaderboard-preview-controls .player-name {
+  flex: 1;
+  color: #fff;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-preview-controls .player-points {
+  width: 50px;
+  color: #4CAF50;
+  font-size: 12px;
+  font-weight: bold;
+  text-align: right;
+}
+
+.leaderboard-preview-controls .player-jersey-input,
+.leaderboard-preview-controls .player-name-input,
+.leaderboard-preview-controls .player-points-input {
+  padding: 4px 6px;
+  font-size: 12px;
+  background-color: #444;
+  border: 1px solid #666;
+  border-radius: 3px;
+  color: #fff;
+}
+
+.leaderboard-preview-controls .player-jersey-input {
+  width: 40px;
+}
+
+.leaderboard-preview-controls .player-name-input {
+  flex: 1;
+}
+
+.leaderboard-preview-controls .player-points-input {
+  width: 50px;
+}
+
+.leaderboard-preview-controls .increment-btn {
+  padding: 2px 6px;
+  font-size: 10px;
+  background-color: #4CAF50;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.leaderboard-preview-controls .increment-btn:hover {
+  background-color: #45a049;
+}
+
+.leaderboard-preview-controls .edit-btn {
+  padding: 2px 6px;
+  font-size: 10px;
+  background-color: #2196F3;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.leaderboard-preview-controls .edit-btn:hover {
+  background-color: #1976D2;
+}
+
+.leaderboard-preview-controls .edit-btn.done {
+  background-color: #4CAF50;
+}
+
+.leaderboard-preview-controls .edit-btn.done:hover {
+  background-color: #45a049;
+}
+
+.leaderboard-preview-controls .remove-btn {
+  padding: 2px 6px;
+  font-size: 10px;
+  background-color: #f44336;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.leaderboard-preview-controls .remove-btn:hover {
+  background-color: #d32f2f;
+}
+
+.leaderboard-preview-controls .controls-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #444;
+}
+
+.leaderboard-preview-controls .controls-info small {
+  color: #888;
+  font-size: 11px;
+}

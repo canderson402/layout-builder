@@ -1,7 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import WebPreview from './WebPreview';
-import { ActiveEffect } from '../effects';
 import './Canvas.css';
 
 interface CanvasProps {
@@ -19,7 +18,6 @@ interface CanvasProps {
   onEndDragOperation: (description: string) => void;
   onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
   gameData?: any;
-  activeEffects?: Map<string, ActiveEffect>;
 }
 
 // Pixel-based grid settings
@@ -72,8 +70,7 @@ export default function Canvas({
   onStartDragOperation,
   onEndDragOperation,
   onUpdateLayout,
-  gameData,
-  activeEffects
+  gameData
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -89,6 +86,27 @@ export default function Canvas({
   const [showGrid, setShowGrid] = useState(true);
   const [showHalfwayLines, setShowHalfwayLines] = useState(false);
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true); // Toggle for green selection outlines (default ON)
+  const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string>(() => {
+    // Load from localStorage, default to the test background
+    return localStorage.getItem('canvas-background-image') || '/images/Generic/Utility/background_test.jpeg';
+  });
+  const [showCanvasBackground, setShowCanvasBackground] = useState<boolean>(() => {
+    const stored = localStorage.getItem('canvas-background-visible');
+    return stored !== null ? stored === 'true' : true; // Default to visible
+  });
+
+  // Resolve background image path with BASE_URL
+  const resolvedBackgroundImage = React.useMemo(() => {
+    if (!canvasBackgroundImage) return '';
+    if (canvasBackgroundImage.startsWith('http://') || canvasBackgroundImage.startsWith('https://') || canvasBackgroundImage.startsWith('data:')) {
+      return canvasBackgroundImage;
+    }
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    if (canvasBackgroundImage.startsWith('/')) {
+      return `${baseUrl}${canvasBackgroundImage.slice(1)}`;
+    }
+    return `${baseUrl}${canvasBackgroundImage}`;
+  }, [canvasBackgroundImage]);
   const [gridSizeIndex, setGridSizeIndex] = useState(2); // Default to 20px grid (index 2)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [zoomLevel, setZoomLevel] = useState(60); // Zoom level from 10% to 200%
@@ -99,6 +117,7 @@ export default function Canvas({
   const [hasDraggedFarEnough, setHasDraggedFarEnough] = useState(false);
   const [initialComponentPositions, setInitialComponentPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
   const [dragAxisConstraint, setDragAxisConstraint] = useState<'x' | 'y' | null>(null); // Axis-constrained dragging
+  const [initialResizeBounds, setInitialResizeBounds] = useState<{ x: number, y: number, width: number, height: number, components: ComponentConfig[] } | null>(null); // Store bounds at resize start
   const isCopyDragRef = useRef(false); // Track if Command was held at drag start for copy-drag
 
   // Viewport panning state
@@ -140,6 +159,15 @@ export default function Canvas({
 
   // Ref to store handleResize function to avoid initialization order issues
   const handleResizeRef = useRef<((canvasX: number, canvasY: number, maintainAspectRatio?: boolean) => void) | null>(null);
+
+  // Persist canvas background settings
+  React.useEffect(() => {
+    localStorage.setItem('canvas-background-image', canvasBackgroundImage);
+  }, [canvasBackgroundImage]);
+
+  React.useEffect(() => {
+    localStorage.setItem('canvas-background-visible', String(showCanvasBackground));
+  }, [showCanvasBackground]);
 
   // Helper function to handle component selection with Ctrl/Cmd for multi-select
   const handleComponentSelect = useCallback((componentId: string, isCtrlClick: boolean = false) => {
@@ -1102,11 +1130,30 @@ export default function Canvas({
         setActiveGuides({ guides: [] });
       }
 
-      // Second pass: apply positions with snap offset
+      // Second pass: apply positions with snap offset and grid snapping
       scaledComponents.forEach(({ id, x, y, width, height }) => {
+        let finalX = x + snapOffsetX;
+        let finalY = y + snapOffsetY;
+        let finalWidth = width;
+        let finalHeight = height;
+
+        // Apply grid snapping if grid is enabled
+        if (showGrid) {
+          finalX = snapToGrid(finalX, 'width');
+          finalY = snapToGrid(finalY, 'height');
+          finalWidth = snapToGrid(finalWidth, 'width');
+          finalHeight = snapToGrid(finalHeight, 'height');
+        } else {
+          // Round to integers for pixel-perfect alignment
+          finalX = Math.round(finalX);
+          finalY = Math.round(finalY);
+          finalWidth = Math.round(finalWidth);
+          finalHeight = Math.round(finalHeight);
+        }
+
         onUpdateComponent(id, {
-          position: { x: Math.round(x + snapOffsetX), y: Math.round(y + snapOffsetY) },
-          size: { width: Math.round(width), height: Math.round(height) }
+          position: { x: finalX, y: finalY },
+          size: { width: finalWidth, height: finalHeight }
         });
       });
 
@@ -1287,12 +1334,6 @@ export default function Canvas({
         snapRawY = rawPrimaryY;
       }
 
-      // Only snap size to grid if grid is enabled (for single selection)
-      if (showGrid && selectedIds.length === 1) {
-        snapWidth = snapToGrid(snapWidth, 'width');
-        snapHeight = snapToGrid(snapHeight, 'height');
-      }
-
       // Use smart snapping with the bounding box dimensions
       // Pass all selected component IDs to exclude them from element-to-element snapping
       const snapResult = smartSnap(snapRawX, snapRawY, snapWidth, snapHeight, true, selectedIds);
@@ -1304,22 +1345,15 @@ export default function Canvas({
       const snappedDeltaX = (snapResult.x - snapRawX) + rawDeltaX;
       const snappedDeltaY = (snapResult.y - snapRawY) + rawDeltaY;
 
-      // Update all selected components AND their descendants
+      // Update all selected components AND their descendants (position only, never size during move)
       initialComponentPositions.forEach((initialPos, componentId) => {
-        const newX = initialPos.x + snappedDeltaX;
-        const newY = initialPos.y + snappedDeltaY;
+        // Round to integers for pixel-perfect alignment
+        const newX = Math.round(initialPos.x + snappedDeltaX);
+        const newY = Math.round(initialPos.y + snappedDeltaY);
 
-        // For single selection of primary component, also update size if grid snapping
-        if (selectedIds.length === 1 && componentId === draggedComponent.id) {
-          onUpdateComponent(componentId, {
-            position: { x: newX, y: newY },
-            size: { width: snapWidth, height: snapHeight }
-          });
-        } else {
-          onUpdateComponent(componentId, {
-            position: { x: newX, y: newY }
-          });
-        }
+        onUpdateComponent(componentId, {
+          position: { x: newX, y: newY }
+        });
       });
     }
 
@@ -1379,13 +1413,13 @@ export default function Canvas({
         const left = Math.min(createStart.x, createEnd.x);
         const top = Math.min(createStart.y, createEnd.y);
         
-        // Only snap to grid if grid is enabled
-        const snappedLeft = showGrid ? snapToGrid(left, 'width') : left;
-        const snappedTop = showGrid ? snapToGrid(top, 'height') : top;
-        const snappedWidth = showGrid ? snapToGrid(width, 'width') : width;
-        const snappedHeight = showGrid ? snapToGrid(height, 'height') : height;
-        
-        // Create component with the dragged dimensions in pixels
+        // Only snap to grid if grid is enabled, always round to integers
+        const snappedLeft = showGrid ? snapToGrid(left, 'width') : Math.round(left);
+        const snappedTop = showGrid ? snapToGrid(top, 'height') : Math.round(top);
+        const snappedWidth = showGrid ? snapToGrid(width, 'width') : Math.round(width);
+        const snappedHeight = showGrid ? snapToGrid(height, 'height') : Math.round(height);
+
+        // Create component with pixel-perfect integer dimensions
         const position = {
           x: snappedLeft,
           y: snappedTop
@@ -1428,6 +1462,7 @@ export default function Canvas({
     setHasDraggedFarEnough(false);
     setComponentsAtClickPosition([]); // Clear the stored components
     setInitialComponentPositions(new Map()); // Clear initial positions
+    setInitialResizeBounds(null); // Clear initial resize bounds
     setActiveGuides({ guides: [] }); // Clear smart guides
     setDragAxisConstraint(null); // Clear axis constraint
     isCopyDragRef.current = false; // Clear copy-drag flag
@@ -1716,6 +1751,21 @@ export default function Canvas({
     const bounds = getMultiSelectBounds();
     if (!bounds) return;
 
+    // Store the initial bounds and component positions/sizes at resize start
+    const initialBounds = {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      // Deep copy component data to preserve original positions/sizes
+      components: bounds.components.map(c => ({
+        ...c,
+        position: { ...c.position },
+        size: { ...c.size }
+      }))
+    };
+    setInitialResizeBounds(initialBounds);
+
     onStartDragOperation(); // Save initial state for undo
     setIsResizing(true);
     setResizeHandle(handle);
@@ -1729,71 +1779,20 @@ export default function Canvas({
     } as ComponentConfig);
   }, [getMultiSelectBounds, onStartDragOperation, setDraggedComponent]);
 
-  // Handle multi-component axis-constrained drag (from arrow handles on multi-select bounds)
-  const handleMultiAxisDragMouseDown = useCallback((e: React.MouseEvent, axis: 'x' | 'y') => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const bounds = getMultiSelectBounds();
-    if (!bounds) return;
-
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const canvasX = (e.clientX - rect.left) / scale;
-    const canvasY = (e.clientY - rect.top) / scale;
-
-    // Set the axis constraint
-    setDragAxisConstraint(axis);
-
-    // Start dragging immediately
-    onStartDragOperation();
-    setIsDragging(true);
-    setHasDraggedFarEnough(true);
-
-    // Use a dummy component representing the multi-select bounds
-    const dummyComponent = {
-      id: 'multi-select',
-      type: 'custom',
-      position: { x: bounds.x, y: bounds.y },
-      size: { width: bounds.width, height: bounds.height },
-      props: {}
-    } as ComponentConfig;
-
-    setDraggedComponent(dummyComponent);
-    setDragOffset({
-      x: canvasX - bounds.x,
-      y: canvasY - bounds.y
-    });
-
-    // Store initial positions of all selected components and their descendants
-    const positions = new Map<string, { x: number, y: number }>();
-    const descendantIds = getAllDescendants(selectedComponents, layoutRef.current.components);
-    const allIdsToMove = [...selectedComponents, ...descendantIds];
-
-    allIdsToMove.forEach(id => {
-      const comp = layoutRef.current.components.find(c => c.id === id);
-      if (comp) {
-        positions.set(id, { x: comp.position.x, y: comp.position.y });
-      }
-    });
-    setInitialComponentPositions(positions);
-
-    window.dispatchEvent(new CustomEvent('canvas-drag-start'));
-  }, [getMultiSelectBounds, scale, onStartDragOperation, selectedComponents]);
-
   // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number, maintainAspectRatio: boolean = false) => {
     if (!draggedComponent) return;
 
     // Check if this is a multi-component resize
     if (draggedComponent.id === 'multi-select' && selectedComponents.length > 1) {
-      const bounds = getMultiSelectBounds();
-      if (!bounds) return;
+      // Use stored initial bounds - this is critical to prevent drift during resize
+      if (!initialResizeBounds) return;
 
-      // Calculate scale factors
-      const originalWidth = bounds.width;
-      const originalHeight = bounds.height;
-      const originalLeft = bounds.x;
-      const originalTop = bounds.y;
+      // Use the ORIGINAL bounds from when resize started, not current bounds
+      const originalWidth = initialResizeBounds.width;
+      const originalHeight = initialResizeBounds.height;
+      const originalLeft = initialResizeBounds.x;
+      const originalTop = initialResizeBounds.y;
 
       let newWidth = originalWidth;
       let newHeight = originalHeight;
@@ -1823,19 +1822,34 @@ export default function Canvas({
           newX = canvasX;
           newY = canvasY;
           break;
+        // Side handles - single axis resize
+        case 'n': // Top edge - height only
+          newHeight = Math.max(minSize, originalTop + originalHeight - canvasY);
+          newY = canvasY;
+          break;
+        case 's': // Bottom edge - height only
+          newHeight = Math.max(minSize, canvasY - originalTop);
+          break;
+        case 'e': // Right edge - width only
+          newWidth = Math.max(minSize, canvasX - originalLeft);
+          break;
+        case 'w': // Left edge - width only
+          newWidth = Math.max(minSize, originalLeft + originalWidth - canvasX);
+          newX = canvasX;
+          break;
       }
 
-      // Calculate scale factors
+      // Calculate scale factors based on original dimensions
       const scaleX = newWidth / originalWidth;
       const scaleY = newHeight / originalHeight;
 
-      // Apply scaling to all selected components
-      bounds.components.forEach(component => {
-        // Calculate relative position within the bounding box
-        const relativeX = (component.position.x - originalLeft) / originalWidth;
-        const relativeY = (component.position.y - originalTop) / originalHeight;
-        const relativeWidth = component.size.width / originalWidth;
-        const relativeHeight = component.size.height / originalHeight;
+      // Apply scaling to all selected components using their ORIGINAL positions/sizes
+      initialResizeBounds.components.forEach(originalComponent => {
+        // Calculate relative position within the ORIGINAL bounding box
+        const relativeX = (originalComponent.position.x - originalLeft) / originalWidth;
+        const relativeY = (originalComponent.position.y - originalTop) / originalHeight;
+        const relativeWidth = originalComponent.size.width / originalWidth;
+        const relativeHeight = originalComponent.size.height / originalHeight;
 
         // Calculate new position and size
         const newComponentX = newX + (relativeX * newWidth);
@@ -1843,7 +1857,7 @@ export default function Canvas({
         const newComponentWidth = Math.max(minSize, relativeWidth * newWidth);
         const newComponentHeight = Math.max(minSize, relativeHeight * newHeight);
 
-        // Apply grid snapping if enabled
+        // Apply grid snapping if enabled, always round to integers for pixel-perfect alignment
         let finalX = newComponentX;
         let finalY = newComponentY;
         let finalWidth = newComponentWidth;
@@ -1854,9 +1868,15 @@ export default function Canvas({
           finalY = snapToGrid(finalY, 'height');
           finalWidth = snapToGrid(finalWidth, 'width');
           finalHeight = snapToGrid(finalHeight, 'height');
+        } else {
+          // Round to integers even without grid snapping
+          finalX = Math.round(finalX);
+          finalY = Math.round(finalY);
+          finalWidth = Math.round(finalWidth);
+          finalHeight = Math.round(finalHeight);
         }
 
-        onUpdateComponent(component.id, {
+        onUpdateComponent(originalComponent.id, {
           position: { x: finalX, y: finalY },
           size: { width: finalWidth, height: finalHeight }
         });
@@ -1935,37 +1955,82 @@ export default function Canvas({
     let newWidth = finalRight - finalLeft;
     let newHeight = finalBottom - finalTop;
 
+    // Helper to get anchor position based on scaleAnchor setting
+    const getAnchorPosition = (anchor: string, left: number, top: number, right: number, bottom: number): { x: number; y: number } => {
+      switch (anchor) {
+        case 'center':
+          return { x: (left + right) / 2, y: (top + bottom) / 2 };
+        case 'top':
+          return { x: (left + right) / 2, y: top };
+        case 'bottom':
+          return { x: (left + right) / 2, y: bottom };
+        case 'left':
+          return { x: left, y: (top + bottom) / 2 };
+        case 'right':
+          return { x: right, y: (top + bottom) / 2 };
+        case 'top-left':
+          return { x: left, y: top };
+        case 'top-right':
+          return { x: right, y: top };
+        case 'bottom-left':
+          return { x: left, y: bottom };
+        case 'bottom-right':
+          return { x: right, y: bottom };
+        default:
+          // 'corner' - use opposite corner of the resize handle
+          switch (resizeHandle) {
+            case 'se': return { x: left, y: top };
+            case 'sw': return { x: right, y: top };
+            case 'ne': return { x: left, y: bottom };
+            case 'nw': return { x: right, y: bottom };
+            default: return { x: left, y: top };
+          }
+      }
+    };
+
+    // Helper to calculate position from anchor
+    const positionFromAnchor = (anchor: string, anchorX: number, anchorY: number, width: number, height: number): { left: number; top: number } => {
+      switch (anchor) {
+        case 'center':
+          return { left: anchorX - width / 2, top: anchorY - height / 2 };
+        case 'top':
+          return { left: anchorX - width / 2, top: anchorY };
+        case 'bottom':
+          return { left: anchorX - width / 2, top: anchorY - height };
+        case 'left':
+          return { left: anchorX, top: anchorY - height / 2 };
+        case 'right':
+          return { left: anchorX - width, top: anchorY - height / 2 };
+        case 'top-left':
+          return { left: anchorX, top: anchorY };
+        case 'top-right':
+          return { left: anchorX - width, top: anchorY };
+        case 'bottom-left':
+          return { left: anchorX, top: anchorY - height };
+        case 'bottom-right':
+          return { left: anchorX - width, top: anchorY - height };
+        default:
+          // 'corner' - anchor at opposite corner
+          switch (resizeHandle) {
+            case 'se': return { left: anchorX, top: anchorY };
+            case 'sw': return { left: anchorX - width, top: anchorY };
+            case 'ne': return { left: anchorX, top: anchorY - height };
+            case 'nw': return { left: anchorX - width, top: anchorY - height };
+            default: return { left: anchorX, top: anchorY };
+          }
+      }
+    };
+
+    // Get original anchor position (before resize) for non-aspect-ratio resizing with custom anchor
+    const hasCustomAnchor = scaleAnchor !== 'corner' && scaleAnchor !== undefined;
+    const originalAnchor = hasCustomAnchor
+      ? getAnchorPosition(scaleAnchor, currentLeft, currentTop, currentRight, currentBottom)
+      : null;
+
     // Enforce aspect ratio AFTER snapping if aspect ratio should be maintained
     if (shouldMaintainAspectRatio) {
       // Determine anchor point for scaling
-      let anchorX: number;
-      let anchorY: number;
-
-      if (scaleAnchor === 'center') {
-        anchorX = (finalLeft + finalRight) / 2;
-        anchorY = (finalTop + finalBottom) / 2;
-      } else if (scaleAnchor === 'bottom') {
-        anchorX = (finalLeft + finalRight) / 2;
-        anchorY = finalBottom;
-      } else if (scaleAnchor === 'top') {
-        anchorX = (finalLeft + finalRight) / 2;
-        anchorY = finalTop;
-      } else if (scaleAnchor === 'left') {
-        anchorX = finalLeft;
-        anchorY = (finalTop + finalBottom) / 2;
-      } else if (scaleAnchor === 'right') {
-        anchorX = finalRight;
-        anchorY = (finalTop + finalBottom) / 2;
-      } else {
-        // 'corner' - use opposite corner of the resize handle
-        switch (resizeHandle) {
-          case 'se': anchorX = finalLeft; anchorY = finalTop; break;
-          case 'sw': anchorX = finalRight; anchorY = finalTop; break;
-          case 'ne': anchorX = finalLeft; anchorY = finalBottom; break;
-          case 'nw': anchorX = finalRight; anchorY = finalBottom; break;
-          default: anchorX = finalLeft; anchorY = finalTop;
-        }
-      }
+      const { x: anchorX, y: anchorY } = getAnchorPosition(scaleAnchor, finalLeft, finalTop, finalRight, finalBottom);
 
       // Calculate the desired width based on mouse movement, then derive height from aspect ratio
       const rawWidth = Math.max(minSize, newWidth);
@@ -1985,43 +2050,16 @@ export default function Canvas({
       }
 
       // Recalculate position based on anchor point
-      if (scaleAnchor === 'center') {
-        finalLeft = anchorX - newWidth / 2;
-        finalTop = anchorY - newHeight / 2;
-      } else if (scaleAnchor === 'bottom') {
-        finalLeft = anchorX - newWidth / 2;
-        finalTop = anchorY - newHeight;
-      } else if (scaleAnchor === 'top') {
-        finalLeft = anchorX - newWidth / 2;
-        finalTop = anchorY;
-      } else if (scaleAnchor === 'left') {
-        finalLeft = anchorX;
-        finalTop = anchorY - newHeight / 2;
-      } else if (scaleAnchor === 'right') {
-        finalLeft = anchorX - newWidth;
-        finalTop = anchorY - newHeight / 2;
-      } else {
-        // 'corner' - anchor at opposite corner
-        switch (resizeHandle) {
-          case 'se':
-            finalLeft = anchorX;
-            finalTop = anchorY;
-            break;
-          case 'sw':
-            finalLeft = anchorX - newWidth;
-            finalTop = anchorY;
-            break;
-          case 'ne':
-            finalLeft = anchorX;
-            finalTop = anchorY - newHeight;
-            break;
-          case 'nw':
-            finalLeft = anchorX - newWidth;
-            finalTop = anchorY - newHeight;
-            break;
-        }
-      }
-
+      const newPos = positionFromAnchor(scaleAnchor, anchorX, anchorY, newWidth, newHeight);
+      finalLeft = newPos.left;
+      finalTop = newPos.top;
+      finalRight = finalLeft + newWidth;
+      finalBottom = finalTop + newHeight;
+    } else if (hasCustomAnchor && originalAnchor) {
+      // For non-aspect-ratio resizing with a custom anchor, keep the anchor point fixed
+      const newPos = positionFromAnchor(scaleAnchor, originalAnchor.x, originalAnchor.y, newWidth, newHeight);
+      finalLeft = newPos.left;
+      finalTop = newPos.top;
       finalRight = finalLeft + newWidth;
       finalBottom = finalTop + newHeight;
     }
@@ -2042,17 +2080,55 @@ export default function Canvas({
       }
     }
 
-    const newX = finalLeft;
-    const newY = finalTop;
-    const finalWidth = finalRight - finalLeft;
-    const finalHeight = finalBottom - finalTop;
+    // Round to integers for pixel-perfect alignment
+    const newX = Math.round(finalLeft);
+    const newY = Math.round(finalTop);
+    const finalWidth = Math.round(finalRight - finalLeft);
+    const finalHeight = Math.round(finalBottom - finalTop);
 
-    // Store pixel values directly
+    // Store pixel values as integers
     onUpdateComponent(draggedComponent.id, {
       position: { x: newX, y: newY },
       size: { width: finalWidth, height: finalHeight }
     });
-  }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, getMultiSelectBounds, smartSnapResize]);
+
+    // If this is a group, scale all children proportionally
+    if (draggedComponent.type === 'group' && initialResizeBounds) {
+      const originalWidth = initialResizeBounds.width;
+      const originalHeight = initialResizeBounds.height;
+      const originalLeft = initialResizeBounds.x;
+      const originalTop = initialResizeBounds.y;
+
+      const scaleX = finalWidth / originalWidth;
+      const scaleY = finalHeight / originalHeight;
+
+      // Get all children of this group
+      const children = (layout.components || []).filter(c => c.parentId === draggedComponent.id);
+
+      children.forEach(child => {
+        // Find the original child state from initialResizeBounds.components
+        const originalChild = initialResizeBounds.components?.find(c => c.id === child.id);
+        if (!originalChild) return;
+
+        // Calculate relative position within the original group bounds
+        const relativeX = (originalChild.position.x - originalLeft) / originalWidth;
+        const relativeY = (originalChild.position.y - originalTop) / originalHeight;
+        const relativeWidth = originalChild.size.width / originalWidth;
+        const relativeHeight = originalChild.size.height / originalHeight;
+
+        // Calculate new position and size
+        const childX = Math.round(newX + relativeX * finalWidth);
+        const childY = Math.round(newY + relativeY * finalHeight);
+        const childWidth = Math.max(10, Math.round(relativeWidth * finalWidth));
+        const childHeight = Math.max(10, Math.round(relativeHeight * finalHeight));
+
+        onUpdateComponent(child.id, {
+          position: { x: childX, y: childY },
+          size: { width: childWidth, height: childHeight }
+        });
+      });
+    }
+  }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, initialResizeBounds, smartSnapResize, layout.components]);
 
   // Update the ref whenever handleResize changes
   handleResizeRef.current = handleResize;
@@ -2066,13 +2142,29 @@ export default function Canvas({
       e.preventDefault();
     }
     e.stopPropagation();
-    
+
     onStartDragOperation(); // Save initial state for undo
     setIsResizing(true);
     setResizeHandle(handle);
     setDraggedComponent(component);
     handleComponentSelect(component.id, false); // Single select for resize
-  }, [handleComponentSelect, setDraggedComponent, onStartDragOperation]);
+
+    // For groups, capture initial state of all children for proportional scaling
+    if (component.type === 'group') {
+      const children = (layout.components || []).filter(c => c.parentId === component.id);
+      setInitialResizeBounds({
+        x: component.position.x,
+        y: component.position.y,
+        width: component.size.width,
+        height: component.size.height,
+        components: children.map(c => ({
+          ...c,
+          position: { ...c.position },
+          size: { ...c.size }
+        }))
+      });
+    }
+  }, [handleComponentSelect, setDraggedComponent, onStartDragOperation, layout.components]);
 
   // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
@@ -2495,9 +2587,9 @@ export default function Canvas({
             P
           </div>
         )}
-        {selectedComponents.includes(component.id) && selectedComponents.length === 1 && (
+        {selectedComponents.includes(component.id) && selectedComponents.length === 1 && component.type !== 'slotList' && (
           <>
-            {/* Resize handles - only show for single selection */}
+            {/* Resize handles - only show for single selection, not for slotList (size is auto-calculated) */}
             <div
               className="resize-handle resize-handle-nw"
               onMouseDown={(e) => handleResizeMouseDown(e, 'nw', component)}
@@ -2719,6 +2811,90 @@ export default function Canvas({
           >
             Bounds
           </button>
+          <button
+            className={`grid-button ${showCanvasBackground ? 'active' : ''}`}
+            onClick={() => setShowCanvasBackground(!showCanvasBackground)}
+            title="Toggle canvas background image preview"
+          >
+            BG
+          </button>
+          <select
+            value={canvasBackgroundImage}
+            onChange={(e) => setCanvasBackgroundImage(e.target.value)}
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              backgroundColor: '#2a2a2a',
+              color: '#ccc',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              maxWidth: '180px',
+            }}
+            title="Select background mock image"
+          >
+            <option value="">-- None --</option>
+            <optgroup label="Basketball">
+              <option value="/images/mocks/basketball/sb/realistic.png">Basketball SB Realistic</option>
+              <option value="/images/mocks/basketball/sb/stylized.png">Basketball SB Stylized</option>
+              <option value="/images/mocks/basketball/sb/overlay.png">Basketball SB Overlay</option>
+              <option value="/images/mocks/basketball/lb/stylized.png">Basketball LB Stylized</option>
+              <option value="/images/mocks/basketball/lb/overlay.png">Basketball LB Overlay</option>
+              <option value="/images/mocks/basketball/sb+lb/realistic.png">Basketball SB+LB Realistic</option>
+              <option value="/images/mocks/basketball/sb+lb/stylized.png">Basketball SB+LB Stylized</option>
+              <option value="/images/mocks/basketball/scorebug/realistic.png">Basketball Scorebug Realistic</option>
+            </optgroup>
+            <optgroup label="Football">
+              <option value="/images/mocks/football/sb/realistic.png">Football SB Realistic</option>
+              <option value="/images/mocks/football/sb/stylized.png">Football SB Stylized</option>
+              <option value="/images/mocks/football/stadium/realistic.png">Football Stadium Realistic</option>
+              <option value="/images/mocks/football/stadium/stylized.png">Football Stadium Stylized</option>
+            </optgroup>
+            <optgroup label="Hockey">
+              <option value="/images/mocks/hockey/sb/realistic.png">Hockey SB Realistic</option>
+              <option value="/images/mocks/hockey/sb/stylized.png">Hockey SB Stylized</option>
+              <option value="/images/mocks/hockey/scorebug/realistic.png">Hockey Scorebug Realistic</option>
+              <option value="/images/mocks/hockey/vb/realistic.png">Hockey VB Realistic</option>
+            </optgroup>
+            <optgroup label="Volleyball">
+              <option value="/images/mocks/volleyball/sb/realistic.png">Volleyball SB Realistic</option>
+              <option value="/images/mocks/volleyball/sb/stylized.png">Volleyball SB Stylized</option>
+              <option value="/images/mocks/volleyball/lb/realistic.png">Volleyball LB Realistic</option>
+              <option value="/images/mocks/volleyball/sb+lb/realistic.png">Volleyball SB+LB Realistic</option>
+            </optgroup>
+            <optgroup label="Baseball">
+              <option value="/images/mocks/baseball/sb/realistic.png">Baseball SB Realistic</option>
+              <option value="/images/mocks/baseball/sb/stylized.png">Baseball SB Stylized</option>
+              <option value="/images/mocks/baseball/lineup/realistic.png">Baseball Lineup Realistic</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="/images/mocks/universal/sb/realistic.png">Universal SB Realistic</option>
+              <option value="/images/mocks/universal/sb/stylized.png">Universal SB Stylized</option>
+              <option value="/images/mocks/wrestling/sb/realistic.png">Wrestling SB Realistic</option>
+              <option value="/images/mocks/equestrian/sb/realistic.png">Equestrian SB Realistic</option>
+              <option value="/images/mocks/water_polo/sb+sc/realistic.png">Water Polo SB Realistic</option>
+              <option value="/images/mocks/general/countdown_indoor/realistic.png">Countdown Indoor</option>
+              <option value="/images/mocks/general/countdown_outdoor/realistic.png">Countdown Outdoor</option>
+            </optgroup>
+            <optgroup label="Utility">
+              <option value="/images/Generic/Utility/background_test.jpeg">Test Background</option>
+            </optgroup>
+          </select>
+          <input
+            type="text"
+            value={canvasBackgroundImage}
+            onChange={(e) => setCanvasBackgroundImage(e.target.value)}
+            placeholder="or paste URL"
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              backgroundColor: '#2a2a2a',
+              color: '#ccc',
+              border: '1px solid #555',
+              borderRadius: '4px',
+              width: '120px',
+            }}
+            title="Or paste a custom URL"
+          />
           <div className="grid-size-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button
               className="grid-button"
@@ -2980,13 +3156,13 @@ export default function Canvas({
           }
         }}
       >
-        <div 
+        <div
           ref={canvasRef}
           className="canvas"
           style={{
             width: layout.dimensions.width,
             height: layout.dimensions.height,
-            backgroundColor: layout.backgroundColor,
+            backgroundColor: showCanvasBackground && resolvedBackgroundImage ? 'transparent' : layout.backgroundColor,
             transform: `translate(${viewportOffset.x}px, ${viewportOffset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
             position: 'relative',
@@ -3039,8 +3215,27 @@ export default function Canvas({
           style={{
             width: layout.dimensions.width,
             height: layout.dimensions.height,
+            position: 'relative',
           }}
         >
+          {/* Canvas background image */}
+          {showCanvasBackground && resolvedBackgroundImage && (
+            <img
+              src={resolvedBackgroundImage}
+              alt=""
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: layout.dimensions.width,
+                height: layout.dimensions.height,
+                objectFit: 'cover',
+                pointerEvents: 'none',
+                zIndex: 0,
+              }}
+              onError={(e) => console.error('Background image failed to load:', resolvedBackgroundImage)}
+            />
+          )}
           {/* Simple pixel-based grid overlay */}
           {showGrid && (
             <svg
@@ -3061,19 +3256,22 @@ export default function Canvas({
                   height={gridSize}
                   patternUnits="userSpaceOnUse"
                 >
-                  <rect 
-                    width={gridSize} 
-                    height={gridSize} 
-                    fill="none" 
-                    stroke="rgba(255, 255, 255, 0.3)" 
+                  {/* Use paths instead of rect stroke for pixel-perfect grid lines */}
+                  {/* Lines are drawn at integer positions for crisp rendering */}
+                  <path
+                    d={`M ${gridSize} 0 L 0 0 L 0 ${gridSize}`}
+                    fill="none"
+                    stroke="rgba(255, 255, 255, 0.3)"
                     strokeWidth="1"
+                    shapeRendering="crispEdges"
                   />
                 </pattern>
               </defs>
-              <rect 
-                width={layout.dimensions.width} 
-                height={layout.dimensions.height} 
-                fill="url(#pixel-grid)" 
+              <rect
+                width={layout.dimensions.width}
+                height={layout.dimensions.height}
+                fill="url(#pixel-grid)"
+                shapeRendering="crispEdges"
               />
               {/* Add center snap lines for large grid sizes */}
               {gridSize >= 50 && (
@@ -3276,7 +3474,6 @@ export default function Canvas({
             selectedComponents={selectedComponents}
             onSelectComponents={onSelectComponents}
             gameData={gameData}
-            activeEffects={activeEffects}
           />
           {/* Creation rectangle overlay */}
           {isCreating && (
@@ -3371,82 +3568,86 @@ export default function Canvas({
                   }}
                 />
 
-                {/* Multi-select axis-constrained drag handles (arrows) */}
-                {/* Top arrow - vertical movement only */}
+                {/* Multi-select edge resize handles */}
+                {/* Top edge - resize height */}
                 <div
-                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'y')}
+                  className="resize-handle resize-handle-n"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'n')}
                   style={{
                     position: 'absolute',
-                    top: -16,
+                    top: -4,
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    width: 0,
-                    height: 0,
-                    borderLeft: '6px solid transparent',
-                    borderRight: '6px solid transparent',
-                    borderBottom: '10px solid #4CAF50',
+                    width: 30,
+                    height: 8,
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff',
+                    borderRadius: 2,
                     cursor: 'ns-resize',
                     zIndex: 25,
                     pointerEvents: 'auto',
                   }}
-                  title="Drag to move vertically only"
+                  title="Drag to resize height"
                 />
-                {/* Bottom arrow - vertical movement only */}
+                {/* Bottom edge - resize height */}
                 <div
-                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'y')}
+                  className="resize-handle resize-handle-s"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 's')}
                   style={{
                     position: 'absolute',
-                    bottom: -16,
+                    bottom: -4,
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    width: 0,
-                    height: 0,
-                    borderLeft: '6px solid transparent',
-                    borderRight: '6px solid transparent',
-                    borderTop: '10px solid #4CAF50',
+                    width: 30,
+                    height: 8,
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff',
+                    borderRadius: 2,
                     cursor: 'ns-resize',
                     zIndex: 25,
                     pointerEvents: 'auto',
                   }}
-                  title="Drag to move vertically only"
+                  title="Drag to resize height"
                 />
-                {/* Left arrow - horizontal movement only */}
+                {/* Left edge - resize width */}
                 <div
-                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'x')}
+                  className="resize-handle resize-handle-w"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'w')}
                   style={{
                     position: 'absolute',
-                    left: -16,
+                    left: -4,
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    width: 0,
-                    height: 0,
-                    borderTop: '6px solid transparent',
-                    borderBottom: '6px solid transparent',
-                    borderRight: '10px solid #4CAF50',
+                    width: 8,
+                    height: 30,
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff',
+                    borderRadius: 2,
                     cursor: 'ew-resize',
                     zIndex: 25,
                     pointerEvents: 'auto',
                   }}
-                  title="Drag to move horizontally only"
+                  title="Drag to resize width"
                 />
-                {/* Right arrow - horizontal movement only */}
+                {/* Right edge - resize width */}
                 <div
-                  onMouseDown={(e) => handleMultiAxisDragMouseDown(e, 'x')}
+                  className="resize-handle resize-handle-e"
+                  onMouseDown={(e) => handleMultiResizeMouseDown(e, 'e')}
                   style={{
                     position: 'absolute',
-                    right: -16,
+                    right: -4,
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    width: 0,
-                    height: 0,
-                    borderTop: '6px solid transparent',
-                    borderBottom: '6px solid transparent',
-                    borderLeft: '10px solid #4CAF50',
+                    width: 8,
+                    height: 30,
+                    backgroundColor: '#4CAF50',
+                    border: '1px solid #ffffff',
+                    borderRadius: 2,
                     cursor: 'ew-resize',
                     zIndex: 25,
                     pointerEvents: 'auto',
                   }}
-                  title="Drag to move horizontally only"
+                  title="Drag to resize width"
                 />
 
                 {/* Multi-select info label */}

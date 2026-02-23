@@ -157,6 +157,8 @@
 
 .property-field select {
   cursor: pointer;
+  -webkit-appearance: menulist;
+  appearance: menulist;
 }
 
 .property-field input[type="color"] {

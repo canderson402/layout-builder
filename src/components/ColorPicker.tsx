@@ -453,7 +453,26 @@ const ColorPicker: React.FC<ColorPickerProps> = React.memo(({ value, onChange, l
               className="color-picker-preview-color"
               style={{ backgroundColor: previewColor }}
             />
-            <span className="color-picker-preview-text">{previewColor}</span>
+            <input
+              type="text"
+              className="color-picker-preview-input"
+              value={previewColor}
+              onChange={(e) => {
+                const inputValue = e.target.value;
+                const rgba = parseColor(inputValue);
+                // Only update if we got a valid color (not default white)
+                if (inputValue.startsWith('#') || inputValue.startsWith('rgb')) {
+                  const newHsv = rgbaToHsv(rgba);
+                  updatePreview(newHsv, rgba.a);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyColor();
+                }
+              }}
+            />
           </div>
 
           <div className="color-picker-buttons">

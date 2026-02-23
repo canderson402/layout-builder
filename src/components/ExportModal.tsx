@@ -1,12 +1,26 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutConfig, ComponentConfig } from '../types';
+import { expandLayoutForExport } from '../utils/slotTemplates';
 import './ExportModal.css';
 
 // Clean up component props to remove unnecessary/default values
 function cleanComponentProps(component: ComponentConfig): ComponentConfig {
-  if (!component.props) return component;
+  // Round position and size values to prevent sub-pixel rendering differences
+  const roundedComponent = {
+    ...component,
+    position: {
+      x: Math.round(component.position.x),
+      y: Math.round(component.position.y),
+    },
+    size: {
+      width: Math.round(component.size.width),
+      height: Math.round(component.size.height),
+    },
+  };
 
-  const props = { ...component.props };
+  if (!roundedComponent.props) return roundedComponent;
+
+  const props = { ...roundedComponent.props };
   const hasImage = props.imageSource && props.imageSource !== 'none' && props.imagePath;
   const hasTextDataPath = props.dataPath && props.dataPath !== 'none' && props.dataPath !== '';
   const isImageOnly = hasImage && !hasTextDataPath;
@@ -85,14 +99,17 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
     if (!props.state2Props || Object.keys(props.state2Props).length === 0) delete props.state2Props;
   }
 
-  return { ...component, props };
+  return { ...roundedComponent, props };
 }
 
 // Clean the entire layout for export
 function cleanLayoutForExport(layout: LayoutConfig): LayoutConfig {
+  // First expand any slotList components into concrete components
+  const expandedComponents = expandLayoutForExport(layout.components);
+
   return {
     ...layout,
-    components: layout.components.map(cleanComponentProps)
+    components: expandedComponents.map(cleanComponentProps)
   };
 }
 

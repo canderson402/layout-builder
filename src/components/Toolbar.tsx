@@ -15,6 +15,7 @@ const COMPONENT_TYPES = [
   { type: 'timeouts', label: 'Timeouts', icon: 'TO' },
   { type: 'bonus', label: 'Bonus', icon: 'BN' },
   { type: 'custom', label: 'Custom', icon: 'CU' },
+  { type: 'leaderboardList', label: 'Leaderboard', icon: 'LB' },
 ] as const;
 
 export default function Toolbar({ onAddComponent }: ToolbarProps) {
