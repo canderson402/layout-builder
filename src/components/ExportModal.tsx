@@ -23,7 +23,19 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
 
   const props = { ...roundedComponent.props };
 
-  const hasImage = props.imageSource && props.imageSource !== 'none' && props.imagePath;
+  // Set imageSource based on what's available:
+  // - If imageUrl is set -> 'url'
+  // - If imagePath is set -> 'local'
+  // - Otherwise -> 'none'
+  if (props.imageUrl) {
+    props.imageSource = 'url';
+  } else if (props.imagePath) {
+    props.imageSource = 'local';
+  } else if (!props.imageSource) {
+    props.imageSource = 'none';
+  }
+
+  const hasImage = props.imageSource && props.imageSource !== 'none' && (props.imagePath || props.imageUrl);
   const hasTextDataPath = props.dataPath && props.dataPath !== 'none' && props.dataPath !== '';
   const isImageOnly = hasImage && !hasTextDataPath;
 

@@ -715,12 +715,13 @@ function App() {
     customId?: string,
     customLayer?: number,
     extraProps?: Partial<ComponentConfig> // Additional properties like originalSize, originalAspectRatio, etc.
-  ) => {
+  ): string => {
+    // Generate ID outside setLayout so we can return it
+    const componentId = customId || generateComponentId(type);
+
     setLayout(prev => {
       // Save current state for undo
       saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
-
-      const componentId = customId || generateComponentId(type);
 
       // Generate unique display name
       const baseName = customDisplayName || getDefaultDisplayName(type);
@@ -763,6 +764,8 @@ function App() {
         components: [...(prev.components || []), newComponent]
       };
     });
+
+    return componentId;
   }, [saveStateForUndo, generateComponentId]);
 
   // Add a ref to track if we're currently dragging to batch position updates
@@ -1398,21 +1401,6 @@ function App() {
             </button>
             <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} aria-hidden="true" />
             <button
-              onClick={exportLocalStorage}
-              className="header-btn header-btn-secondary"
-              aria-label="Backup all settings to a file"
-            >
-              Backup
-            </button>
-            <button
-              onClick={importLocalStorage}
-              className="header-btn header-btn-secondary"
-              aria-label="Restore settings from a backup file"
-            >
-              Restore
-            </button>
-            <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} aria-hidden="true" />
-            <button
               onClick={() => setShowKeyboardShortcuts(true)}
               className="header-btn header-btn-icon"
               aria-label="Show keyboard shortcuts"
@@ -1507,6 +1495,8 @@ function App() {
           layout={layout}
           onClose={() => setShowPresetModal(false)}
           onLoadPreset={loadCustomPreset}
+          onBackup={exportLocalStorage}
+          onRestore={importLocalStorage}
         />
       )}
 

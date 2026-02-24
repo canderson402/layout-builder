@@ -7,6 +7,8 @@ interface PresetModalProps {
   layout: LayoutConfig;
   onClose: () => void;
   onLoadPreset: (layout: LayoutConfig) => void;
+  onBackup: () => void;
+  onRestore: () => void;
 }
 
 interface SavedPreset {
@@ -19,11 +21,11 @@ interface SavedPreset {
 
 const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
 
-function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
+function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: PresetModalProps) {
   const toast = useToast();
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const [presetName, setPresetName] = useState(layout.name || 'My Layout');
-  const [activeTab, setActiveTab] = useState<'save' | 'load' | 'json'>('save');
+  const [activeTab, setActiveTab] = useState<'load' | 'json'>('load');
   const [jsonInput, setJsonInput] = useState('');
 
   // Load saved presets from localStorage on component mount
@@ -180,19 +182,13 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
         </div>
 
         <div className="preset-tabs">
-          <button 
-            className={`tab ${activeTab === 'save' ? 'active' : ''}`}
-            onClick={() => setActiveTab('save')}
-          >
-            Save Preset
-          </button>
-          <button 
+          <button
             className={`tab ${activeTab === 'load' ? 'active' : ''}`}
             onClick={() => setActiveTab('load')}
           >
-            Load Preset ({savedPresets.length})
+            Presets ({savedPresets.length})
           </button>
-          <button 
+          <button
             className={`tab ${activeTab === 'json' ? 'active' : ''}`}
             onClick={() => setActiveTab('json')}
           >
@@ -201,56 +197,15 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
         </div>
 
         <div className="preset-modal-content">
-          {activeTab === 'save' && (
-            <div className="save-preset-section">
-              <div className="input-group">
-                <label>Preset Name:</label>
-                <input
-                  type="text"
-                  value={presetName}
-                  onChange={(e) => setPresetName(e.target.value)}
-                  placeholder="Enter preset name..."
-                  className="preset-name-input"
-                  autoFocus
-                />
-              </div>
-              
-              <div className="layout-preview">
-                <h4>Current Layout Info:</h4>
-                <div className="layout-info">
-                  <div><strong>Type:</strong> {layout.name}</div>
-                  <div><strong>Components:</strong> {(layout.components || []).length}</div>
-                  <div><strong>Dimensions:</strong> {layout.dimensions.width} × {layout.dimensions.height}</div>
-                  <div><strong>Background:</strong> {layout.backgroundColor}</div>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button onClick={savePreset} className="save-button">
-                  Save Preset
-                </button>
-                <button onClick={onClose} className="cancel-button">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
           {activeTab === 'load' && (
             <div className="load-preset-section">
               <div className="preset-actions">
-                <button onClick={exportPresets} className="export-button" disabled={savedPresets.length === 0}>
-                  Export All Presets
+                <button onClick={onBackup} className="action-btn action-btn-gray">
+                  Backup
                 </button>
-                <label className="import-button">
-                  Import Presets
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={importPresets}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+                <button onClick={onRestore} className="action-btn action-btn-green">
+                  Restore
+                </button>
               </div>
 
               {savedPresets.length === 0 ? (
@@ -259,34 +214,32 @@ function PresetModal({ layout, onClose, onLoadPreset }: PresetModalProps) {
                   <p>Create your first preset by switching to the Save tab.</p>
                 </div>
               ) : (
-                <div className="presets-list">
+                <div className="presets-grid">
                   {savedPresets
                     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
                     .map((preset) => (
-                    <div key={preset.id} className="preset-item">
-                      <div className="preset-info">
+                    <div key={preset.id} className="preset-card">
+                      <button
+                        onClick={() => deletePreset(preset.id, preset.name)}
+                        className="preset-delete-btn"
+                        title="Delete preset"
+                      >
+                        ×
+                      </button>
+                      <div className="preset-card-header">
                         <h4>{preset.name}</h4>
-                        <div className="preset-details">
-                          <span>{preset.layout.name}</span>
-                          <span>{(preset.layout.components || []).length} components</span>
-                          <span>{preset.layout.dimensions.width}×{preset.layout.dimensions.height}</span>
-                        </div>
-                        <div className="preset-date">
-                          Updated: {new Date(preset.updatedAt).toLocaleDateString()}
-                        </div>
                       </div>
-                      <div className="preset-actions">
+                      <div className="preset-card-meta">
+                        <span>{(preset.layout.components || []).length} components</span>
+                        <span>{preset.layout.dimensions.width}×{preset.layout.dimensions.height}</span>
+                        <span className="preset-date">{new Date(preset.updatedAt).toLocaleDateString()}</span>
+                      </div>
+                      <div className="preset-card-actions">
                         <button
                           onClick={() => loadPreset(preset)}
                           className="load-button"
                         >
                           Load
-                        </button>
-                        <button
-                          onClick={() => deletePreset(preset.id, preset.name)}
-                          className="delete-button"
-                        >
-                          Delete
                         </button>
                       </div>
                     </div>

@@ -116,6 +116,7 @@ export function createComponentTemplate(
     description,
     components: normalizedComponents,
     boundingBox: { width: bounds.width, height: bounds.height },
+    originalPosition: { x: bounds.minX, y: bounds.minY },
     createdAt: existingIndex !== -1 ? templates[existingIndex].createdAt : Date.now(),
     updatedAt: Date.now(),
   };
@@ -141,10 +142,14 @@ export function deleteComponentTemplate(id: string): boolean {
 }
 
 // Instantiate a template into concrete components at a given position
+// If no position is provided, uses the original saved position
 export function instantiateTemplate(
   template: ComponentGroupTemplate,
-  position: { x: number; y: number }
+  position?: { x: number; y: number }
 ): ComponentConfig[] {
+  // Use original position if no position provided, fallback to (0,0)
+  const targetPosition = position ?? template.originalPosition ?? { x: 0, y: 0 };
+
   // Build a map of template IDs to new IDs
   const idMap = new Map<string, string>();
   template.components.forEach(c => {
@@ -156,8 +161,8 @@ export function instantiateTemplate(
     ...c,
     id: idMap.get(c.id)!,
     position: {
-      x: c.position.x + position.x,
-      y: c.position.y + position.y,
+      x: c.position.x + targetPosition.x,
+      y: c.position.y + targetPosition.y,
     },
     // Update parent reference to new ID
     parentId: c.parentId ? idMap.get(c.parentId) : undefined,

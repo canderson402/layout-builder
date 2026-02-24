@@ -13,7 +13,7 @@ interface CanvasProps {
   onCopyDragComponents?: (ids: string[]) => Map<string, string>; // For Command+drag to copy
   draggedComponent: ComponentConfig | null;
   setDraggedComponent: (component: ComponentConfig | null) => void;
-  onAddComponent: (type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => void;
+  onAddComponent: (type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => string;
   onStartDragOperation: () => void;
   onEndDragOperation: (description: string) => void;
   onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
@@ -138,6 +138,11 @@ export default function Canvas({
   const [isAltHeld, setIsAltHeld] = useState(false); // Alt key temporarily disables all snapping (for UI)
   const isAltHeldRef = useRef(false); // Ref for immediate access during drag
 
+  // Dropdown menu states
+  const [showSnapMenu, setShowSnapMenu] = useState(false);
+  const [showAlignMenu, setShowAlignMenu] = useState(false);
+  const [showBgMenu, setShowBgMenu] = useState(false)
+
   // Scale mode state (press 'S' to scale selected components proportionally from center)
   const [isScaling, setIsScaling] = useState(false);
   const [scaleStartState, setScaleStartState] = useState<Map<string, { x: number, y: number, width: number, height: number }>>(new Map());
@@ -168,6 +173,20 @@ export default function Canvas({
   React.useEffect(() => {
     localStorage.setItem('canvas-background-visible', String(showCanvasBackground));
   }, [showCanvasBackground]);
+
+  // Close dropdown menus when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.toolbar-dropdown')) {
+        setShowSnapMenu(false);
+        setShowAlignMenu(false);
+        setShowBgMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Helper function to handle component selection with Ctrl/Cmd for multi-select
   const handleComponentSelect = useCallback((componentId: string, isCtrlClick: boolean = false) => {
@@ -906,10 +925,10 @@ export default function Canvas({
     }
     e.stopPropagation();
     
-    // On Mac: Cmd (metaKey) = copy-drag, Ctrl = multi-select toggle
-    // On Windows/Linux: Ctrl = multi-select toggle (no copy-drag with Ctrl)
+    // Multi-select with Cmd (Mac) or Ctrl (Windows/Linux)
+    // Cmd+drag will also copy-drag, but Cmd+click without drag = multi-select
     const isCopyDrag = e.metaKey && !e.ctrlKey;
-    const isCtrlClick = e.ctrlKey && !e.metaKey; // Only Ctrl (not Cmd) for multi-select
+    const isMultiSelectClick = e.ctrlKey || e.metaKey; // Both Ctrl and Cmd work for multi-select
     const isAlreadySelected = selectedComponents.includes(component.id);
 
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -948,9 +967,9 @@ export default function Canvas({
       y: canvasY - currentComponent.position.y
     });
     
-    // Handle ctrl+click immediately
-    if (isCtrlClick) {
-      // Ctrl+click: toggle this component in the selection
+    // Handle Cmd/Ctrl+click for multi-select immediately
+    if (isMultiSelectClick) {
+      // Cmd/Ctrl+click: toggle this component in the selection
       handleComponentSelect(currentComponent.id, true);
       setLastSelectedId(currentComponent.id);
     }
@@ -1428,8 +1447,9 @@ export default function Canvas({
           width: snappedWidth,
           height: snappedHeight
         };
-        
-        onAddComponent('custom', position, size);
+
+        const newId = onAddComponent('custom', position, size);
+        onSelectComponents([newId]);
       }
       
       setIsCreating(false);
@@ -2806,24 +2826,17 @@ export default function Canvas({
   return (
     <div className="canvas-container">
       <div className="canvas-toolbar">
-        <div className="canvas-info">
-          Canvas: {layout.dimensions.width} × {layout.dimensions.height}px
-        </div>
-        <div className="resolution-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <select 
-            value={selectedPreset} 
+        {/* Resolution & Canvas Size */}
+        <div className="toolbar-group" style={{ borderLeft: 'none', paddingLeft: 0 }}>
+          <select
+            className="toolbar-select"
+            value={selectedPreset}
             onChange={(e) => handleResolutionChange(e.target.value)}
-            style={{
-              padding: '4px 8px',
-              fontSize: '12px',
-              borderRadius: '4px',
-              border: '1px solid #ccc',
-              backgroundColor: '#fff'
-            }}
+            title="Canvas resolution"
           >
             {RESOLUTION_PRESETS.map(preset => (
               <option key={preset.name} value={preset.name}>
-                {preset.name === 'Custom' ? preset.name : `${preset.name} (${preset.width}×${preset.height})`}
+                {preset.name === 'Custom' ? preset.name : `${preset.width}×${preset.height}`}
               </option>
             ))}
           </select>
@@ -2833,385 +2846,209 @@ export default function Canvas({
                 type="number"
                 value={customWidth}
                 onChange={(e) => setCustomWidth(e.target.value)}
-                placeholder="Width"
-                style={{
-                  width: '60px',
-                  padding: '4px',
-                  fontSize: '12px',
-                  borderRadius: '4px',
-                  border: '1px solid #ccc'
-                }}
+                placeholder="W"
+                style={{ width: '50px', padding: '4px 6px', fontSize: '11px', background: '#2a2a2a', color: '#ccc', border: '1px solid #3a3a3a', borderRadius: '4px' }}
               />
-              ×
+              <span style={{ color: '#666', fontSize: '11px' }}>×</span>
               <input
                 type="number"
                 value={customHeight}
                 onChange={(e) => setCustomHeight(e.target.value)}
-                placeholder="Height"
-                style={{
-                  width: '60px',
-                  padding: '4px',
-                  fontSize: '12px',
-                  borderRadius: '4px',
-                  border: '1px solid #ccc'
-                }}
+                placeholder="H"
+                style={{ width: '50px', padding: '4px 6px', fontSize: '11px', background: '#2a2a2a', color: '#ccc', border: '1px solid #3a3a3a', borderRadius: '4px' }}
               />
-              <button
-                onClick={handleCustomResolution}
-                style={{
-                  padding: '4px 8px',
-                  fontSize: '12px',
-                  borderRadius: '4px',
-                  border: '1px solid #ccc',
-                  backgroundColor: '#f0f0f0',
-                  cursor: 'pointer'
-                }}
-                title="Apply custom resolution"
-              >
+              <button className="toolbar-btn" onClick={handleCustomResolution} title="Apply custom resolution">
                 Apply
               </button>
             </>
           )}
         </div>
-        <div className="canvas-controls">
-          <button
-            className={`grid-button ${showGrid ? 'active' : ''}`}
-            onClick={() => setShowGrid(!showGrid)}
-            title="Show/hide the pixel grid overlay for precise alignment (G)"
-          >
-            Grid
-          </button>
-          <button
-            className={`grid-button ${showBoundingBoxes ? 'active' : ''}`}
-            onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
-            title="Toggle selection bounding boxes (B to hide)"
-          >
-            Bounds
-          </button>
-          <button
-            className={`grid-button ${showCanvasBackground ? 'active' : ''}`}
-            onClick={() => setShowCanvasBackground(!showCanvasBackground)}
-            title="Toggle canvas background image preview"
-          >
-            BG
-          </button>
-          <select
-            value={canvasBackgroundImage}
-            onChange={(e) => setCanvasBackgroundImage(e.target.value)}
-            style={{
-              padding: '4px 8px',
-              fontSize: '11px',
-              backgroundColor: '#2a2a2a',
-              color: '#ccc',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              maxWidth: '180px',
-            }}
-            title="Select background mock image"
-          >
-            <option value="">-- None --</option>
-            <optgroup label="Basketball">
-              <option value="/images/mocks/basketball/sb/realistic.png">Basketball SB Realistic</option>
-              <option value="/images/mocks/basketball/sb/stylized.png">Basketball SB Stylized</option>
-              <option value="/images/mocks/basketball/sb/overlay.png">Basketball SB Overlay</option>
-              <option value="/images/mocks/basketball/lb/stylized.png">Basketball LB Stylized</option>
-              <option value="/images/mocks/basketball/lb/overlay.png">Basketball LB Overlay</option>
-              <option value="/images/mocks/basketball/sb+lb/realistic.png">Basketball SB+LB Realistic</option>
-              <option value="/images/mocks/basketball/sb+lb/stylized.png">Basketball SB+LB Stylized</option>
-              <option value="/images/mocks/basketball/scorebug/realistic.png">Basketball Scorebug Realistic</option>
-            </optgroup>
-            <optgroup label="Football">
-              <option value="/images/mocks/football/sb/realistic.png">Football SB Realistic</option>
-              <option value="/images/mocks/football/sb/stylized.png">Football SB Stylized</option>
-              <option value="/images/mocks/football/stadium/realistic.png">Football Stadium Realistic</option>
-              <option value="/images/mocks/football/stadium/stylized.png">Football Stadium Stylized</option>
-            </optgroup>
-            <optgroup label="Hockey">
-              <option value="/images/mocks/hockey/sb/realistic.png">Hockey SB Realistic</option>
-              <option value="/images/mocks/hockey/sb/stylized.png">Hockey SB Stylized</option>
-              <option value="/images/mocks/hockey/scorebug/realistic.png">Hockey Scorebug Realistic</option>
-              <option value="/images/mocks/hockey/vb/realistic.png">Hockey VB Realistic</option>
-            </optgroup>
-            <optgroup label="Volleyball">
-              <option value="/images/mocks/volleyball/sb/realistic.png">Volleyball SB Realistic</option>
-              <option value="/images/mocks/volleyball/sb/stylized.png">Volleyball SB Stylized</option>
-              <option value="/images/mocks/volleyball/lb/realistic.png">Volleyball LB Realistic</option>
-              <option value="/images/mocks/volleyball/sb+lb/realistic.png">Volleyball SB+LB Realistic</option>
-            </optgroup>
-            <optgroup label="Baseball">
-              <option value="/images/mocks/baseball/sb/realistic.png">Baseball SB Realistic</option>
-              <option value="/images/mocks/baseball/sb/stylized.png">Baseball SB Stylized</option>
-              <option value="/images/mocks/baseball/lineup/realistic.png">Baseball Lineup Realistic</option>
-            </optgroup>
-            <optgroup label="Other">
-              <option value="/images/mocks/universal/sb/realistic.png">Universal SB Realistic</option>
-              <option value="/images/mocks/universal/sb/stylized.png">Universal SB Stylized</option>
-              <option value="/images/mocks/wrestling/sb/realistic.png">Wrestling SB Realistic</option>
-              <option value="/images/mocks/equestrian/sb/realistic.png">Equestrian SB Realistic</option>
-              <option value="/images/mocks/water_polo/sb+sc/realistic.png">Water Polo SB Realistic</option>
-              <option value="/images/mocks/general/countdown_indoor/realistic.png">Countdown Indoor</option>
-              <option value="/images/mocks/general/countdown_outdoor/realistic.png">Countdown Outdoor</option>
-            </optgroup>
-            <optgroup label="Utility">
-              <option value="/images/Generic/Utility/background_test.jpeg">Test Background</option>
-            </optgroup>
-          </select>
-          <input
-            type="text"
-            value={canvasBackgroundImage}
-            onChange={(e) => setCanvasBackgroundImage(e.target.value)}
-            placeholder="or paste URL"
-            style={{
-              padding: '4px 8px',
-              fontSize: '11px',
-              backgroundColor: '#2a2a2a',
-              color: '#ccc',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              width: '120px',
-            }}
-            title="Or paste a custom URL"
-          />
-          <div className="grid-size-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+        {/* View Toggles */}
+        <div className="toolbar-group">
+          <div className="segmented-control">
             <button
-              className="grid-button"
-              onClick={decreaseGridSize}
-              title="Decrease grid size"
-              style={{ padding: '4px 8px', fontSize: '12px' }}
+              className={`segmented-btn ${showGrid ? 'active' : ''}`}
+              onClick={() => setShowGrid(!showGrid)}
+              title="Toggle grid (G)"
             >
-              −
+              Grid
             </button>
-            <span
-              className="grid-info"
-              style={{
-                minWidth: '40px',
-                textAlign: 'center',
-                fontSize: '12px',
-                padding: '4px 8px',
-                backgroundColor: 'rgba(255,255,255,0.1)',
-                borderRadius: '4px'
-              }}
-              title="Current grid size"
-            >
-              {gridSize}px
-            </span>
             <button
-              className="grid-button"
-              onClick={increaseGridSize}
-              title="Increase grid size"
-              style={{ padding: '4px 8px', fontSize: '12px' }}
+              className={`segmented-btn ${showBoundingBoxes ? 'active' : ''}`}
+              onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
+              title="Toggle bounds (B)"
             >
-              +
+              Bounds
+            </button>
+            <button
+              className={`segmented-btn ${showCanvasBackground ? 'active' : ''}`}
+              onClick={() => setShowCanvasBackground(!showCanvasBackground)}
+              title="Toggle background"
+            >
+              BG
             </button>
           </div>
-          {/* Snap Strength Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.2)', paddingLeft: '12px' }}>
-            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>Snap:</span>
+        </div>
+
+        {/* Background Image Dropdown */}
+        <div className="toolbar-group">
+          <div className="toolbar-dropdown">
             <button
-              className="grid-button"
-              onClick={() => setSnapThresholdIndex(Math.max(0, snapThresholdIndex - 1))}
-              title="Decrease snap strength (less sticky)"
-              style={{ padding: '4px 8px', fontSize: '12px' }}
+              className={`toolbar-dropdown-trigger ${showBgMenu ? 'open' : ''}`}
+              onClick={() => { setShowBgMenu(!showBgMenu); setShowSnapMenu(false); setShowAlignMenu(false); }}
             >
-              −
+              Mock Image
             </button>
-            <span
-              style={{
-                minWidth: '40px',
-                textAlign: 'center',
-                fontSize: '12px',
-                padding: '4px 8px',
-                backgroundColor: 'rgba(255,255,255,0.1)',
-                borderRadius: '4px'
-              }}
-              title={`Snap strength: ${snapThreshold}px threshold`}
-            >
-              {snapThreshold}px
-            </span>
-            <button
-              className="grid-button"
-              onClick={() => setSnapThresholdIndex(Math.min(SNAP_THRESHOLD_OPTIONS.length - 1, snapThresholdIndex + 1))}
-              title="Increase snap strength (stickier)"
-              style={{ padding: '4px 8px', fontSize: '12px' }}
-            >
-              +
-            </button>
+            {showBgMenu && (
+              <div className="toolbar-dropdown-menu open" style={{ minWidth: '220px' }}>
+                <div className="dropdown-label">Select Background</div>
+                <select
+                  value={canvasBackgroundImage}
+                  onChange={(e) => { setCanvasBackgroundImage(e.target.value); setShowBgMenu(false); }}
+                  style={{ width: '100%', padding: '6px 8px', fontSize: '11px', background: '#333', color: '#ccc', border: '1px solid #444', borderRadius: '4px', marginBottom: '8px' }}
+                >
+                  <option value="">None</option>
+                  <optgroup label="Basketball">
+                    <option value="/images/mocks/basketball/sb/realistic.png">SB Realistic</option>
+                    <option value="/images/mocks/basketball/sb/stylized.png">SB Stylized</option>
+                    <option value="/images/mocks/basketball/lb/stylized.png">LB Stylized</option>
+                    <option value="/images/mocks/basketball/sb+lb/realistic.png">SB+LB Realistic</option>
+                  </optgroup>
+                  <optgroup label="Football">
+                    <option value="/images/mocks/football/sb/realistic.png">SB Realistic</option>
+                    <option value="/images/mocks/football/sb/stylized.png">SB Stylized</option>
+                    <option value="/images/mocks/football/stadium/realistic.png">Stadium</option>
+                  </optgroup>
+                  <optgroup label="Hockey">
+                    <option value="/images/mocks/hockey/sb/realistic.png">SB Realistic</option>
+                    <option value="/images/mocks/hockey/sb/stylized.png">SB Stylized</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option value="/images/mocks/volleyball/sb/realistic.png">Volleyball</option>
+                    <option value="/images/mocks/baseball/sb/realistic.png">Baseball</option>
+                    <option value="/images/mocks/universal/sb/realistic.png">Universal</option>
+                    <option value="/images/Generic/Utility/background_test.jpeg">Test BG</option>
+                  </optgroup>
+                </select>
+                <div className="dropdown-label">Or Paste URL</div>
+                <input
+                  type="text"
+                  value={canvasBackgroundImage}
+                  onChange={(e) => setCanvasBackgroundImage(e.target.value)}
+                  placeholder="https://..."
+                  style={{ width: '100%', padding: '6px 8px', fontSize: '11px', background: '#333', color: '#ccc', border: '1px solid #444', borderRadius: '4px' }}
+                />
+              </div>
+            )}
           </div>
-          {/* Snap Type Toggles */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.2)', paddingLeft: '12px' }}>
+        </div>
+
+        {/* Grid Size Stepper */}
+        <div className="toolbar-group">
+          <span className="toolbar-group-label">Grid</span>
+          <div className="toolbar-stepper">
+            <button onClick={decreaseGridSize} title="Decrease grid size">−</button>
+            <span className="toolbar-stepper-value">{gridSize}px</span>
+            <button onClick={increaseGridSize} title="Increase grid size">+</button>
+          </div>
+        </div>
+
+        {/* Snap Controls */}
+        <div className="toolbar-group">
+          <span className="toolbar-group-label">Snap Strength</span>
+          <div className="toolbar-stepper">
+            <button onClick={() => setSnapThresholdIndex(Math.max(0, snapThresholdIndex - 1))} title="Decrease snap strength">−</button>
+            <span className="toolbar-stepper-value">{snapThreshold}px</span>
+            <button onClick={() => setSnapThresholdIndex(Math.min(SNAP_THRESHOLD_OPTIONS.length - 1, snapThresholdIndex + 1))} title="Increase snap strength">+</button>
+          </div>
+          <div className="segmented-control">
             <button
-              className="grid-button"
+              className={`segmented-btn ${snapToElements ? 'active' : ''}`}
               onClick={() => setSnapToElements(!snapToElements)}
-              title={snapToElements ? "Disable element-to-element snapping" : "Enable element-to-element snapping"}
-              style={{
-                padding: '4px 8px',
-                fontSize: '11px',
-                backgroundColor: snapToElements ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255,255,255,0.1)',
-                border: snapToElements ? '1px solid rgba(0, 255, 0, 0.5)' : '1px solid rgba(255,255,255,0.2)'
-              }}
+              title={snapToElements ? "Disable element snapping" : "Enable element snapping"}
             >
               Elements
             </button>
             <button
-              className="grid-button"
+              className={`segmented-btn ${snapToCanvasGuides ? 'active' : ''}`}
               onClick={() => setSnapToCanvasGuides(!snapToCanvasGuides)}
-              title={snapToCanvasGuides ? "Disable canvas center/edge snapping" : "Enable canvas center/edge snapping"}
-              style={{
-                padding: '4px 8px',
-                fontSize: '11px',
-                backgroundColor: snapToCanvasGuides ? 'rgba(255, 0, 255, 0.3)' : 'rgba(255,255,255,0.1)',
-                border: snapToCanvasGuides ? '1px solid rgba(255, 0, 255, 0.5)' : '1px solid rgba(255,255,255,0.2)'
-              }}
+              title={snapToCanvasGuides ? "Disable canvas snapping" : "Enable canvas snapping"}
             >
               Canvas
             </button>
-            {isAltHeld && (
-              <span style={{
-                fontSize: '10px',
-                color: '#ff9800',
-                backgroundColor: 'rgba(255, 152, 0, 0.2)',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                border: '1px solid rgba(255, 152, 0, 0.5)'
-              }}>
-                Alt: Grid Only
-              </span>
-            )}
           </div>
+          {isAltHeld && (
+            <span style={{ fontSize: '10px', color: '#ff9800', background: 'rgba(255, 152, 0, 0.15)', padding: '3px 6px', borderRadius: '4px' }}>
+              Alt
+            </span>
+          )}
         </div>
-        <div className="canvas-zoom">
+
+        {/* Zoom Controls */}
+        <div className="toolbar-group">
           <button
+            className="toolbar-btn"
             onClick={() => {
               const maxWidth = window.innerWidth - 650;
               const maxHeight = window.innerHeight - 160;
               const scaleX = maxWidth / layout.dimensions.width;
               const scaleY = maxHeight / layout.dimensions.height;
-              const fitScale = Math.min(scaleX, scaleY, 2.0); // Allow fit up to 200%
+              const fitScale = Math.min(scaleX, scaleY, 2.0);
               setZoomLevel(Math.round(fitScale * 100));
-              setViewportOffset({ x: 0, y: 0 }); // Reset panning when fitting
+              setViewportOffset({ x: 0, y: 0 });
             }}
-            style={{fontSize: '11px', padding: '4px 8px', marginRight: '8px'}}
+            title="Fit to window"
           >
             Fit
           </button>
-          <label style={{fontSize: '12px', marginRight: '8px'}}>Zoom:</label>
-          <input
-            type="range"
-            min="10"
-            max="200"
-            value={zoomLevel}
-            onChange={(e) => setZoomLevel(parseInt(e.target.value))}
-            style={{width: '100px', marginRight: '8px'}}
-          />
-          <span>{zoomLevel}%</span>
+          <div className="toolbar-zoom">
+            <input
+              type="range"
+              min="10"
+              max="200"
+              value={zoomLevel}
+              onChange={(e) => setZoomLevel(parseInt(e.target.value))}
+            />
+            <span className="toolbar-zoom-value">{zoomLevel}%</span>
+          </div>
         </div>
-        {/* Alignment Toolbar */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          marginLeft: '12px',
-          borderLeft: '1px solid rgba(255,255,255,0.2)',
-          paddingLeft: '12px'
-        }}>
-          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginRight: '4px' }}>Align:</span>
-          {/* Horizontal alignments */}
-          <button
-            className="grid-button"
-            onClick={alignLeft}
-            disabled={selectedComponents.length < 2}
-            title="Align left edges (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            ⬅
-          </button>
-          <button
-            className="grid-button"
-            onClick={alignCenterH}
-            disabled={selectedComponents.length < 2}
-            title="Align horizontal centers (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            |
-          </button>
-          <button
-            className="grid-button"
-            onClick={alignRight}
-            disabled={selectedComponents.length < 2}
-            title="Align right edges (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            ➡
-          </button>
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-          {/* Vertical alignments */}
-          <button
-            className="grid-button"
-            onClick={alignTop}
-            disabled={selectedComponents.length < 2}
-            title="Align top edges (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            ⬆
-          </button>
-          <button
-            className="grid-button"
-            onClick={alignCenterV}
-            disabled={selectedComponents.length < 2}
-            title="Align vertical centers (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            —
-          </button>
-          <button
-            className="grid-button"
-            onClick={alignBottom}
-            disabled={selectedComponents.length < 2}
-            title="Align bottom edges (2+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 2 ? 0.5 : 1 }}
-          >
-            ⬇
-          </button>
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-          {/* Distribute */}
-          <button
-            className="grid-button"
-            onClick={distributeH}
-            disabled={selectedComponents.length < 3}
-            title="Distribute horizontally (3+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 3 ? 0.5 : 1 }}
-          >
-            ⫴
-          </button>
-          <button
-            className="grid-button"
-            onClick={distributeV}
-            disabled={selectedComponents.length < 3}
-            title="Distribute vertically (3+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 3 ? 0.5 : 1 }}
-          >
-            ⫳
-          </button>
-          <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-          {/* Center on canvas */}
-          <button
-            className="grid-button"
-            onClick={centerOnCanvasH}
-            disabled={selectedComponents.length < 1}
-            title="Center on canvas horizontally (1+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
-          >
-            CH
-          </button>
-          <button
-            className="grid-button"
-            onClick={centerOnCanvasV}
-            disabled={selectedComponents.length < 1}
-            title="Center on canvas vertically (1+ selected)"
-            style={{ padding: '4px 6px', fontSize: '12px', opacity: selectedComponents.length < 1 ? 0.5 : 1 }}
-          >
-            CV
-          </button>
+
+        {/* Alignment Dropdown */}
+        <div className="toolbar-group">
+          <div className="toolbar-dropdown">
+            <button
+              className={`toolbar-dropdown-trigger ${showAlignMenu ? 'open' : ''}`}
+              onClick={() => { setShowAlignMenu(!showAlignMenu); setShowBgMenu(false); setShowSnapMenu(false); }}
+            >
+              Align
+            </button>
+            {showAlignMenu && (
+              <div className="toolbar-dropdown-menu open right" style={{ minWidth: '160px' }}>
+                <div className="dropdown-label">Align to Each Other</div>
+                <div className="align-grid">
+                  <button className="align-btn" onClick={alignLeft} disabled={selectedComponents.length < 2} title="Align left">⬅</button>
+                  <button className="align-btn" onClick={alignCenterH} disabled={selectedComponents.length < 2} title="Align center H">|</button>
+                  <button className="align-btn" onClick={alignRight} disabled={selectedComponents.length < 2} title="Align right">➡</button>
+                  <button className="align-btn" onClick={alignTop} disabled={selectedComponents.length < 2} title="Align top">⬆</button>
+                  <button className="align-btn" onClick={alignCenterV} disabled={selectedComponents.length < 2} title="Align center V">—</button>
+                  <button className="align-btn" onClick={alignBottom} disabled={selectedComponents.length < 2} title="Align bottom">⬇</button>
+                </div>
+                <div className="dropdown-divider" />
+                <div className="dropdown-label">Distribute</div>
+                <div style={{ display: 'flex', gap: '4px', padding: '4px' }}>
+                  <button className="align-btn" style={{ flex: 1 }} onClick={distributeH} disabled={selectedComponents.length < 3} title="Distribute H">⫴ H</button>
+                  <button className="align-btn" style={{ flex: 1 }} onClick={distributeV} disabled={selectedComponents.length < 3} title="Distribute V">⫳ V</button>
+                </div>
+                <div className="dropdown-divider" />
+                <div className="dropdown-label">Center on Canvas</div>
+                <div style={{ display: 'flex', gap: '4px', padding: '4px' }}>
+                  <button className="align-btn" style={{ flex: 1 }} onClick={centerOnCanvasH} disabled={selectedComponents.length < 1} title="Center H">↔ H</button>
+                  <button className="align-btn" style={{ flex: 1 }} onClick={centerOnCanvasV} disabled={selectedComponents.length < 1} title="Center V">↕ V</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
@@ -3264,22 +3101,19 @@ export default function Canvas({
                 const x = (e.clientX - canvasRect.left) / scale;
                 const y = (e.clientY - canvasRect.top) / scale;
 
-                // Create component at drop position
-                onAddComponent(
+                // Create component at drop position and get its ID
+                const newComponentId = onAddComponent(
                   data.componentType,
                   { x: x - (data.size?.width || 250) / 2, y: y - (data.size?.height || 250) / 2 },
                   data.size
                 );
 
-                // If we have preset props, update the newly created component
+                // Auto-select the new component
+                onSelectComponents([newComponentId]);
+
+                // Apply preset props if any
                 if (data.props) {
-                  requestAnimationFrame(() => {
-                    const components = layout.components;
-                    const newComponent = components[components.length - 1];
-                    if (newComponent) {
-                      onUpdateComponent(newComponent.id, { props: data.props });
-                    }
-                  });
+                  onUpdateComponent(newComponentId, { props: data.props });
                 }
               }
             }

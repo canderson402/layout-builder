@@ -29,7 +29,7 @@ interface LayerPanelProps {
   onSelectComponents: (ids: string[]) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onDeleteComponent: (id: string) => void;
-  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string, parentId?: string, customId?: string, customLayer?: number, extraProps?: Partial<ComponentConfig>) => void;
+  onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string, parentId?: string, customId?: string, customLayer?: number, extraProps?: Partial<ComponentConfig>) => string;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
   onCopyComponents?: () => void;
@@ -256,15 +256,8 @@ export default function LayerPanel({
   const handleLoadComponentTemplate = (template: ComponentGroupTemplate) => {
     onStartDragOperation?.();
 
-    // Calculate center position for placement
-    const centerX = (layout.dimensions.width - template.boundingBox.width) / 2;
-    const centerY = (layout.dimensions.height - template.boundingBox.height) / 2;
-
-    // Instantiate the template at the center position
-    const newComponents = instantiateTemplate(template, {
-      x: Math.max(0, centerX),
-      y: Math.max(0, centerY)
-    });
+    // Instantiate the template at its original saved position
+    const newComponents = instantiateTemplate(template);
 
     // Calculate max layer of existing root components for proper stacking
     const existingRootComponents = (layout.components || []).filter(c => !c.parentId);
@@ -812,13 +805,14 @@ export default function LayerPanel({
       const centerX = (layout.dimensions.width - nativeWidth) / 2;
       const centerY = (layout.dimensions.height - nativeHeight) / 2;
 
-      onAddComponent(
+      const id = onAddComponent(
         'custom',
         { x: Math.max(0, centerX), y: Math.max(0, centerY) },
         { width: nativeWidth, height: nativeHeight },
         imageProps,
         'Image'
       );
+      onSelectComponents([id]);
     };
     img.onerror = () => {
       // Fallback if image doesn't load
@@ -827,13 +821,14 @@ export default function LayerPanel({
       const centerX = (layout.dimensions.width - defaultWidth) / 2;
       const centerY = (layout.dimensions.height - defaultHeight) / 2;
 
-      onAddComponent(
+      const id = onAddComponent(
         'custom',
         { x: Math.max(0, centerX), y: Math.max(0, centerY) },
         { width: defaultWidth, height: defaultHeight },
         { ...imageProps, objectFit: 'fill', backgroundColor: '#333333' },
         'Image'
       );
+      onSelectComponents([id]);
     };
     img.src = resolveImagePath(defaultImagePath);
   };
@@ -886,7 +881,7 @@ export default function LayerPanel({
             {(() => {
               const componentCount = (layout.components || []).filter(c => c.type !== 'group').length;
               const layerCount = (layout.components || []).filter(c => c.type === 'group').length;
-              return `${componentCount} component${componentCount !== 1 ? 's' : ''}${layerCount > 0 ? `, ${layerCount} layer${layerCount !== 1 ? 's' : ''}` : ''}`;
+              return `${componentCount}${layerCount > 0 ? ` / ${layerCount}L` : ''}`;
             })()}
           </div>
         </div>
@@ -897,6 +892,7 @@ export default function LayerPanel({
               onClick={onCopyComponents}
               aria-label="Copy selected components"
               aria-keyshortcuts="Control+C"
+              title="Copy"
             >
               Copy
             </button>
@@ -907,6 +903,7 @@ export default function LayerPanel({
               onClick={onPasteComponents}
               aria-label="Paste components from clipboard"
               aria-keyshortcuts="Control+V"
+              title="Paste"
             >
               Paste
             </button>
@@ -915,8 +912,9 @@ export default function LayerPanel({
             className="new-layer-btn"
             onClick={createNewLayer}
             aria-label="Create new layer"
+            title="Add Layer"
           >
-            + Layer
+            +
           </button>
         </div>
       </div>
@@ -980,7 +978,8 @@ export default function LayerPanel({
           <button
             className="component-menu-item"
             onClick={() => {
-              onAddComponent('custom', undefined, { width: 500, height: 500 });
+              const id = onAddComponent('custom', undefined, { width: 500, height: 500 });
+              onSelectComponents([id]);
             }}
             draggable
             onDragStart={(e) => {
@@ -1018,7 +1017,8 @@ export default function LayerPanel({
             className="component-menu-item"
             onClick={() => {
               setPendingToggleComponent(true);
-              onAddComponent('custom', undefined, { width: 500, height: 500 });
+              const id = onAddComponent('custom', undefined, { width: 500, height: 500 });
+              onSelectComponents([id]);
             }}
             draggable
             onDragStart={(e) => {
@@ -1064,7 +1064,10 @@ export default function LayerPanel({
 
           <button
             className="component-menu-item"
-            onClick={() => onAddComponent('dynamicList')}
+            onClick={() => {
+              const id = onAddComponent('dynamicList');
+              onSelectComponents([id]);
+            }}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData('text/plain', JSON.stringify({
@@ -1089,14 +1092,17 @@ export default function LayerPanel({
 
           <button
             className="component-menu-item"
-            onClick={() => onAddComponent('slotList', undefined, { width: 400, height: 400 }, {
-              templateId: templates[0]?.id || '',
-              team: 'home',
-              slotCount: 5,
-              slotSpacing: 5,
-              direction: 'vertical',
-              dataPathPrefix: 'leaderboardSlots'
-            })}
+            onClick={() => {
+              const id = onAddComponent('slotList', undefined, { width: 400, height: 400 }, {
+                templateId: templates[0]?.id || '',
+                team: 'home',
+                slotCount: 5,
+                slotSpacing: 5,
+                direction: 'vertical',
+                dataPathPrefix: 'leaderboardSlots'
+              });
+              onSelectComponents([id]);
+            }}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData('text/plain', JSON.stringify({

@@ -203,6 +203,323 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
     const componentKey = id;
 
     switch (type) {
+      case 'teamName': {
+        // Derive dataPath from team property, but allow customText to override
+        const teamNameDataPath = team === 'away' ? 'awayTeam.name' : 'homeTeam.name';
+        const teamNameBaseStyle: React.CSSProperties = {
+          ...baseStyle,
+          boxSizing: 'border-box',
+          borderWidth: props.borderWidth || 0,
+          borderColor: props.borderColor || 'transparent',
+          borderStyle: props.borderStyle || 'solid',
+          borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
+          borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
+          borderBottomWidth: props.borderBottomWidth ?? props.borderWidth ?? 0,
+          borderLeftWidth: props.borderLeftWidth ?? props.borderWidth ?? 0,
+          borderTopLeftRadius: props.borderTopLeftRadius || 0,
+          borderTopRightRadius: props.borderTopRightRadius || 0,
+          borderBottomLeftRadius: props.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: props.borderBottomRightRadius || 0,
+          overflow: 'hidden',
+        };
+        return wrapContent(
+          <CustomDataDisplay
+            dataPath={props.dataPath || teamNameDataPath}
+            gameData={effectiveGameData}
+            label={props.label}
+            backgroundColor={props.backgroundColor}
+            textColor={props.textColor}
+            width={width}
+            height={height}
+            fontSize={props.fontSize || 24}
+            format={props.format || 'text'}
+            prefix={props.prefix || ''}
+            suffix={props.suffix || ''}
+            customText={props.customText}
+            textAlign={props.textAlign}
+            paddingTop={props.paddingTop}
+            paddingRight={props.paddingRight}
+            paddingBottom={props.paddingBottom}
+            paddingLeft={props.paddingLeft}
+            imageSource={props.imageSource}
+            imagePath={props.imagePath}
+            imageUrl={props.imageUrl}
+            objectFit={props.objectFit || 'fill'}
+            imageAnchor={props.imageAnchor || 'center'}
+            flipHorizontal={props.flipHorizontal}
+            flipVertical={props.flipVertical}
+            imageTintColor={props.imageTintColor}
+            useImageTint={props.useImageTint}
+            useTeamColor={config.useTeamColor}
+            teamColorSide={config.teamColorSide}
+            borderWidth={0}
+            borderColor={'transparent'}
+            borderStyle={'solid'}
+            borderTopWidth={0}
+            borderRightWidth={0}
+            borderBottomWidth={0}
+            borderLeftWidth={0}
+            borderTopLeftRadius={0}
+            borderTopRightRadius={0}
+            borderBottomLeftRadius={0}
+            borderBottomRightRadius={0}
+            autoFitText={props.autoFitText}
+            minFontScale={props.minFontScale}
+            previewText={props.previewText}
+            fontFamily={props.fontFamily}
+            autoContrastText={props.autoContrastText}
+            isVisible={isVisible}
+          />,
+          teamNameBaseStyle,
+          componentKey
+        );
+      }
+
+      case 'score': {
+        // Derive dataPath from team property
+        const scoreDataPath = team === 'away' ? 'awayTeam.score' : 'homeTeam.score';
+        const scoreBaseStyle: React.CSSProperties = {
+          ...baseStyle,
+          boxSizing: 'border-box',
+          borderWidth: props.borderWidth || 0,
+          borderColor: props.borderColor || 'transparent',
+          borderStyle: props.borderStyle || 'solid',
+          borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
+          borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
+          borderBottomWidth: props.borderBottomWidth ?? props.borderWidth ?? 0,
+          borderLeftWidth: props.borderLeftWidth ?? props.borderWidth ?? 0,
+          borderTopLeftRadius: props.borderTopLeftRadius || 0,
+          borderTopRightRadius: props.borderTopRightRadius || 0,
+          borderBottomLeftRadius: props.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: props.borderBottomRightRadius || 0,
+          overflow: 'hidden',
+        };
+        return wrapContent(
+          <CustomDataDisplay
+            dataPath={props.dataPath || scoreDataPath}
+            gameData={effectiveGameData}
+            label={props.label}
+            backgroundColor={props.backgroundColor}
+            textColor={props.textColor}
+            width={width}
+            height={height}
+            fontSize={props.fontSize || 48}
+            format={props.format || 'number'}
+            prefix={props.prefix || ''}
+            suffix={props.suffix || ''}
+            customText={props.customText}
+            textAlign={props.textAlign}
+            paddingTop={props.paddingTop}
+            paddingRight={props.paddingRight}
+            paddingBottom={props.paddingBottom}
+            paddingLeft={props.paddingLeft}
+            useTeamColor={config.useTeamColor}
+            teamColorSide={config.teamColorSide}
+            borderWidth={0}
+            borderColor={'transparent'}
+            borderStyle={'solid'}
+            borderTopWidth={0}
+            borderRightWidth={0}
+            borderBottomWidth={0}
+            borderLeftWidth={0}
+            borderTopLeftRadius={0}
+            borderTopRightRadius={0}
+            borderBottomLeftRadius={0}
+            borderBottomRightRadius={0}
+            autoFitText={props.autoFitText}
+            minFontScale={props.minFontScale}
+            previewText={props.previewText}
+            fontFamily={props.fontFamily}
+            autoContrastText={props.autoContrastText}
+            isVisible={isVisible}
+          />,
+          scoreBaseStyle,
+          componentKey
+        );
+      }
+
+      case 'clock': {
+        // Game clock - derive from gameClock
+        const clockBaseStyle: React.CSSProperties = {
+          ...baseStyle,
+          boxSizing: 'border-box',
+          borderWidth: props.borderWidth || 0,
+          borderColor: props.borderColor || 'transparent',
+          borderStyle: props.borderStyle || 'solid',
+          borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
+          borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
+          borderBottomWidth: props.borderBottomWidth ?? props.borderWidth ?? 0,
+          borderLeftWidth: props.borderLeftWidth ?? props.borderWidth ?? 0,
+          borderTopLeftRadius: props.borderTopLeftRadius || 0,
+          borderTopRightRadius: props.borderTopRightRadius || 0,
+          borderBottomLeftRadius: props.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: props.borderBottomRightRadius || 0,
+          overflow: 'hidden',
+        };
+        return wrapContent(
+          <CustomDataDisplay
+            dataPath={props.dataPath || 'gameClock'}
+            gameData={effectiveGameData}
+            label={props.label}
+            backgroundColor={props.backgroundColor}
+            textColor={props.textColor}
+            width={width}
+            height={height}
+            fontSize={props.fontSize || 32}
+            format={props.format || 'text'}
+            prefix={props.prefix || ''}
+            suffix={props.suffix || ''}
+            customText={props.customText}
+            textAlign={props.textAlign}
+            paddingTop={props.paddingTop}
+            paddingRight={props.paddingRight}
+            paddingBottom={props.paddingBottom}
+            paddingLeft={props.paddingLeft}
+            borderWidth={0}
+            borderColor={'transparent'}
+            borderStyle={'solid'}
+            borderTopWidth={0}
+            borderRightWidth={0}
+            borderBottomWidth={0}
+            borderLeftWidth={0}
+            borderTopLeftRadius={0}
+            borderTopRightRadius={0}
+            borderBottomLeftRadius={0}
+            borderBottomRightRadius={0}
+            autoFitText={props.autoFitText}
+            minFontScale={props.minFontScale}
+            previewText={props.previewText}
+            fontFamily={props.fontFamily}
+            autoContrastText={props.autoContrastText}
+            isVisible={isVisible}
+          />,
+          clockBaseStyle,
+          componentKey
+        );
+      }
+
+      case 'period': {
+        const periodBaseStyle: React.CSSProperties = {
+          ...baseStyle,
+          boxSizing: 'border-box',
+          borderWidth: props.borderWidth || 0,
+          borderColor: props.borderColor || 'transparent',
+          borderStyle: props.borderStyle || 'solid',
+          borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
+          borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
+          borderBottomWidth: props.borderBottomWidth ?? props.borderWidth ?? 0,
+          borderLeftWidth: props.borderLeftWidth ?? props.borderWidth ?? 0,
+          borderTopLeftRadius: props.borderTopLeftRadius || 0,
+          borderTopRightRadius: props.borderTopRightRadius || 0,
+          borderBottomLeftRadius: props.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: props.borderBottomRightRadius || 0,
+          overflow: 'hidden',
+        };
+        return wrapContent(
+          <CustomDataDisplay
+            dataPath={props.dataPath || 'period'}
+            gameData={effectiveGameData}
+            label={props.label}
+            backgroundColor={props.backgroundColor}
+            textColor={props.textColor}
+            width={width}
+            height={height}
+            fontSize={props.fontSize || 20}
+            format={props.format || 'number'}
+            prefix={props.prefix || ''}
+            suffix={props.suffix || ''}
+            customText={props.customText}
+            textAlign={props.textAlign}
+            paddingTop={props.paddingTop}
+            paddingRight={props.paddingRight}
+            paddingBottom={props.paddingBottom}
+            paddingLeft={props.paddingLeft}
+            borderWidth={0}
+            borderColor={'transparent'}
+            borderStyle={'solid'}
+            borderTopWidth={0}
+            borderRightWidth={0}
+            borderBottomWidth={0}
+            borderLeftWidth={0}
+            borderTopLeftRadius={0}
+            borderTopRightRadius={0}
+            borderBottomLeftRadius={0}
+            borderBottomRightRadius={0}
+            autoFitText={props.autoFitText}
+            minFontScale={props.minFontScale}
+            previewText={props.previewText}
+            fontFamily={props.fontFamily}
+            autoContrastText={props.autoContrastText}
+            isVisible={isVisible}
+          />,
+          periodBaseStyle,
+          componentKey
+        );
+      }
+
+      case 'fouls': {
+        // Derive dataPath from team property
+        const foulsDataPath = team === 'away' ? 'awayTeam.fouls' : 'homeTeam.fouls';
+        const foulsBaseStyle: React.CSSProperties = {
+          ...baseStyle,
+          boxSizing: 'border-box',
+          borderWidth: props.borderWidth || 0,
+          borderColor: props.borderColor || 'transparent',
+          borderStyle: props.borderStyle || 'solid',
+          borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
+          borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
+          borderBottomWidth: props.borderBottomWidth ?? props.borderWidth ?? 0,
+          borderLeftWidth: props.borderLeftWidth ?? props.borderWidth ?? 0,
+          borderTopLeftRadius: props.borderTopLeftRadius || 0,
+          borderTopRightRadius: props.borderTopRightRadius || 0,
+          borderBottomLeftRadius: props.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: props.borderBottomRightRadius || 0,
+          overflow: 'hidden',
+        };
+        return wrapContent(
+          <CustomDataDisplay
+            dataPath={props.dataPath || foulsDataPath}
+            gameData={effectiveGameData}
+            label={props.label}
+            backgroundColor={props.backgroundColor}
+            textColor={props.textColor}
+            width={width}
+            height={height}
+            fontSize={props.fontSize || 18}
+            format={props.format || 'number'}
+            prefix={props.prefix || ''}
+            suffix={props.suffix || ''}
+            customText={props.customText}
+            textAlign={props.textAlign}
+            paddingTop={props.paddingTop}
+            paddingRight={props.paddingRight}
+            paddingBottom={props.paddingBottom}
+            paddingLeft={props.paddingLeft}
+            useTeamColor={config.useTeamColor}
+            teamColorSide={config.teamColorSide}
+            borderWidth={0}
+            borderColor={'transparent'}
+            borderStyle={'solid'}
+            borderTopWidth={0}
+            borderRightWidth={0}
+            borderBottomWidth={0}
+            borderLeftWidth={0}
+            borderTopLeftRadius={0}
+            borderTopRightRadius={0}
+            borderBottomLeftRadius={0}
+            borderBottomRightRadius={0}
+            autoFitText={props.autoFitText}
+            minFontScale={props.minFontScale}
+            previewText={props.previewText}
+            fontFamily={props.fontFamily}
+            autoContrastText={props.autoContrastText}
+            isVisible={isVisible}
+          />,
+          foulsBaseStyle,
+          componentKey
+        );
+      }
+
       case 'dynamicList':
         return wrapContent(
           <DynamicList

@@ -757,16 +757,41 @@ function PropertyPanel({
 
   // Input field component for game data
   const GameDataInput = ({ label, path, type = 'text', min, max }: { label: string; path: string; type?: string; min?: number; max?: number }) => {
-    const value = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '';
+    const externalValue = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '';
+    const [localValue, setLocalValue] = React.useState(externalValue);
+    const [isFocused, setIsFocused] = React.useState(false);
+
+    // Sync with external value when not focused
+    React.useEffect(() => {
+      if (!isFocused) {
+        setLocalValue(externalValue);
+      }
+    }, [externalValue, isFocused]);
+
+    const handleBlur = () => {
+      setIsFocused(false);
+      updateGameDataValue(path, type === 'number' ? Number(localValue) : localValue);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        updateGameDataValue(path, type === 'number' ? Number(localValue) : localValue);
+        (e.target as HTMLInputElement).blur();
+      }
+    };
+
     return (
       <div style={{ marginBottom: '8px' }}>
         <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>{label}</label>
         <input
           type={type}
-          value={value}
+          value={localValue}
           min={min}
           max={max}
-          onChange={(e) => updateGameDataValue(path, type === 'number' ? Number(e.target.value) : e.target.value)}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
           style={{
             width: '100%',
             padding: '6px 8px',
@@ -783,30 +808,56 @@ function PropertyPanel({
 
   // Color picker for game data
   const GameDataColor = ({ label, path }: { label: string; path: string }) => {
-    const value = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '#ffffff';
+    const externalValue = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '#ffffff';
+    const [localValue, setLocalValue] = React.useState(externalValue);
+    const [isFocused, setIsFocused] = React.useState(false);
+
+    // Sync with external value when not focused
+    React.useEffect(() => {
+      if (!isFocused) {
+        setLocalValue(externalValue);
+      }
+    }, [externalValue, isFocused]);
+
+    const commitValue = (value: string) => {
+      updateGameDataValue(path, value);
+      // Also update the flat color fields for compatibility
+      if (path === 'homeTeam.color') updateGameDataValue('home_team_color', value);
+      if (path === 'awayTeam.color') updateGameDataValue('away_team_color', value);
+    };
+
+    const handleBlur = () => {
+      setIsFocused(false);
+      commitValue(localValue);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        commitValue(localValue);
+        (e.target as HTMLInputElement).blur();
+      }
+    };
+
     return (
       <div style={{ marginBottom: '8px' }}>
         <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>{label}</label>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
             type="color"
-            value={value}
+            value={localValue}
             onChange={(e) => {
-              updateGameDataValue(path, e.target.value);
-              // Also update the flat color fields for compatibility
-              if (path === 'homeTeam.color') updateGameDataValue('home_team_color', e.target.value);
-              if (path === 'awayTeam.color') updateGameDataValue('away_team_color', e.target.value);
+              setLocalValue(e.target.value);
+              commitValue(e.target.value);
             }}
             style={{ width: '40px', height: '28px', padding: '0', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           />
           <input
             type="text"
-            value={value}
-            onChange={(e) => {
-              updateGameDataValue(path, e.target.value);
-              if (path === 'homeTeam.color') updateGameDataValue('home_team_color', e.target.value);
-              if (path === 'awayTeam.color') updateGameDataValue('away_team_color', e.target.value);
-            }}
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
             style={{
               flex: 1,
               padding: '6px 8px',
@@ -2035,60 +2086,51 @@ function PropertyPanel({
                 </select>
               </div>
 
-              <div className="property-grid">
-                {isDragging ? (
-                  <>
-                    <StaticColorSwatch 
-                      label="Background Color" 
-                      color={component?.props?.backgroundColor || '#000000'} 
-                    />
-                    <StaticColorSwatch 
-                      label="Text Color" 
-                      color={component?.props?.textColor || '#ffffff'} 
-                    />
-                  </>
-                ) : (
-                  <>
-                    <div className="property-field">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <label style={{ fontSize: '12px', color: '#aaa' }}>Background Color</label>
-                        <label style={{ fontSize: '11px', color: '#888', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
-                          <input
-                            type="checkbox"
-                            checked={(() => {
-                              // Check raw props to see if backgroundColor is explicitly set
-                              const rawBg = component?.props?.backgroundColor;
-                              return rawBg === undefined || rawBg === null || rawBg === 'none';
-                            })()}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                updateStateProps('backgroundColor', 'none');
-                              } else {
-                                updateStateProps('backgroundColor', '#000000');
-                              }
-                            }}
-                            style={{ margin: 0 }}
-                          />
-                          None
-                        </label>
-                      </div>
-                      {component?.props?.backgroundColor && component.props.backgroundColor !== 'none' && (
-                        <ColorPicker
-                          value={component.props.backgroundColor}
-                          onChange={(color) => updateStateProps('backgroundColor', color)}
-                        />
-                      )}
+              {isDragging ? (
+                <div className="property-grid">
+                  <StaticColorSwatch
+                    label="Background Color"
+                    color={component?.props?.backgroundColor || '#000000'}
+                  />
+                  <StaticColorSwatch
+                    label="Text Color"
+                    color={component?.props?.textColor || '#ffffff'}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="property-field">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <label>Background Color</label>
+                      <button
+                        onClick={() => updateStateProps('backgroundColor', 'none')}
+                        style={{
+                          fontSize: '11px',
+                          padding: '2px 8px',
+                          background: '#444',
+                          border: '1px solid #555',
+                          borderRadius: '3px',
+                          color: '#ccc',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Clear BG
+                      </button>
                     </div>
-                    <div className="property-field">
-                      <ColorPicker
-                        label="Text Color"
-                        value={getStateValue('textColor', '#ffffff')}
-                        onChange={(color) => updateStateProps('textColor', color)}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
+                    <ColorPicker
+                      value={getStateValue('backgroundColor', '#000000')}
+                      onChange={(color) => updateStateProps('backgroundColor', color)}
+                    />
+                  </div>
+                  <div className="property-field">
+                    <ColorPicker
+                      label="Text Color"
+                      value={getStateValue('textColor', '#ffffff')}
+                      onChange={(color) => updateStateProps('textColor', color)}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Team Color Controls */}
               <div className="property-field">
@@ -2176,6 +2218,7 @@ function PropertyPanel({
 
             {/* IMAGE SECTION */}
             <PropertySection title="IMAGE" sectionKey="image">
+              {/* Category selector for local images */}
               <div className="property-field">
                 <label>Category</label>
                 <select
@@ -2208,50 +2251,53 @@ function PropertyPanel({
                 </div>
               )}
 
-              {getStateValue('imageSource', 'none') === 'local' && (
-                <div className="property-field">
-                  <label>Select Image ({availableImages.length} available)</label>
-                  <select
-                    value={getStateValue('imagePath', '')}
-                    onChange={(e) => handleImageSelect(e.target.value)}
-                  >
-                    <option value="">
-                      {imagesLoading ? 'Loading images...' : 'Select an image...'}
+              {/* Local image selector */}
+              <div className="property-field">
+                <label>Local Image ({availableImages.length} available)</label>
+                <select
+                  value={getStateValue('imagePath', '')}
+                  onChange={(e) => handleImageSelect(e.target.value)}
+                >
+                  <option value="">
+                    {imagesLoading ? 'Loading images...' : 'None'}
+                  </option>
+                  {availableImages.map((filename) => (
+                    <option key={filename} value={getImagePath(filename, selectedSport, selectedSubsection)}>
+                      {filename}
                     </option>
-                    {availableImages.map((filename) => (
-                      <option key={filename} value={getImagePath(filename, selectedSport, selectedSubsection)}>
-                        {filename}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                  ))}
+                </select>
+              </div>
 
-              {getStateValue('imageSource', 'none') === 'url' && (
-                <div className="property-field">
-                  <label>Image URL</label>
-                  <input
-                    type="url"
-                    key={`${component?.id}-imageUrl`}
-                    defaultValue={getStateValue('imageUrl', '')}
-                    placeholder="https://example.com/image.jpg"
-                    onChange={(e) => handleStatePropsChange('imageUrl', e.target.value)}
-                    onBlur={(e) => handleImageSelect(e.target.value, true)}
-                  />
-                </div>
-              )}
+              {/* Image URL - overrides local if set */}
+              <div className="property-field">
+                <label>Image URL</label>
+                <input
+                  type="url"
+                  key={`${component?.id}-imageUrl`}
+                  defaultValue={getStateValue('imageUrl', '')}
+                  placeholder="Leave empty for local image"
+                  onChange={(e) => handleStatePropsChange('imageUrl', e.target.value)}
+                  onBlur={(e) => {
+                    const url = e.target.value.trim();
+                    if (url) {
+                      handleImageSelect(url, true);
+                    } else {
+                      // Clear URL - reverts to local
+                      updateStateProps('imageUrl', '');
+                      updateStateProps('imageSource', 'local');
+                    }
+                  }}
+                />
+              </div>
 
-              {(getStateValue('imageSource', 'none') === 'local' && getStateValue('imagePath', '')) ||
-               (getStateValue('imageSource', 'none') === 'url' && getStateValue('imageUrl', '')) ? (
+              {(getStateValue('imagePath', '') || getStateValue('imageUrl', '')) ? (
                 <div className="property-field">
-                  <label>Size Control</label>
                   <div className="image-size-buttons">
                     <button
                       className="native-resolution-btn"
                       onClick={() => {
-                        const imageUrl = getStateValue('imageSource', 'none') === 'local'
-                          ? getStateValue('imagePath', '')
-                          : getStateValue('imageUrl', '');
+                        const imageUrl = getStateValue('imageUrl', '') || getStateValue('imagePath', '');
                         
                         if (imageUrl) {
                           // Create a temporary image to get dimensions
@@ -2294,50 +2340,9 @@ function PropertyPanel({
                 </div>
               ) : null}
 
-              {/* Image Flip Buttons */}
-              {(getStateValue('imageSource', 'none') === 'local' && getStateValue('imagePath', '')) ||
-               (getStateValue('imageSource', 'none') === 'url' && getStateValue('imageUrl', '')) ? (
-                <div className="property-field">
-                  <label>Flip Image</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => updateStateProps('flipHorizontal', !getStateValue('flipHorizontal', false))}
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        backgroundColor: getStateValue('flipHorizontal', false) ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: getStateValue('flipHorizontal', false) ? 'bold' : 'normal',
-                        fontSize: '12px'
-                      }}
-                    >
-                      Horizontal
-                    </button>
-                    <button
-                      onClick={() => updateStateProps('flipVertical', !getStateValue('flipVertical', false))}
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        backgroundColor: getStateValue('flipVertical', false) ? '#4CAF50' : '#333',
-                        color: 'white',
-                        border: '1px solid #555',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: getStateValue('flipVertical', false) ? 'bold' : 'normal',
-                        fontSize: '12px'
-                      }}
-                    >
-                      Vertical
-                    </button>
-                  </div>
-                </div>
-              ) : null}
 
               {/* Image Tint Color Section */}
-              {component.props?.imageSource !== 'none' && (
+              {(getStateValue('imagePath', '') || getStateValue('imageUrl', '')) && (
                 <>
                   <div className="property-field">
                     <label>
@@ -2478,39 +2483,6 @@ function PropertyPanel({
                   )}
                 </>
               )}
-
-              {/* Image Source selector at bottom */}
-              <div className="property-field" style={{ marginTop: '12px', borderTop: '1px solid #444', paddingTop: '12px' }}>
-                <label>Image Source</label>
-                <select
-                  value={getStateValue('imageSource', 'none')}
-                  onChange={(e) => updateStateProps('imageSource', e.target.value)}
-                >
-                  <option value="none">No Image / Data Path</option>
-                  <option value="local">Local Image</option>
-                  <option value="url">URL</option>
-                </select>
-                {/* Show hint when using image dataPath */}
-                {(() => {
-                  const dataPath = component.props?.dataPath || '';
-                  const isImagePath = dataPath.endsWith('.imageUrl') || dataPath.endsWith('.image') || dataPath === 'imageUrl' || dataPath === 'image';
-                  if (isImagePath && getStateValue('imageSource', 'none') === 'none') {
-                    return (
-                      <small style={{ color: '#4CAF50', display: 'block', marginTop: '4px' }}>
-                        Using image from Data Path: {dataPath}
-                      </small>
-                    );
-                  }
-                  if (isImagePath && getStateValue('imageSource', 'none') !== 'none') {
-                    return (
-                      <small style={{ color: '#ff9800', display: 'block', marginTop: '4px' }}>
-                        Tip: Set to "No Image / Data Path" to use image from Data Path
-                      </small>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
 
             </PropertySection>
 

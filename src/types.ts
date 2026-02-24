@@ -67,6 +67,11 @@ export interface ComponentGroupTemplate {
     width: number;
     height: number;
   };
+  // Original position on canvas (top-left of bounding box) for consistent placement
+  originalPosition?: {
+    x: number;
+    y: number;
+  };
   createdAt: number;
   updatedAt: number;
 }

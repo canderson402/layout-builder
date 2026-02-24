@@ -3,7 +3,7 @@ import { ComponentConfig } from '../types';
 import './Toolbar.css';
 
 interface ToolbarProps {
-  onAddComponent: (type: ComponentConfig['type']) => void;
+  onAddComponent: (type: ComponentConfig['type']) => string;
 }
 
 const COMPONENT_TYPES = [
