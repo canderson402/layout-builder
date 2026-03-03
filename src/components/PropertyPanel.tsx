@@ -939,14 +939,26 @@ function PropertyPanel({
             <GameDataInput label="Game Clock" path="gameClock" />
             <div style={{ display: 'flex', gap: '12px' }}>
               <div style={{ flex: 1 }}>
-                <GameDataInput label="Period" path="period" type="number" min={1} />
+                <GameDataInput label="Period" path="period" type="text" placeholder="1, 2, OT, SD..." />
               </div>
               <div style={{ flex: 1 }}>
                 <GameDataInput label="Quarter" path="quarter" type="number" min={1} />
               </div>
             </div>
-            <GameDataInput label="Shot Clock" path="shotClock" type="number" min={0} />
-            <GameDataInput label="Overtime" path="isOvertime" type="text" placeholder="OT, SD, or empty" />
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Shot Clock" path="shotClock" type="number" min={0} />
+              </div>
+              <div style={{ flex: 0, minWidth: '100px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>OT Active</label>
+                <input
+                  type="checkbox"
+                  checked={gameData?.isOvertimeActive ?? false}
+                  onChange={(e) => updateGameDataValue('isOvertimeActive', e.target.checked)}
+                  style={{ width: '18px', height: '18px' }}
+                />
+              </div>
+            </div>
           </GameDataSection>
 
           {/* Fouls & Timeouts */}
@@ -1450,6 +1462,9 @@ function PropertyPanel({
             >
               {component.props?.toggleState ? 'ON' : 'OFF'}
             </button>
+          </div>
+          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+            Set a boolean data path (e.g. isOvertimeActive) to auto-toggle
           </div>
         </div>
       )}
@@ -2003,7 +2018,7 @@ function PropertyPanel({
                     <option value="preGameClock">Pre-Game Clock</option>
                     <option value="halftimeClock">Halftime Clock</option>
                     <option value="period">Period/Quarter</option>
-                    <option value="isOvertime">Overtime</option>
+                    <option value="isOvertimeActive">Overtime Active (boolean)</option>
                     <option value="home_sets_won">Home Sets Won</option>
                     <option value="away_sets_won">Away Sets Won</option>
                   </optgroup>

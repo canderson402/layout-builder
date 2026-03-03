@@ -111,12 +111,12 @@ function App() {
     timerName: 'Timer Name',
     sessionName: 'Session Name',
     nextUp: 'Next Up',
-    period: 4,
+    period: '4',  // Can be number or text like 'OT', 'SD', '2OT'
     shotClock: 14,
     quarter: 4,
     half: 2,
     set: 3,
-    isOvertime: '1',  // Period number or 'OT'/'SD' for overtime display
+    isOvertimeActive: true,  // Boolean for visibility toggling when in overtime
     home_sets_won: 0,
     away_sets_won: 0,
     home_player_points: 0,
