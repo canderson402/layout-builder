@@ -174,24 +174,33 @@ export default function DynamicList(props: DynamicListProps) {
       flexDirection: isHorizontal ? 'row' : 'column',
       justifyContent: getJustifyContent(itemAlignment),
       alignItems: shouldFillContainer ? 'stretch' : 'center',
-      gap: itemSpacing
+      // Note: Don't use 'gap' here - we use margins on items to control spacing
+      // This ensures item spacing decreases item width rather than affecting parent size
     }}>
-      {items.map(({ index, itemNumber, isActive }) => (
-        <View
-          key={index}
-          style={{
-            // Use flex: 1 when filling container to avoid rounding gaps
-            ...(shouldFillContainer ? { flex: 1 } : { width: itemWidth }),
-            height: isHorizontal ? itemHeight : (shouldFillContainer ? undefined : itemHeight),
-            backgroundColor: isActive ? activeBackgroundColor : inactiveBackgroundColor,
-            borderWidth: borderWidth || 0,
-            borderColor: borderColor || '#ffffff',
-            borderRadius,
-            borderStyle: 'solid',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-        >
+      {items.map(({ index, itemNumber, isActive }) => {
+        // Calculate margin for spacing (apply to right/bottom except last item)
+        const isLastItem = index === safeTotal - 1;
+        const marginStyle = isHorizontal
+          ? { marginRight: isLastItem ? 0 : itemSpacing }
+          : { marginBottom: isLastItem ? 0 : itemSpacing };
+
+        return (
+          <View
+            key={index}
+            style={{
+              // Use calculated width/height that accounts for spacing
+              width: itemWidth,
+              height: isHorizontal ? itemHeight : (shouldFillContainer ? itemHeight : itemHeight),
+              backgroundColor: isActive ? activeBackgroundColor : inactiveBackgroundColor,
+              borderWidth: borderWidth || 0,
+              borderColor: borderColor || '#ffffff',
+              borderRadius,
+              borderStyle: 'solid',
+              justifyContent: 'center',
+              alignItems: 'center',
+              ...marginStyle
+            }}
+          >
           {showNumbers && (
             <Text style={{
               color: isActive ? activeTextColor : inactiveTextColor,
@@ -202,7 +211,8 @@ export default function DynamicList(props: DynamicListProps) {
             </Text>
           )}
         </View>
-      ))}
+        );
+      })}
 
       {/* Debug info */}
       <Text style={{

@@ -241,7 +241,7 @@ const mockData = {
   quarter: 4,
   half: 2,
   set: 3,
-  isOvertime: false,
+  isOvertime: '1',  // Period number or 'OT'/'SD' for overtime display
   home_sets_won: 0,
   away_sets_won: 0,
   home_player_points: 0,

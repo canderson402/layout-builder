@@ -105,22 +105,45 @@ const getNestedData = (obj: any, path: string): any => {
   }, obj);
 };
 
-// Calculate effective z-index based on hierarchy (parent layers affect children)
+// Calculate effective z-index based on exact position in flattened layer panel order.
+// This creates a 1:1 mapping: position in layer panel = z-index order.
+// Higher position in panel (top) = higher z-index = renders in front.
 const getEffectiveLayer = (component: ComponentConfig, allComponents: ComponentConfig[]): number => {
-  let effectiveLayer = component.layer || 0;
-  let parentId = component.parentId;
-  let multiplier = 1000; // Each parent level adds this much priority
+  // Build the same hierarchy as LayerPanel
+  const rootComponents: ComponentConfig[] = [];
+  const childrenMap = new Map<string, ComponentConfig[]>();
 
-  while (parentId) {
-    const parent = allComponents.find(c => c.id === parentId);
-    if (!parent) break;
-    // Add parent's layer contribution - higher parent layer = higher z-index for all children
-    effectiveLayer += (parent.layer || 0) * multiplier;
-    parentId = parent.parentId;
-    multiplier *= 1000; // Increase multiplier for deeper nesting
-  }
+  allComponents.forEach(c => {
+    if (c.parentId) {
+      const siblings = childrenMap.get(c.parentId) || [];
+      siblings.push(c);
+      childrenMap.set(c.parentId, siblings);
+    } else {
+      rootComponents.push(c);
+    }
+  });
 
-  return effectiveLayer;
+  // Sort by layer (highest first) - same as LayerPanel
+  rootComponents.sort((a, b) => (b.layer || 0) - (a.layer || 0));
+  childrenMap.forEach(children => {
+    children.sort((a, b) => (b.layer || 0) - (a.layer || 0));
+  });
+
+  // Flatten tree in display order (depth-first traversal)
+  const flatOrder: string[] = [];
+  const traverse = (comp: ComponentConfig) => {
+    flatOrder.push(comp.id);
+    const children = childrenMap.get(comp.id) || [];
+    children.forEach(child => traverse(child));
+  };
+  rootComponents.forEach(comp => traverse(comp));
+
+  // Find position (0 = top of list = highest z-index)
+  const position = flatOrder.indexOf(component.id);
+  if (position === -1) return 0;
+
+  // Invert: top of list (position 0) gets highest z-index
+  return (flatOrder.length - position) * 10;
 };
 
 // Check if a component's ancestors are visible (for hard visibility cutoff)

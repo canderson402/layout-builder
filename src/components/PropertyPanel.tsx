@@ -396,7 +396,7 @@ function PropertyPanel({
           });
         }
         break;
-      // Common numeric props - handle these after updateComponentWithScrollPreservation is available
+      // Common numeric props stored in component.props
       case 'maxTimeouts':
       case 'itemSpacing':
       case 'borderRadius':
@@ -412,10 +412,14 @@ function PropertyPanel({
       case 'borderTopRightRadius':
       case 'borderBottomLeftRadius':
       case 'borderBottomRightRadius':
-        // These will be handled by separate blur handlers for now
+        if (component && componentId) {
+          onUpdateComponent(componentId, {
+            props: { ...component.props, [field]: numValue }
+          });
+        }
         break;
     }
-  }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth]);
+  }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth, onUpdateComponent]);
 
   // Create a static color swatch for drag operations
   const StaticColorSwatch = ({ label, color }: { label: string, color: string }) => (
@@ -756,7 +760,7 @@ function PropertyPanel({
   };
 
   // Input field component for game data
-  const GameDataInput = ({ label, path, type = 'text', min, max }: { label: string; path: string; type?: string; min?: number; max?: number }) => {
+  const GameDataInput = ({ label, path, type = 'text', min, max, placeholder }: { label: string; path: string; type?: string; min?: number; max?: number; placeholder?: string }) => {
     const externalValue = path.split('.').reduce((obj, key) => obj?.[key], gameData as any) ?? '';
     const [localValue, setLocalValue] = React.useState(externalValue);
     const [isFocused, setIsFocused] = React.useState(false);
@@ -788,6 +792,7 @@ function PropertyPanel({
           value={localValue}
           min={min}
           max={max}
+          placeholder={placeholder}
           onChange={(e) => setLocalValue(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={handleBlur}
@@ -941,7 +946,7 @@ function PropertyPanel({
               </div>
             </div>
             <GameDataInput label="Shot Clock" path="shotClock" type="number" min={0} />
-            <GameDataToggle label="Overtime" path="isOvertime" />
+            <GameDataInput label="Overtime" path="isOvertime" type="text" placeholder="OT, SD, or empty" />
           </GameDataSection>
 
           {/* Fouls & Timeouts */}

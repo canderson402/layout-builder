@@ -116,7 +116,7 @@ function App() {
     quarter: 4,
     half: 2,
     set: 3,
-    isOvertime: false,
+    isOvertime: '1',  // Period number or 'OT'/'SD' for overtime display
     home_sets_won: 0,
     away_sets_won: 0,
     home_player_points: 0,
@@ -189,6 +189,35 @@ function App() {
   // Remove expensive console.log - causes performance issues
 
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+
+  // Helper to get all descendants of a component (for group selection)
+  const getAllDescendants = useCallback((parentId: string, components: ComponentConfig[]): string[] => {
+    const children = components.filter(c => c.parentId === parentId);
+    const descendants: string[] = [];
+    for (const child of children) {
+      descendants.push(child.id);
+      descendants.push(...getAllDescendants(child.id, components));
+    }
+    return descendants;
+  }, []);
+
+  // Wrapper for setSelectedComponents that auto-selects children when selecting groups
+  const handleSelectComponents = useCallback((ids: string[]) => {
+    // Get current layout components
+    const components = layout.components || [];
+
+    // Expand selection to include descendants of any selected groups
+    const expandedIds = new Set<string>(ids);
+    for (const id of ids) {
+      const component = components.find(c => c.id === id);
+      if (component?.type === 'group') {
+        const descendants = getAllDescendants(id, components);
+        descendants.forEach(d => expandedIds.add(d));
+      }
+    }
+
+    setSelectedComponents(Array.from(expandedIds));
+  }, [layout.components, getAllDescendants]);
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
@@ -1152,9 +1181,9 @@ function App() {
         groupName = `Group${counter}`;
       }
 
-      // Find the max layer among root components to place group on top
-      const rootComponents = components.filter(c => !c.parentId);
-      const maxLayer = rootComponents.reduce((max, c) => Math.max(max, c.layer || 0), -1);
+      // Find the highest layer among selected components (topmost position)
+      // This ensures the group stays at the same visual position as the topmost selected item
+      const maxSelectedLayer = selectedComps.reduce((max, c) => Math.max(max, c.layer || 0), 0);
 
       // Create the group component
       const groupComponent: ComponentConfig = {
@@ -1163,7 +1192,7 @@ function App() {
         displayName: groupName,
         position: { x: Math.round(minX), y: Math.round(minY) },
         size: { width: Math.round(maxX - minX), height: Math.round(maxY - minY) },
-        layer: maxLayer + 1
+        layer: maxSelectedLayer
       };
 
       // Update selected components to be children of the group
@@ -1422,7 +1451,7 @@ function App() {
               <MemoizedLayerPanel
                 layout={layout}
                 selectedComponents={selectedComponents}
-                onSelectComponents={setSelectedComponents}
+                onSelectComponents={handleSelectComponents}
                 onUpdateComponent={updateComponent}
                 onDeleteComponent={deleteComponent}
                 onAddComponent={addComponent}
@@ -1444,7 +1473,7 @@ function App() {
             <MemoizedCanvas
               layout={layout}
               selectedComponents={selectedComponents}
-              onSelectComponents={setSelectedComponents}
+              onSelectComponents={handleSelectComponents}
               onUpdateComponent={updateComponent}
               onDeleteComponent={deleteComponent}
               onDuplicateComponent={duplicateComponent}

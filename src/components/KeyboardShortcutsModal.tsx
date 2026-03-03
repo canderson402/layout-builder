@@ -61,6 +61,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: '-', description: 'Zoom out' },
       { keys: '0', description: 'Reset zoom to 100%' },
       { keys: 'F', description: 'Fit canvas to screen' },
+      { keys: 'Space + Drag', description: 'Pan canvas' },
       { keys: 'Middle Mouse + Drag', description: 'Pan canvas' },
     ],
   },

@@ -109,7 +109,7 @@ export default function Canvas({
   }, [canvasBackgroundImage]);
   const [gridSizeIndex, setGridSizeIndex] = useState(2); // Default to 20px grid (index 2)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [zoomLevel, setZoomLevel] = useState(60); // Zoom level from 10% to 200%
+  const [zoomLevel, setZoomLevel] = useState(60); // Zoom level from 10% to 300%
   const [isCreating, setIsCreating] = useState(false);
   const [createStart, setCreateStart] = useState({ x: 0, y: 0 });
   const [createEnd, setCreateEnd] = useState({ x: 0, y: 0 });
@@ -124,6 +124,8 @@ export default function Canvas({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false); // Space bar for pan mode (for UI)
+  const isSpaceHeldRef = useRef(false); // Ref for immediate access during mouse events
 
   // Smart guides state
   const [activeGuides, setActiveGuides] = useState<ActiveGuides>({ guides: [] });
@@ -2222,6 +2224,16 @@ export default function Canvas({
       setPanStart({ x: e.clientX, y: e.clientY });
       return;
     }
+
+    // Space + left click for panning (like Photoshop/Figma)
+    if (isSpaceHeldRef.current && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
     // Check if the click is on the canvas or any non-component element
     const target = e.target as HTMLElement;
     const isHandleClick = target.closest('.canvas-handle');
@@ -2276,7 +2288,7 @@ export default function Canvas({
       
       // Determine zoom direction and amount
       const zoomDelta = e.deltaY > 0 ? -10 : 10; // Reverse direction (scroll up = zoom in)
-      const newZoomLevel = Math.max(10, Math.min(200, zoomLevel + zoomDelta));
+      const newZoomLevel = Math.max(10, Math.min(300, zoomLevel + zoomDelta));
       
       // Just change zoom level - don't adjust viewport offset
       setZoomLevel(newZoomLevel);
@@ -2420,6 +2432,14 @@ export default function Canvas({
 
     // Always allow grid and center line toggles (unless typing)
     if (!isInputFocused) {
+      // Space bar for pan mode
+      if (e.key === ' ' && !e.repeat) {
+        e.preventDefault();
+        isSpaceHeldRef.current = true;
+        setIsSpaceHeld(true);
+        return;
+      }
+
       if (e.key === 'g' || e.key === 'G') {
         e.preventDefault();
         setShowGrid(prev => !prev);
@@ -2484,7 +2504,7 @@ export default function Canvas({
       // + or = to zoom in
       if ((e.key === '+' || e.key === '=') && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        setZoomLevel(prev => Math.min(200, prev + 10));
+        setZoomLevel(prev => Math.min(300, prev + 10));
         return;
       }
       // - to zoom out
@@ -2563,6 +2583,18 @@ export default function Canvas({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // Space key release handler for pan mode
+  React.useEffect(() => {
+    const handleSpaceKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') {
+        isSpaceHeldRef.current = false;
+        setIsSpaceHeld(false);
+      }
+    };
+    document.addEventListener('keyup', handleSpaceKeyUp);
+    return () => document.removeEventListener('keyup', handleSpaceKeyUp);
+  }, []);
+
   // Document-level mouse event handling for drag operations outside canvas
   React.useEffect(() => {
     const isOperationActive = isDragging || isScaling || isResizing || isPanning || isCreating;
@@ -2616,22 +2648,47 @@ export default function Canvas({
     };
   }, []);
 
-  // Calculate effective z-index based on hierarchy (parent layers affect children)
+  // Calculate effective z-index based on exact position in flattened layer panel order.
+  // This creates a 1:1 mapping: position in layer panel = z-index order.
+  // Higher position in panel (top) = higher z-index = renders in front.
   const getEffectiveLayer = (component: ComponentConfig): number => {
-    let effectiveLayer = component.layer || 0;
-    let parentId = component.parentId;
-    let multiplier = 1000; // Each parent level adds this much priority
+    const components = layout.components || [];
 
-    while (parentId) {
-      const parent = (layout.components || []).find(c => c.id === parentId);
-      if (!parent) break;
-      // Add parent's layer contribution - higher parent layer = higher z-index for all children
-      effectiveLayer += (parent.layer || 0) * multiplier;
-      parentId = parent.parentId;
-      multiplier *= 1000; // Increase multiplier for deeper nesting
-    }
+    // Build the same hierarchy as LayerPanel
+    const rootComponents: ComponentConfig[] = [];
+    const childrenMap = new Map<string, ComponentConfig[]>();
 
-    return effectiveLayer;
+    components.forEach(c => {
+      if (c.parentId) {
+        const siblings = childrenMap.get(c.parentId) || [];
+        siblings.push(c);
+        childrenMap.set(c.parentId, siblings);
+      } else {
+        rootComponents.push(c);
+      }
+    });
+
+    // Sort by layer (highest first) - same as LayerPanel
+    rootComponents.sort((a, b) => (b.layer || 0) - (a.layer || 0));
+    childrenMap.forEach(children => {
+      children.sort((a, b) => (b.layer || 0) - (a.layer || 0));
+    });
+
+    // Flatten tree in display order (depth-first traversal)
+    const flatOrder: string[] = [];
+    const traverse = (comp: ComponentConfig) => {
+      flatOrder.push(comp.id);
+      const children = childrenMap.get(comp.id) || [];
+      children.forEach(child => traverse(child));
+    };
+    rootComponents.forEach(comp => traverse(comp));
+
+    // Find position (0 = top of list = highest z-index)
+    const position = flatOrder.indexOf(component.id);
+    if (position === -1) return 0;
+
+    // Invert: top of list (position 0) gets highest z-index
+    return (flatOrder.length - position) * 10;
   };
 
   const getComponentHandle = (component: ComponentConfig) => {
@@ -2642,10 +2699,12 @@ export default function Canvas({
     const height = component.size.height;
 
     // Calculate border widths
-    const borderTopWidth = component.props?.borderTopWidth !== undefined ? component.props.borderTopWidth : (component.props?.borderWidth || 0);
-    const borderRightWidth = component.props?.borderRightWidth !== undefined ? component.props.borderRightWidth : (component.props?.borderWidth || 0);
-    const borderBottomWidth = component.props?.borderBottomWidth !== undefined ? component.props.borderBottomWidth : (component.props?.borderWidth || 0);
-    const borderLeftWidth = component.props?.borderLeftWidth !== undefined ? component.props.borderLeftWidth : (component.props?.borderWidth || 0);
+    // Note: dynamicList uses borderWidth for items inside, not the wrapper
+    const skipWrapperBorder = component.type === 'dynamicList';
+    const borderTopWidth = skipWrapperBorder ? 0 : (component.props?.borderTopWidth !== undefined ? component.props.borderTopWidth : (component.props?.borderWidth || 0));
+    const borderRightWidth = skipWrapperBorder ? 0 : (component.props?.borderRightWidth !== undefined ? component.props.borderRightWidth : (component.props?.borderWidth || 0));
+    const borderBottomWidth = skipWrapperBorder ? 0 : (component.props?.borderBottomWidth !== undefined ? component.props.borderBottomWidth : (component.props?.borderWidth || 0));
+    const borderLeftWidth = skipWrapperBorder ? 0 : (component.props?.borderLeftWidth !== undefined ? component.props.borderLeftWidth : (component.props?.borderWidth || 0));
     
     // Check if any border has width > 0
     const hasBorder = borderTopWidth > 0 || borderRightWidth > 0 || borderBottomWidth > 0 || borderLeftWidth > 0;
@@ -3006,7 +3065,7 @@ export default function Canvas({
             <input
               type="range"
               min="10"
-              max="200"
+              max="300"
               value={zoomLevel}
               onChange={(e) => setZoomLevel(parseInt(e.target.value))}
             />
@@ -3080,7 +3139,7 @@ export default function Canvas({
             transform: `translate(${viewportOffset.x}px, ${viewportOffset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
             position: 'relative',
-            cursor: isPanning ? 'grabbing' : 'default'
+            cursor: isPanning ? 'grabbing' : isSpaceHeld ? 'grab' : 'default'
           }}
         onMouseMove={handleMouseMove}
         onMouseUp={(e) => handleMouseUp(e)}

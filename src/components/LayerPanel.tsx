@@ -476,7 +476,33 @@ export default function LayerPanel({
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, componentId: string) => {
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', componentId);
+
+    // If dragging a selected component, include all selected components
+    // Otherwise, just drag this single component
+    let draggedIds = selectedComponents.includes(componentId)
+      ? selectedComponents
+      : [componentId];
+
+    // Filter out children of groups that are already being dragged
+    // This ensures we only drag "root" components - children move with their parent automatically
+    const draggedSet = new Set(draggedIds);
+    draggedIds = draggedIds.filter(id => {
+      const comp = layout.components.find(c => c.id === id);
+      if (!comp || !comp.parentId) return true; // Keep root components
+      // Check if any ancestor is also being dragged
+      let parentId = comp.parentId;
+      while (parentId) {
+        if (draggedSet.has(parentId)) {
+          return false; // Exclude - parent is already being dragged
+        }
+        const parent = layout.components.find(c => c.id === parentId);
+        parentId = parent?.parentId;
+      }
+      return true; // Keep - no ancestor is being dragged
+    });
+
+    // Store all dragged IDs as JSON
+    e.dataTransfer.setData('text/plain', JSON.stringify(draggedIds));
     setDragState(prev => ({ ...prev, draggedId: componentId }));
     onStartDragOperation?.();
   };
@@ -557,9 +583,18 @@ export default function LayerPanel({
 
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
-    const draggedId = e.dataTransfer.getData('text/plain');
+    const draggedData = e.dataTransfer.getData('text/plain');
 
-    if (!draggedId || draggedId === targetId) {
+    // Parse dragged IDs - could be JSON array or single ID (for backwards compatibility)
+    let draggedIds: string[];
+    try {
+      draggedIds = JSON.parse(draggedData);
+      if (!Array.isArray(draggedIds)) draggedIds = [draggedData];
+    } catch {
+      draggedIds = [draggedData];
+    }
+
+    if (draggedIds.length === 0 || draggedIds.includes(targetId)) {
       handleDragEnd();
       return;
     }
@@ -574,15 +609,20 @@ export default function LayerPanel({
       return false;
     };
 
-    if (isDescendant(draggedId, targetId)) {
-      handleDragEnd();
-      return;
+    // Check if any dragged component is an ancestor of the target
+    for (const draggedId of draggedIds) {
+      if (isDescendant(draggedId, targetId)) {
+        handleDragEnd();
+        return;
+      }
     }
 
     const targetComponent = layout.components.find(c => c.id === targetId);
-    const draggedComponent = layout.components.find(c => c.id === draggedId);
+    const draggedComponents = draggedIds
+      .map(id => layout.components.find(c => c.id === id))
+      .filter((c): c is ComponentConfig => c !== undefined);
 
-    if (!targetComponent || !draggedComponent) {
+    if (!targetComponent || draggedComponents.length === 0) {
       handleDragEnd();
       return;
     }
@@ -590,54 +630,77 @@ export default function LayerPanel({
     const { dropPosition } = dragState;
 
     if (dropPosition === 'child') {
-      // Make dragged component a child of target
-      // Also recalculate layers for the new siblings
-      const newSiblings = childrenMap.get(targetId) || [];
-      const allNewSiblings = [...newSiblings, draggedComponent];
+      // Make all dragged components children of target
+      const existingSiblings = childrenMap.get(targetId) || [];
 
-      // First update the parent
-      onUpdateComponent(draggedId, { parentId: targetId, layer: allNewSiblings.length - 1 });
+      // Add dragged components maintaining their relative order (by current layer)
+      // Sort by layer descending so higher layer items come first
+      const sortedDragged = [...draggedComponents].sort((a, b) => (b.layer || 0) - (a.layer || 0));
 
-      // Recalculate existing children layers
-      newSiblings.forEach((sibling, index) => {
-        onUpdateComponent(sibling.id, { layer: newSiblings.length - 1 - index });
+      let newLayerBase = existingSiblings.length + sortedDragged.length - 1;
+
+      // Update dragged components with new parent and layers
+      sortedDragged.forEach((comp, index) => {
+        onUpdateComponent(comp.id, {
+          parentId: targetId,
+          layer: newLayerBase - index
+        });
       });
 
-      onEndDragOperation?.('Set parent-child relationship');
+      onEndDragOperation?.(`Move ${draggedComponents.length} component(s) as children`);
     } else if (dropPosition === 'before' || dropPosition === 'after') {
       // Move to same level as target (same parent)
       const newParentId = targetComponent.parentId;
 
-      // Get all siblings at this level (including dragged if already at this level)
+      // Get all siblings at this level
       let siblings: ComponentConfig[];
       if (newParentId) {
-        siblings = childrenMap.get(newParentId) || [];
+        siblings = [...(childrenMap.get(newParentId) || [])];
       } else {
-        siblings = rootComponents;
+        siblings = [...rootComponents];
       }
 
-      // If dragged component is from a different parent, add it to siblings list
-      if (draggedComponent.parentId !== newParentId) {
-        siblings = [...siblings, draggedComponent];
-      }
-
-      // Recalculate all sibling layers based on new order
-      const layerUpdates = recalculateSiblingLayers(siblings, draggedId, targetId, dropPosition);
-
-      // Apply updates
-      layerUpdates.forEach(update => {
-        const component = layout.components.find(c => c.id === update.id);
-        if (component) {
-          const updates: Partial<ComponentConfig> = { layer: update.layer };
-          // Update parentId only for the dragged component if it changed levels
-          if (update.id === draggedId && draggedComponent.parentId !== newParentId) {
-            updates.parentId = newParentId || undefined;
-          }
-          onUpdateComponent(update.id, updates);
+      // Add any dragged components that aren't already at this level
+      draggedComponents.forEach(comp => {
+        if (comp.parentId !== newParentId && !siblings.find(s => s.id === comp.id)) {
+          siblings.push(comp);
         }
       });
 
-      onEndDragOperation?.('Reorder component');
+      // Remove dragged components from current positions
+      const orderedSiblings = siblings.filter(c => !draggedIds.includes(c.id));
+
+      // Find target index
+      const targetIndex = orderedSiblings.findIndex(c => c.id === targetId);
+      if (targetIndex === -1) {
+        handleDragEnd();
+        return;
+      }
+
+      // Sort dragged components by their current layer (descending) to maintain relative order
+      const sortedDragged = [...draggedComponents].sort((a, b) => (b.layer || 0) - (a.layer || 0));
+
+      // Insert dragged components at new position
+      const insertIndex = dropPosition === 'before' ? targetIndex : targetIndex + 1;
+      orderedSiblings.splice(insertIndex, 0, ...sortedDragged);
+
+      // Assign layer values: first item gets highest layer, last gets 0
+      orderedSiblings.forEach((component, index) => {
+        const newLayer = orderedSiblings.length - 1 - index;
+        const updates: Partial<ComponentConfig> = { layer: newLayer };
+
+        // Update parentId if component moved to a different level
+        if (draggedIds.includes(component.id)) {
+          const originalComponent = draggedComponents.find(c => c.id === component.id);
+          if (originalComponent && originalComponent.parentId !== newParentId) {
+            updates.parentId = newParentId || undefined;
+          }
+        }
+
+        onUpdateComponent(component.id, updates);
+      });
+
+      onEndDragOperation?.(`Reorder ${draggedComponents.length} component(s)`);
     }
 
     handleDragEnd();
@@ -941,19 +1004,39 @@ export default function LayerPanel({
           }}
           onDrop={(e) => {
             e.preventDefault();
-            const draggedId = e.dataTransfer.getData('text/plain');
-            if (draggedId) {
-              const draggedComponent = layout.components.find(c => c.id === draggedId);
-              if (draggedComponent) {
+            const draggedData = e.dataTransfer.getData('text/plain');
+
+            // Parse dragged IDs - could be JSON array or single ID
+            let draggedIds: string[];
+            try {
+              draggedIds = JSON.parse(draggedData);
+              if (!Array.isArray(draggedIds)) draggedIds = [draggedData];
+            } catch {
+              draggedIds = [draggedData];
+            }
+
+            if (draggedIds.length > 0) {
+              const draggedComponents = draggedIds
+                .map(id => layout.components.find(c => c.id === id))
+                .filter((c): c is ComponentConfig => c !== undefined);
+
+              if (draggedComponents.length > 0) {
                 // Calculate the new layer value: place at top of root level (highest layer)
-                // This matches how new components are added - they appear on top
-                const currentRootComponents = (layout.components || []).filter(c => !c.parentId && c.id !== draggedId);
+                const currentRootComponents = (layout.components || []).filter(c => !c.parentId && !draggedIds.includes(c.id));
                 const maxRootLayer = currentRootComponents.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
 
-                // Update dragged component: remove parent and set to highest layer + 1 (top)
-                onUpdateComponent(draggedId, { parentId: undefined, layer: maxRootLayer + 1 });
+                // Sort dragged components by their current layer (descending) to maintain relative order
+                const sortedDragged = [...draggedComponents].sort((a, b) => (b.layer || 0) - (a.layer || 0));
 
-                onEndDragOperation?.('Move to root level');
+                // Update each dragged component: remove parent and set layers
+                sortedDragged.forEach((comp, index) => {
+                  onUpdateComponent(comp.id, {
+                    parentId: undefined,
+                    layer: maxRootLayer + sortedDragged.length - index
+                  });
+                });
+
+                onEndDragOperation?.(`Move ${draggedComponents.length} component(s) to root level`);
               }
             }
             handleDragEnd();
