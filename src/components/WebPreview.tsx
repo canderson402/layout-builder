@@ -574,21 +574,47 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         );
 
       case 'custom': {
+        // For toggle components, compute effective toggle state and get state-specific props
+        let effectiveProps = props;
+        if (props.canToggle) {
+          // Compute effective toggle state (same logic as CustomDataDisplay)
+          let effectiveToggleState = false;
+          if (props.toggleDataPath) {
+            const rawValue = getNestedData(effectiveGameData, props.toggleDataPath);
+            if (typeof rawValue === 'boolean') {
+              effectiveToggleState = rawValue;
+            }
+          } else if (props.dataPath) {
+            const rawValue = getNestedData(effectiveGameData, props.dataPath);
+            if (typeof rawValue === 'boolean') {
+              effectiveToggleState = rawValue;
+            }
+          }
+          if (!effectiveToggleState && props.toggleState) {
+            effectiveToggleState = props.toggleState;
+          }
+          // Merge state-specific props
+          const stateProps = effectiveToggleState ? props.state2Props : props.state1Props;
+          if (stateProps) {
+            effectiveProps = { ...props, ...stateProps };
+          }
+        }
+
         // Apply border to wrapper div to prevent z-index separation issues with react-native-web
         const customBaseStyle: React.CSSProperties = {
           ...baseStyle,
           boxSizing: 'border-box',
-          borderWidth: props.borderWidth || 0,
-          borderColor: props.borderColor || 'transparent',
-          borderStyle: props.borderStyle || 'solid',
-          borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
-          borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
-          borderBottomWidth: props.borderBottomWidth ?? props.borderWidth ?? 0,
-          borderLeftWidth: props.borderLeftWidth ?? props.borderWidth ?? 0,
-          borderTopLeftRadius: props.borderTopLeftRadius || 0,
-          borderTopRightRadius: props.borderTopRightRadius || 0,
-          borderBottomLeftRadius: props.borderBottomLeftRadius || 0,
-          borderBottomRightRadius: props.borderBottomRightRadius || 0,
+          borderWidth: effectiveProps.borderWidth || 0,
+          borderColor: effectiveProps.borderColor || 'transparent',
+          borderStyle: effectiveProps.borderStyle || 'solid',
+          borderTopWidth: effectiveProps.borderTopWidth ?? effectiveProps.borderWidth ?? 0,
+          borderRightWidth: effectiveProps.borderRightWidth ?? effectiveProps.borderWidth ?? 0,
+          borderBottomWidth: effectiveProps.borderBottomWidth ?? effectiveProps.borderWidth ?? 0,
+          borderLeftWidth: effectiveProps.borderLeftWidth ?? effectiveProps.borderWidth ?? 0,
+          borderTopLeftRadius: effectiveProps.borderTopLeftRadius || 0,
+          borderTopRightRadius: effectiveProps.borderTopRightRadius || 0,
+          borderBottomLeftRadius: effectiveProps.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: effectiveProps.borderBottomRightRadius || 0,
           overflow: 'hidden',  // Clip content to border radius
         };
         return wrapContent(
@@ -626,6 +652,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             state1Props={props.state1Props}
             state2Props={props.state2Props}
             autoToggle={props.autoToggle}
+            toggleDataPath={props.toggleDataPath}
             visibilityPath={props.visibilityPath}
             multiStateEnabled={props.multiStateEnabled}
             statePath={props.statePath}

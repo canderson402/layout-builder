@@ -299,7 +299,12 @@ function PropertyPanel({
     'leaderboard-styling',
     'leaderboard-cycling'
   ]));
-  
+
+  // Define updateComponentWithScrollPreservation first since many functions below depend on it
+  const updateComponentWithScrollPreservation = useCallback((id: string, updates: Partial<ComponentConfig>) => {
+    onUpdateComponent(id, updates);
+  }, [onUpdateComponent]);
+
   // Memoized update functions with minimal dependencies
   const updateX = useCallback((pixelValue: number) => {
     if (component && componentId) {
@@ -341,19 +346,47 @@ function PropertyPanel({
 
   const updateFontSize = useCallback((value: number) => {
     if (component && componentId) {
-      updateComponentWithScrollPreservation(componentId, {
-        props: { ...component.props, fontSize: value || 24 }
-      });
+      if (component.props?.canToggle) {
+        // Save to state-specific props for toggle components
+        const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+        updateComponentWithScrollPreservation(componentId, {
+          props: {
+            ...component.props,
+            [stateKey]: {
+              ...component.props[stateKey],
+              fontSize: value || 24
+            }
+          }
+        });
+      } else {
+        updateComponentWithScrollPreservation(componentId, {
+          props: { ...component.props, fontSize: value || 24 }
+        });
+      }
     }
-  }, [componentId, component]);
+  }, [componentId, component, editingState]);
 
   const updateBorderWidth = useCallback((value: number) => {
     if (component && componentId) {
-      updateComponentWithScrollPreservation(componentId, {
-        props: { ...component.props, borderWidth: value }
-      });
+      if (component.props?.canToggle) {
+        // Save to state-specific props for toggle components
+        const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+        updateComponentWithScrollPreservation(componentId, {
+          props: {
+            ...component.props,
+            [stateKey]: {
+              ...component.props[stateKey],
+              borderWidth: value
+            }
+          }
+        });
+      } else {
+        updateComponentWithScrollPreservation(componentId, {
+          props: { ...component.props, borderWidth: value }
+        });
+      }
     }
-  }, [componentId, component]);
+  }, [componentId, component, editingState]);
 
 
   // Simple number input handlers
@@ -396,9 +429,16 @@ function PropertyPanel({
           });
         }
         break;
-      // Common numeric props stored in component.props
+      // Non-visual props that don't change between toggle states
       case 'maxTimeouts':
       case 'itemSpacing':
+        if (component && componentId) {
+          onUpdateComponent(componentId, {
+            props: { ...component.props, [field]: numValue }
+          });
+        }
+        break;
+      // Visual props that should respect toggle state
       case 'borderRadius':
       case 'paddingTop':
       case 'paddingRight':
@@ -413,13 +453,27 @@ function PropertyPanel({
       case 'borderBottomLeftRadius':
       case 'borderBottomRightRadius':
         if (component && componentId) {
-          onUpdateComponent(componentId, {
-            props: { ...component.props, [field]: numValue }
-          });
+          if (component.props?.canToggle) {
+            // Save to state-specific props for toggle components
+            const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+            updateComponentWithScrollPreservation(componentId, {
+              props: {
+                ...component.props,
+                [stateKey]: {
+                  ...component.props[stateKey],
+                  [field]: numValue
+                }
+              }
+            });
+          } else {
+            updateComponentWithScrollPreservation(componentId, {
+              props: { ...component.props, [field]: numValue }
+            });
+          }
         }
         break;
     }
-  }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth, onUpdateComponent]);
+  }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth, updateComponentWithScrollPreservation, editingState]);
 
   // Create a static color swatch for drag operations
   const StaticColorSwatch = ({ label, color }: { label: string, color: string }) => (
@@ -455,11 +509,6 @@ function PropertyPanel({
       scrollContainerRef.current.scrollTop = scrollPositionRef.current;
     }
   });
-
-  // Simple update - just call onUpdateComponent
-  const updateComponentWithScrollPreservation = useCallback((id: string, updates: Partial<ComponentConfig>) => {
-    onUpdateComponent(id, updates);
-  }, [onUpdateComponent]);
 
   // Generic prop update functions
   const updateProp = useCallback((propName: string, value: any) => {
@@ -1304,6 +1353,62 @@ function PropertyPanel({
               </div>
             </div>
           </GameDataSection>
+
+          {/* Football */}
+          <GameDataSection title="Football">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Down" path="down" type="number" min={1} max={4} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Yards to Go" path="yardsToGo" type="number" min={0} />
+              </div>
+            </div>
+            <GameDataInput label="Ball On" path="ballOn" type="number" min={0} max={50} />
+          </GameDataSection>
+
+          {/* Baseball */}
+          <GameDataSection title="Baseball">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Balls" path="balls" type="number" min={0} max={3} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Strikes" path="strikes" type="number" min={0} max={2} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Outs" path="outs" type="number" min={0} max={2} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Hits" path="homeTeam.hits" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Hits" path="awayTeam.hits" type="number" min={0} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Errors" path="homeTeam.errors" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Errors" path="awayTeam.errors" type="number" min={0} />
+              </div>
+            </div>
+          </GameDataSection>
+
+          {/* Soccer */}
+          <GameDataSection title="Soccer">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Corners" path="homeTeam.cornerKicks" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Corners" path="awayTeam.cornerKicks" type="number" min={0} />
+              </div>
+            </div>
+          </GameDataSection>
         </div>
       </div>
     );
@@ -1463,8 +1568,52 @@ function PropertyPanel({
               {component.props?.toggleState ? 'ON' : 'OFF'}
             </button>
           </div>
-          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-            Set a boolean data path (e.g. isOvertimeActive) to auto-toggle
+          <div style={{ marginTop: '8px' }}>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#aaa' }}>
+              Toggle Data Path
+            </label>
+            <select
+              value={component.props?.toggleDataPath || ''}
+              onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                props: {
+                  ...component.props,
+                  toggleDataPath: e.target.value || undefined
+                }
+              })}
+              style={{
+                width: '100%',
+                padding: '6px',
+                backgroundColor: '#333',
+                color: 'white',
+                border: '1px solid #555',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="">Use Display Data Path</option>
+              <optgroup label="Game State">
+                <option value="isOvertimeActive">Overtime Active</option>
+              </optgroup>
+              <optgroup label="Home Team">
+                <option value="homeTeam.bonus">Home Bonus</option>
+                <option value="homeTeam.doubleBonus">Home Double Bonus</option>
+                <option value="homeTeam.possession">Home Possession</option>
+              </optgroup>
+              <optgroup label="Away Team">
+                <option value="awayTeam.bonus">Away Bonus</option>
+                <option value="awayTeam.doubleBonus">Away Double Bonus</option>
+                <option value="awayTeam.possession">Away Possession</option>
+              </optgroup>
+              <optgroup label="Home Penalty Slots">
+                <option value="penaltySlots.home.slot0.active">Home Penalty 1 Active</option>
+                <option value="penaltySlots.home.slot1.active">Home Penalty 2 Active</option>
+                <option value="penaltySlots.home.slot2.active">Home Penalty 3 Active</option>
+              </optgroup>
+              <optgroup label="Away Penalty Slots">
+                <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
+                <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
+                <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
+              </optgroup>
+            </select>
           </div>
         </div>
       )}
@@ -1788,6 +1937,7 @@ function PropertyPanel({
           <div className="property-field">
             <label>Font Size</label>
             <input
+              key={`fontSize-${editingState}-${component?.id}`}
               type="number"
               defaultValue={getStateValue('fontSize', 24)}
               onChange={(e) => handleStatePropsChange('fontSize', e.target.value)}
@@ -1828,6 +1978,7 @@ function PropertyPanel({
             <div className="property-field">
               <label>Preview Text (test how text will fit)</label>
               <input
+                key={`previewText-${editingState}-${component?.id}`}
                 type="text"
                 defaultValue={getStateValue('previewText', '')}
                 placeholder="e.g., Jordan's Jaguars"
@@ -1887,6 +2038,7 @@ function PropertyPanel({
           ) : (
             <div className="property-field">
               <ColorPicker
+                key={`textColor-${editingState}-${component?.id}`}
                 label="Text Color"
                 value={getStateValue('textColor', '#ffffff')}
                 onChange={(color) => updateStateProps('textColor', color)}
@@ -1910,6 +2062,7 @@ function PropertyPanel({
             <div className="property-field">
               <label>Label</label>
               <input
+                key={`label-${editingState}-${component?.id}`}
                 type="text"
                 defaultValue={getStateValue('label', '')}
                 onChange={(e) => handleStatePropsChange('label', e.target.value)}
@@ -1923,6 +2076,7 @@ function PropertyPanel({
               <div className="property-field">
                 <label>Custom Text</label>
                 <input
+                  key={`customText-${editingState}-${component?.id}`}
                   type="text"
                   defaultValue={getStateValue('customText', '')}
                   placeholder="Static text (overrides data path)"
@@ -1934,6 +2088,7 @@ function PropertyPanel({
                 <div className="property-field">
                   <label>Prefix</label>
                   <input
+                    key={`prefix-${editingState}-${component?.id}`}
                     type="text"
                     defaultValue={getStateValue('prefix', '')}
                     placeholder="e.g., '$', '#'"
@@ -1944,6 +2099,7 @@ function PropertyPanel({
                 <div className="property-field">
                   <label>Suffix</label>
                   <input
+                    key={`suffix-${editingState}-${component?.id}`}
                     type="text"
                     defaultValue={getStateValue('suffix', '')}
                     placeholder="e.g., 'pts', '%'"
@@ -2035,6 +2191,9 @@ function PropertyPanel({
                     <option value="homeTeam.bonus">Home Bonus</option>
                     <option value="homeTeam.doubleBonus">Home Double Bonus</option>
                     <option value="homeTeam.possession">Home Possession</option>
+                    <option value="homeTeam.hits">Home Hits (Baseball)</option>
+                    <option value="homeTeam.errors">Home Errors (Baseball)</option>
+                    <option value="homeTeam.cornerKicks">Home Corner Kicks (Soccer)</option>
                   </optgroup>
                   <optgroup label="Away Team">
                     <option value="awayTeam.name">Away Team Name</option>
@@ -2044,6 +2203,19 @@ function PropertyPanel({
                     <option value="awayTeam.bonus">Away Bonus</option>
                     <option value="awayTeam.doubleBonus">Away Double Bonus</option>
                     <option value="awayTeam.possession">Away Possession</option>
+                    <option value="awayTeam.hits">Away Hits (Baseball)</option>
+                    <option value="awayTeam.errors">Away Errors (Baseball)</option>
+                    <option value="awayTeam.cornerKicks">Away Corner Kicks (Soccer)</option>
+                  </optgroup>
+                  <optgroup label="Football">
+                    <option value="down">Down</option>
+                    <option value="yardsToGo">Yards to Go</option>
+                    <option value="ballOn">Ball On (Line of Scrimmage)</option>
+                  </optgroup>
+                  <optgroup label="Baseball">
+                    <option value="balls">Balls</option>
+                    <option value="strikes">Strikes</option>
+                    <option value="outs">Outs</option>
                   </optgroup>
                   <optgroup label="Wrestling">
                     <option value="home_player_points">Home Player Score</option>
@@ -2294,7 +2466,7 @@ function PropertyPanel({
                 <label>Image URL</label>
                 <input
                   type="url"
-                  key={`${component?.id}-imageUrl`}
+                  key={`imageUrl-${editingState}-${component?.id}`}
                   defaultValue={getStateValue('imageUrl', '')}
                   placeholder="Leave empty for local image"
                   onChange={(e) => handleStatePropsChange('imageUrl', e.target.value)}
@@ -2512,6 +2684,7 @@ function PropertyPanel({
                 <div className="property-field">
                   <label>Border Width (px)</label>
                   <input
+                    key={`borderWidth-${editingState}-${component?.id}`}
                     type="number"
                     min="0"
                     max="20"
@@ -2528,6 +2701,7 @@ function PropertyPanel({
                 ) : (
                   <div className="property-field">
                     <ColorPicker
+                      key={`borderColor-${editingState}-${component?.id}`}
                       label="Border Color"
                       value={getStateValue('borderColor', '#ffffff')}
                       onChange={(color) => updateStateProps('borderColor', color)}
@@ -2613,6 +2787,7 @@ function PropertyPanel({
                       -10
                     </button>
                     <input
+                      key={`paddingTop-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('paddingTop', 0)}
                       min="0"
@@ -2638,6 +2813,7 @@ function PropertyPanel({
                       -10
                     </button>
                     <input
+                      key={`paddingRight-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('paddingRight', 0)}
                       min="0"
@@ -2663,6 +2839,7 @@ function PropertyPanel({
                       -10
                     </button>
                     <input
+                      key={`paddingBottom-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('paddingBottom', 0)}
                       min="0"
@@ -2688,6 +2865,7 @@ function PropertyPanel({
                       -10
                     </button>
                     <input
+                      key={`paddingLeft-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('paddingLeft', 0)}
                       min="0"
@@ -2720,6 +2898,7 @@ function PropertyPanel({
                       -5
                     </button>
                     <input
+                      key={`borderTopLeftRadius-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('borderTopLeftRadius', 0)}
                       min="0"
@@ -2752,6 +2931,7 @@ function PropertyPanel({
                       -5
                     </button>
                     <input
+                      key={`borderTopRightRadius-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('borderTopRightRadius', 0)}
                       min="0"
@@ -2784,6 +2964,7 @@ function PropertyPanel({
                       -5
                     </button>
                     <input
+                      key={`borderBottomLeftRadius-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('borderBottomLeftRadius', 0)}
                       min="0"
@@ -2816,6 +2997,7 @@ function PropertyPanel({
                       -5
                     </button>
                     <input
+                      key={`borderBottomRightRadius-${editingState}-${component?.id}`}
                       type="number"
                       defaultValue={getStateValue('borderBottomRightRadius', 0)}
                       min="0"

@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-03-02T15:40:42.995Z
+// Generated: 2026-03-04T18:53:41.607Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Basketball","Football","Generic","Lacrosse-Hockey-Waterpolo","Sequence","Soccer","Universal","Volleyball","Wrestling","mocks","test_leaderboard"] as const;
+export const AVAILABLE_SPORTS = ["Baseball","Basketball","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling","mocks","test_leaderboard"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -16,6 +16,11 @@ export interface SportImageData {
 
 // Complete sport data with subsections
 export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
+  "Baseball": {
+    rootImages: ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3-filled.png","baseball-bases-3.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
   "Basketball": {
     rootImages: ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png"],
     subsections: {},
@@ -36,6 +41,16 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  "Leaderboard": {
+    rootImages: [],
+    subsections: {"Basketball":["leaderboard-basketball-base.png","leaderboard-basketball-stats-row-left.png","leaderboard-basketball-stats-row-right.png"]},
+    hasSubsections: true,
+  },
+  "Rugby": {
+    rootImages: ["rugby-base.png","rugby-overtime-overlay.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
   "Sequence": {
     rootImages: ["banner-mockup.png","block-mockup.png","cinema-mockup.png","double-block-mockup.png","panel-mockup.png","scorebug-framed-mockup.png","scorebug-mockup.png","sequence-scorebug-frames.png"],
     subsections: {},
@@ -43,6 +58,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
   },
   "Soccer": {
     rootImages: ["soccer-base.png","soccer-clock-bg-paused.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
+  "Tennis": {
+    rootImages: ["tennis-base.png"],
     subsections: {},
     hasSubsections: false,
   },
@@ -75,12 +95,16 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
 
 // Legacy flat manifest (root images only, for backwards compatibility)
 export const KNOWN_IMAGES: Record<Sport, string[]> = {
+  "Baseball": ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3-filled.png","baseball-bases-3.png"],
   "Basketball": ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png"],
   "Football": ["football-base.png","football-clock-bg-paused.png","football-clock-bg.png","football-overtime-overlay.png"],
   "Generic": [],
   "Lacrosse-Hockey-Waterpolo": ["lacrosse_hockey_waterpolo-base.png","lacrosse_hockey_waterpolo-left-penalty_1.png","lacrosse_hockey_waterpolo-left-penalty_2.png","lacrosse_hockey_waterpolo-left-penalty_3.png","lacrosse_hockey_waterpolo-overtime-overlay.png","lacrosse_hockey_waterpolo-right-penalty_1.png","lacrosse_hockey_waterpolo-right-penalty_2.png","lacrosse_hockey_waterpolo-right-penalty_3.png"],
+  "Leaderboard": [],
+  "Rugby": ["rugby-base.png","rugby-overtime-overlay.png"],
   "Sequence": ["banner-mockup.png","block-mockup.png","cinema-mockup.png","double-block-mockup.png","panel-mockup.png","scorebug-framed-mockup.png","scorebug-mockup.png","sequence-scorebug-frames.png"],
   "Soccer": ["soccer-base.png","soccer-clock-bg-paused.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],
+  "Tennis": ["tennis-base.png"],
   "Universal": ["universal-base.png","universal-clock-bg-paused.png","universal-clock-bg.png","universal-no_clock-bg.png"],
   "Volleyball": ["volleyball-base.png","volleyball-posession-left.png","volleyball-posession-right.png"],
   "Wrestling": ["wrestling-base.png","wrestling-clock-bg-paused.png","wrestling-clock-bg.png","wrestling-no_clock-bg.png"],

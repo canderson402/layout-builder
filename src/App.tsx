@@ -93,7 +93,10 @@ function App() {
       bonus: true,
       doubleBonus: false,
       possession: false,
-      color: '#c41e3a'
+      color: '#c41e3a',
+      hits: 0,        // Baseball
+      errors: 0,      // Baseball
+      cornerKicks: 0  // Soccer
     },
     awayTeam: {
       name: 'AWAY',
@@ -103,7 +106,10 @@ function App() {
       bonus: false,
       doubleBonus: true,
       possession: true,
-      color: '#003f7f'
+      color: '#003f7f',
+      hits: 0,        // Baseball
+      errors: 0,      // Baseball
+      cornerKicks: 0  // Soccer
     },
     gameClock: '5:42',
     activityClock: '1:30',
@@ -117,6 +123,14 @@ function App() {
     half: 2,
     set: 3,
     isOvertimeActive: true,  // Boolean for visibility toggling when in overtime
+    // Football
+    down: 1,
+    yardsToGo: 10,
+    ballOn: 35,
+    // Baseball
+    balls: 0,
+    strikes: 0,
+    outs: 0,
     home_sets_won: 0,
     away_sets_won: 0,
     home_player_points: 0,

@@ -195,6 +195,7 @@ interface CustomDataDisplayProps {
   state1Props?: any;
   state2Props?: any;
   autoToggle?: boolean; // Whether to automatically use boolean data values for toggle state
+  toggleDataPath?: string; // Separate path for controlling toggle state (e.g., isOvertimeActive) - if set, used instead of dataPath for toggle
   visibilityPath?: string; // Separate path for controlling visibility (e.g., penaltySlots.home.slot0.active)
   isVisible?: boolean; // Pre-computed visibility from WebPreview (for smooth opacity transitions)
   fontFamily?: string; // Font family for text display
@@ -215,8 +216,11 @@ const mockData = {
     timeouts: 3,
     bonus: true,
     doubleBonus: false,
-    possession: false, // Changed to false for testing
-    color: '#c41e3a'
+    possession: false,
+    color: '#c41e3a',
+    hits: 0,        // Baseball
+    errors: 0,      // Baseball
+    cornerKicks: 0  // Soccer
   },
   awayTeam: {
     name: 'AWAY',
@@ -225,8 +229,11 @@ const mockData = {
     timeouts: 2,
     bonus: false,
     doubleBonus: true,
-    possession: true, // Changed to true for testing
-    color: '#003f7f'
+    possession: true,
+    color: '#003f7f',
+    hits: 0,        // Baseball
+    errors: 0,      // Baseball
+    cornerKicks: 0  // Soccer
   },
   gameClock: '5:42',
   activityClock: '1:30',
@@ -242,6 +249,14 @@ const mockData = {
   half: 2,
   set: 3,
   isOvertimeActive: true,  // Boolean - true when game is in overtime
+  // Football
+  down: 1,
+  yardsToGo: 10,
+  ballOn: 35,
+  // Baseball
+  balls: 0,
+  strikes: 0,
+  outs: 0,
   home_sets_won: 0,
   away_sets_won: 0,
   home_player_points: 0,
@@ -317,6 +332,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     state1Props = {},
     state2Props = {},
     autoToggle = false,
+    toggleDataPath,
     visibilityPath,
     isVisible: isVisibleProp,
     useTeamColor = false,
@@ -326,7 +342,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     multiStateEnabled = false,
     statePath,
     stateImages,
-    autoContrastText = true,
+    autoContrastText = false,
     ...defaultProps
   } = props;
 
@@ -413,16 +429,27 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return true;
   })();
 
-  // Compute effective toggle state - automatically follow boolean data path values
+  // Compute effective toggle state - use toggleDataPath if set, otherwise fall back to dataPath for booleans
   const effectiveToggleState = (() => {
     if (!canToggle) return false;
-    // Auto-toggle: if dataPath points to a boolean, use that value
+
+    // If toggleDataPath is set, use it for toggle state (must be boolean)
+    if (toggleDataPath) {
+      const rawValue = getNestedData(effectiveGameData, toggleDataPath);
+      if (typeof rawValue === 'boolean') {
+        return rawValue;
+      }
+    }
+
+    // Fallback: if dataPath points to a boolean, use that value (legacy behavior)
     if (dataPath) {
       const rawValue = getNestedData(effectiveGameData, dataPath);
       if (typeof rawValue === 'boolean') {
         return rawValue;
       }
     }
+
+    // Manual toggle state as final fallback
     return toggleState;
   })();
 
@@ -570,8 +597,17 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   }
 
   // Determine text color - use auto contrast if enabled, otherwise use configured color
+  // For toggle components with explicit state props, respect the textColor setting
+  const hasExplicitStateTextColor = canToggle && (
+    (effectiveToggleState && state2Props?.textColor) ||
+    (!effectiveToggleState && state1Props?.textColor)
+  );
+
   let effectiveTextColor: string;
-  if (autoContrastText && contrastSourceColor && contrastSourceColor !== 'transparent') {
+  if (hasExplicitStateTextColor) {
+    // Use the explicit textColor from state props for toggle components
+    effectiveTextColor = textColor;
+  } else if (autoContrastText && contrastSourceColor && contrastSourceColor !== 'transparent') {
     effectiveTextColor = getContrastTextColor(contrastSourceColor);
   } else if (teamColorForBackground) {
     effectiveTextColor = '#ffffff';
