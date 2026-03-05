@@ -608,10 +608,12 @@ function PropertyPanel({
     if (component.props?.canToggle) {
       const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
       const stateProps = component.props[stateKey] || {};
-      return stateProps[field] !== undefined ? stateProps[field] : (component.props[field] || defaultValue);
+      if (stateProps[field] !== undefined) return stateProps[field];
+      if (component.props[field] !== undefined) return component.props[field];
+      return defaultValue;
     }
 
-    return component.props[field] || defaultValue;
+    return component.props[field] !== undefined ? component.props[field] : defaultValue;
   }, [component, editingState]);
 
   // Handler for image selection - sets native resolution and centers on canvas
@@ -2274,6 +2276,13 @@ function PropertyPanel({
                   <optgroup label="Sponsorship">
                     <option value="user_sequences.banner">Banner Ads</option>
                     <option value="user_sequences.timeout">Timeout Ads</option>
+                    <option value="user_sequences.halftime">Halftime Ads</option>
+                    <option value="user_sequences.period-break">Period Break Ads</option>
+                    <option value="user_sequences.pre-game">Pre-Game Ads</option>
+                    <option value="user_sequences.standby">Standby Ads</option>
+                    <option value="user_sequences.general">General Ads</option>
+                    <option value="user_sequences.wrapper-16x9">Wrapper 16x9</option>
+                    <option value="user_sequences.wrapper-4x3">Wrapper 4x3</option>
                   </optgroup>
                 </select>
               </div>
