@@ -188,7 +188,7 @@ function PropertyPanel({
       if (!template) return;
 
       const slotCount = comp.props?.slotCount || 5;
-      const slotSpacing = comp.props?.slotSpacing || 5;
+      const slotSpacing = comp.props?.slotSpacing ?? 5;
       const direction = comp.props?.direction || 'vertical';
 
       const naturalWidth = direction === 'horizontal'
@@ -3350,9 +3350,12 @@ function PropertyPanel({
                   type="number"
                   min="0"
                   max="32"
-                  defaultValue={component.props?.slotSpacing || 5}
+                  defaultValue={component.props?.slotSpacing ?? 5}
                   onChange={(e) => handleNumberChange('slotSpacing', e.target.value)}
-                  onBlur={(e) => updateProp('slotSpacing', parseInt(e.target.value) || 8)}
+                  onBlur={(e) => {
+                    const parsed = parseInt(e.target.value);
+                    updateProp('slotSpacing', isNaN(parsed) ? 5 : parsed);
+                  }}
                 />
               </div>
 
@@ -3453,7 +3456,7 @@ function PropertyPanel({
                       component.id,
                       newTemplateId,
                       component.props?.slotCount || 5,
-                      component.props?.slotSpacing || 5,
+                      component.props?.slotSpacing ?? 5,
                       component.props?.direction || 'vertical'
                     );
                   }}
@@ -3513,7 +3516,7 @@ function PropertyPanel({
                       component.id,
                       component.props?.templateId,
                       newSlotCount,
-                      component.props?.slotSpacing || 5,
+                      component.props?.slotSpacing ?? 5,
                       component.props?.direction || 'vertical'
                     );
                   }}
@@ -3526,9 +3529,10 @@ function PropertyPanel({
                   type="number"
                   min="0"
                   max="50"
-                  value={component.props?.slotSpacing || 5}
+                  value={component.props?.slotSpacing ?? 5}
                   onCommit={(val) => {
-                    const newSpacing = parseInt(val) || 5;
+                    const parsed = parseInt(val);
+                    const newSpacing = isNaN(parsed) ? 5 : parsed;
                     updateComponentWithScrollPreservation(component.id, {
                       props: { ...component.props, slotSpacing: newSpacing }
                     });
@@ -3556,7 +3560,7 @@ function PropertyPanel({
                       component.id,
                       component.props?.templateId,
                       component.props?.slotCount || 5,
-                      component.props?.slotSpacing || 5,
+                      component.props?.slotSpacing ?? 5,
                       newDirection
                     );
                   }}

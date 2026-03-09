@@ -135,7 +135,7 @@ export function expandSlotList(
   const props = slotListComponent.props || {};
   const team = props.team || 'home';
   const slotCount = props.slotCount || 5;
-  const slotSpacing = props.slotSpacing || 5;
+  const slotSpacing = props.slotSpacing ?? 5;
   const direction = props.direction || 'vertical';
   const dataPathPrefix = props.dataPathPrefix || 'leaderboardSlots';
   const hideInactiveSlots = props.hideInactiveSlots || false;

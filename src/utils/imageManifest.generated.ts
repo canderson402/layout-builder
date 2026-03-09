@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-03-04T18:53:41.607Z
+// Generated: 2026-03-06T21:51:10.349Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Baseball","Basketball","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Rugby","Sequence","Soccer","Tennis","Universal","Volleyball","Wrestling","mocks","test_leaderboard"] as const;
+export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -26,6 +26,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  "Fallback": {
+    rootImages: ["cinema-placeholder.png","pano-placeholder.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
   "Football": {
     rootImages: ["football-base.png","football-clock-bg-paused.png","football-clock-bg.png","football-overtime-overlay.png"],
     subsections: {},
@@ -43,7 +48,12 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
   },
   "Leaderboard": {
     rootImages: [],
-    subsections: {"Basketball":["leaderboard-basketball-base.png","leaderboard-basketball-stats-row-left.png","leaderboard-basketball-stats-row-right.png"]},
+    subsections: {"Basketball":["basketball-leaderboard-base.png","basketball-leaderboard-clock-bg.png","basketball-leaderboard-leader-left-overlay.png","basketball-leaderboard-leader-right-overlay.png","leaderboard-basketball-base.png","leaderboard-basketball-stat-row-left.png","leaderboard-basketball-stat-row-right.png"]},
+    hasSubsections: true,
+  },
+  "Mocks": {
+    rootImages: [],
+    subsections: {"baseball":["lineup/overlay.png","lineup/realistic.png","lineup/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"basketball":["lb/overlay.png","lb/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","sb+lb/overlay.png","sb+lb/realistic.png","sb+lb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png"],"equestrian":["player_card/overlay.png","player_card/realistic.png","player_card/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png"],"football":["sb/overlay.png","sb/realistic.png","sb/stylized.png","stadium/overlay.png","stadium/realistic.png","stadium/stylized.png"],"general":["countdown_indoor/overlay.png","countdown_indoor/realistic.png","countdown_indoor/stylized.png","countdown_outdoor/overlay.png","countdown_outdoor/realistic.png","countdown_outdoor/stylized.png"],"hockey":["sb/overlay.png","sb/realistic.png","sb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"universal":["sb/overlay.png","sb/realistic.png","sb/stylized.png"],"volleyball":["lb/overlay.png","lb/realistic.png","lb/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","sb+lb/overlay.png","sb+lb/realistic.png","sb+lb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"water_polo":["sb+sc/overlay.png","sb+sc/realistic.png","sb+sc/stylized.png"],"wrestling":["sb/overlay.png","sb/realistic.png","sb/stylized.png"]},
     hasSubsections: true,
   },
   "Rugby": {
@@ -71,6 +81,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  "Utility": {
+    rootImages: ["break-base.png","halftime-base.png","pregame-base.png","timeout-base.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
   "Volleyball": {
     rootImages: ["volleyball-base.png","volleyball-posession-left.png","volleyball-posession-right.png"],
     subsections: {},
@@ -81,35 +96,26 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
-  "mocks": {
-    rootImages: [],
-    subsections: {"baseball":["lineup/overlay.png","lineup/realistic.png","lineup/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"basketball":["lb/overlay.png","lb/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","sb+lb/overlay.png","sb+lb/realistic.png","sb+lb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png"],"equestrian":["player_card/overlay.png","player_card/realistic.png","player_card/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png"],"football":["sb/overlay.png","sb/realistic.png","sb/stylized.png","stadium/overlay.png","stadium/realistic.png","stadium/stylized.png"],"general":["countdown_indoor/overlay.png","countdown_indoor/realistic.png","countdown_indoor/stylized.png","countdown_outdoor/overlay.png","countdown_outdoor/realistic.png","countdown_outdoor/stylized.png"],"hockey":["sb/overlay.png","sb/realistic.png","sb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"universal":["sb/overlay.png","sb/realistic.png","sb/stylized.png"],"volleyball":["lb/overlay.png","lb/realistic.png","lb/stylized.png","sb/overlay.png","sb/realistic.png","sb/stylized.png","sb+lb/overlay.png","sb+lb/realistic.png","sb+lb/stylized.png","scorebug/overlay.png","scorebug/realistic.png","scorebug/stylized.png","vb/overlay.png","vb/realistic.png","vb/stylized.png"],"water_polo":["sb+sc/overlay.png","sb+sc/realistic.png","sb+sc/stylized.png"],"wrestling":["sb/overlay.png","sb/realistic.png","sb/stylized.png"]},
-    hasSubsections: true,
-  },
-  "test_leaderboard": {
-    rootImages: ["lb_arrow_border.png","lb_arrow_border_away.png","lb_arrow_border_home.png","lb_arrow_fill.png","lb_arrow_fill_away.png","lb_arrow_fill_home.png","lb_bb_away_highlight_border.png","lb_bb_away_slot.png","lb_bb_home_highlight_border.png","lb_bb_home_slot.png"],
-    subsections: {},
-    hasSubsections: false,
-  },
 };
 
 // Legacy flat manifest (root images only, for backwards compatibility)
 export const KNOWN_IMAGES: Record<Sport, string[]> = {
   "Baseball": ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3-filled.png","baseball-bases-3.png"],
   "Basketball": ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png"],
+  "Fallback": ["cinema-placeholder.png","pano-placeholder.png"],
   "Football": ["football-base.png","football-clock-bg-paused.png","football-clock-bg.png","football-overtime-overlay.png"],
   "Generic": [],
   "Lacrosse-Hockey-Waterpolo": ["lacrosse_hockey_waterpolo-base.png","lacrosse_hockey_waterpolo-left-penalty_1.png","lacrosse_hockey_waterpolo-left-penalty_2.png","lacrosse_hockey_waterpolo-left-penalty_3.png","lacrosse_hockey_waterpolo-overtime-overlay.png","lacrosse_hockey_waterpolo-right-penalty_1.png","lacrosse_hockey_waterpolo-right-penalty_2.png","lacrosse_hockey_waterpolo-right-penalty_3.png"],
   "Leaderboard": [],
+  "Mocks": [],
   "Rugby": ["rugby-base.png","rugby-overtime-overlay.png"],
   "Sequence": ["banner-mockup.png","block-mockup.png","cinema-mockup.png","double-block-mockup.png","panel-mockup.png","scorebug-framed-mockup.png","scorebug-mockup.png","sequence-scorebug-frames.png"],
   "Soccer": ["soccer-base.png","soccer-clock-bg-paused.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],
   "Tennis": ["tennis-base.png"],
   "Universal": ["universal-base.png","universal-clock-bg-paused.png","universal-clock-bg.png","universal-no_clock-bg.png"],
+  "Utility": ["break-base.png","halftime-base.png","pregame-base.png","timeout-base.png"],
   "Volleyball": ["volleyball-base.png","volleyball-posession-left.png","volleyball-posession-right.png"],
   "Wrestling": ["wrestling-base.png","wrestling-clock-bg-paused.png","wrestling-clock-bg.png","wrestling-no_clock-bg.png"],
-  "mocks": [],
-  "test_leaderboard": ["lb_arrow_border.png","lb_arrow_border_away.png","lb_arrow_border_home.png","lb_arrow_fill.png","lb_arrow_fill_away.png","lb_arrow_fill_home.png","lb_bb_away_highlight_border.png","lb_bb_away_slot.png","lb_bb_home_highlight_border.png","lb_bb_home_slot.png"],
 };
 
 /**

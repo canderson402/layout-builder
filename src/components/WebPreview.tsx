@@ -686,7 +686,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             team={team || 'home'}
             maxVisible={props.maxVisible || 5}
             slotHeight={props.slotHeight || 60}
-            slotSpacing={props.slotSpacing || 5}
+            slotSpacing={props.slotSpacing ?? 5}
             highlightColor={props.highlightColor || '#FFD700'}
             textColor={props.textColor || '#ffffff'}
             fontSize={props.fontSize || 24}
@@ -710,7 +710,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         // Render the actual template components for preview
         const template = props.templateId ? getTemplate(props.templateId) : null;
         const slotCount = props.slotCount || 5;
-        const slotSpacing = props.slotSpacing || 5;
+        const slotSpacing = props.slotSpacing ?? 5;
         const direction = props.direction || 'vertical';
         const teamLabel = props.team || 'home';
         const prefix = props.dataPathPrefix || 'leaderboardSlots';
