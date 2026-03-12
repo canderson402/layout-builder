@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-03-09T18:44:10.185Z
+// Generated: 2026-03-11T22:23:55.864Z
 
 // Available sports (auto-detected from folder structure)
 export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling"] as const;
@@ -17,7 +17,7 @@ export interface SportImageData {
 // Complete sport data with subsections
 export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
   "Baseball": {
-    rootImages: ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3-filled.png","baseball-bases-3.png"],
+    rootImages: ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3 filled.png","baseball-bases-3.png"],
     subsections: {},
     hasSubsections: false,
   },
@@ -100,7 +100,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
 
 // Legacy flat manifest (root images only, for backwards compatibility)
 export const KNOWN_IMAGES: Record<Sport, string[]> = {
-  "Baseball": ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3-filled.png","baseball-bases-3.png"],
+  "Baseball": ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3 filled.png","baseball-bases-3.png"],
   "Basketball": ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png"],
   "Fallback": ["cinema-placeholder.png","pano-placeholder.png"],
   "Football": ["football-base.png","football-clock-bg-paused.png","football-clock-bg.png","football-overtime-overlay.png"],

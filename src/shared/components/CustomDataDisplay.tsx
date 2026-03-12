@@ -238,12 +238,14 @@ const mockData = {
   gameClock: '5:42',
   activityClock: '1:30',
   timeoutClock: '0:30',
+  timeOfDay: '2:45',
   preGameClock: '15:00',
   halftimeClock: '10:00',
+  periodBreakClock: '5:00',
   timerName: 'Timer Name',
   sessionName: 'Session Name',
   nextUp: 'Next Up',
-  period: '4',  // Can be number or text like 'OT', 'SD', '2OT'
+  period: '3',
   shotClock: 14,
   quarter: 4,
   half: 2,
@@ -257,6 +259,34 @@ const mockData = {
   balls: 0,
   strikes: 0,
   outs: 0,
+  firstBase: false,
+  secondBase: false,
+  thirdBase: false,
+  onBase: '000',
+  // Period/Inning scores (raw data)
+  gamePeriodScores: [
+    { period: 1, homeScore: 0, awayScore: 0 },
+    { period: 2, homeScore: 0, awayScore: 0 },
+    { period: 3, homeScore: 0, awayScore: 0 },
+    { period: 4, homeScore: 0, awayScore: 0 },
+    { period: 5, homeScore: 0, awayScore: 0 },
+    { period: 6, homeScore: 0, awayScore: 0 },
+    { period: 7, homeScore: 0, awayScore: 0 },
+    { period: 8, homeScore: 0, awayScore: 0 },
+    { period: 9, homeScore: 0, awayScore: 0 },
+  ],
+  inningSlots: [
+    { period: 1, homeScore: 2, awayScore: 1, isCurrentInning: false, isTopHalf: false },
+    { period: 2, homeScore: 0, awayScore: 3, isCurrentInning: false, isTopHalf: false },
+    { period: 3, homeScore: 0, awayScore: 0, isCurrentInning: true, isTopHalf: true },
+    { period: 4, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
+    { period: 5, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
+    { period: 6, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
+    { period: 7, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
+    { period: 8, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
+    { period: 9, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
+  ],
+  inningDisplayCount: 9,
   home_sets_won: 0,
   away_sets_won: 0,
   home_player_points: 0,
@@ -353,6 +383,33 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   // Image retry state for handling intermittent load failures
   const [imageRetryCount, setImageRetryCount] = useState(0);
   const maxImageRetries = 3;
+
+  const isTimeOfDay = dataPath === 'timeOfDay';
+  const [currentTimeOfDay, setCurrentTimeOfDay] = useState<string>(() => {
+    if (!isTimeOfDay) return '';
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')}`;
+  });
+
+  useEffect(() => {
+    if (!isTimeOfDay) return;
+
+    const updateTime = () => {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const displayHours = hours % 12 || 12;
+      setCurrentTimeOfDay(`${displayHours}:${minutes.toString().padStart(2, '0')}`);
+    };
+
+    updateTime(); // Update immediately
+    const interval = setInterval(updateTime, 1000); // Update every second to catch minute changes
+
+    return () => clearInterval(interval);
+  }, [isTimeOfDay]);
 
   // Reset retry count when image path changes
   useEffect(() => {
@@ -656,13 +713,15 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   const formattedValue = formatValue(rawValue);
   // Don't show text for boolean toggles, just show the visual state
-  // Priority: customText > previewText > dataPath value
+  // Priority: customText > previewText > timeOfDay > dataPath value
   const customText = activeProps.customText;
   const previewText = activeProps.previewText;
   const displayText = customText
     ? `${prefix}${customText}${suffix}`
     : previewText
     ? `${prefix}${previewText}${suffix}`
+    : isTimeOfDay
+    ? `${prefix}${currentTimeOfDay}${suffix}`
     : ((!dataPath || dataPath.trim() === '' || dataPath === 'none' || isBooleanToggle) ? '' : `${prefix}${formattedValue}${suffix}`);
 
   // Convert textAlign to flexbox alignment

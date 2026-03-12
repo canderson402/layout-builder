@@ -1615,6 +1615,11 @@ function PropertyPanel({
                 <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
                 <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
               </optgroup>
+              <optgroup label="Baseball Diamond">
+                <option value="firstBase">First Base Occupied</option>
+                <option value="secondBase">Second Base Occupied</option>
+                <option value="thirdBase">Third Base Occupied</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -2175,6 +2180,8 @@ function PropertyPanel({
                     <option value="activityClock">Activity Clock</option>
                     <option value="preGameClock">Pre-Game Clock</option>
                     <option value="halftimeClock">Halftime Clock</option>
+                    <option value="periodBreakClock">Period Break Clock</option>
+                    <option value="timeOfDay">Time of Day (Local Clock)</option>
                     <option value="period">Period/Quarter</option>
                     <option value="isOvertimeActive">Overtime Active (boolean)</option>
                     <option value="home_sets_won">Home Sets Won</option>
@@ -2218,6 +2225,43 @@ function PropertyPanel({
                     <option value="balls">Balls</option>
                     <option value="strikes">Strikes</option>
                     <option value="outs">Outs</option>
+                    <option value="firstBase">First Base</option>
+                    <option value="secondBase">Second Base</option>
+                    <option value="thirdBase">Third Base</option>
+                    <option value="onBase">On Base (String)</option>
+                  </optgroup>
+                  <optgroup label="Inning Slots (Home) - Auto-shifts for extra innings">
+                    <option value="inningSlots.0.homeScore">Slot 1 Home Score</option>
+                    <option value="inningSlots.1.homeScore">Slot 2 Home Score</option>
+                    <option value="inningSlots.2.homeScore">Slot 3 Home Score</option>
+                    <option value="inningSlots.3.homeScore">Slot 4 Home Score</option>
+                    <option value="inningSlots.4.homeScore">Slot 5 Home Score</option>
+                    <option value="inningSlots.5.homeScore">Slot 6 Home Score</option>
+                    <option value="inningSlots.6.homeScore">Slot 7 Home Score</option>
+                    <option value="inningSlots.7.homeScore">Slot 8 Home Score</option>
+                    <option value="inningSlots.8.homeScore">Slot 9 Home Score</option>
+                  </optgroup>
+                  <optgroup label="Inning Slots (Away) - Auto-shifts for extra innings">
+                    <option value="inningSlots.0.awayScore">Slot 1 Away Score</option>
+                    <option value="inningSlots.1.awayScore">Slot 2 Away Score</option>
+                    <option value="inningSlots.2.awayScore">Slot 3 Away Score</option>
+                    <option value="inningSlots.3.awayScore">Slot 4 Away Score</option>
+                    <option value="inningSlots.4.awayScore">Slot 5 Away Score</option>
+                    <option value="inningSlots.5.awayScore">Slot 6 Away Score</option>
+                    <option value="inningSlots.6.awayScore">Slot 7 Away Score</option>
+                    <option value="inningSlots.7.awayScore">Slot 8 Away Score</option>
+                    <option value="inningSlots.8.awayScore">Slot 9 Away Score</option>
+                  </optgroup>
+                  <optgroup label="Inning Slot Numbers - Auto-shifts for extra innings">
+                    <option value="inningSlots.0.period">Slot 1 Inning #</option>
+                    <option value="inningSlots.1.period">Slot 2 Inning #</option>
+                    <option value="inningSlots.2.period">Slot 3 Inning #</option>
+                    <option value="inningSlots.3.period">Slot 4 Inning #</option>
+                    <option value="inningSlots.4.period">Slot 5 Inning #</option>
+                    <option value="inningSlots.5.period">Slot 6 Inning #</option>
+                    <option value="inningSlots.6.period">Slot 7 Inning #</option>
+                    <option value="inningSlots.7.period">Slot 8 Inning #</option>
+                    <option value="inningSlots.8.period">Slot 9 Inning #</option>
                   </optgroup>
                   <optgroup label="Wrestling">
                     <option value="home_player_points">Home Player Score</option>
@@ -2412,6 +2456,22 @@ function PropertyPanel({
                     <option value="awayTeam.possession">Away Has Possession</option>
                     <option value="homeTeam.bonus">Home In Bonus</option>
                     <option value="awayTeam.bonus">Away In Bonus</option>
+                  </optgroup>
+                  <optgroup label="Baseball Diamond">
+                    <option value="firstBase">First Base Occupied</option>
+                    <option value="secondBase">Second Base Occupied</option>
+                    <option value="thirdBase">Third Base Occupied</option>
+                  </optgroup>
+                  <optgroup label="Baseball Inning State">
+                    <option value="inningSlots.0.isCurrentInning">Slot 1 Is Current Inning</option>
+                    <option value="inningSlots.1.isCurrentInning">Slot 2 Is Current Inning</option>
+                    <option value="inningSlots.2.isCurrentInning">Slot 3 Is Current Inning</option>
+                    <option value="inningSlots.3.isCurrentInning">Slot 4 Is Current Inning</option>
+                    <option value="inningSlots.4.isCurrentInning">Slot 5 Is Current Inning</option>
+                    <option value="inningSlots.5.isCurrentInning">Slot 6 Is Current Inning</option>
+                    <option value="inningSlots.6.isCurrentInning">Slot 7 Is Current Inning</option>
+                    <option value="inningSlots.7.isCurrentInning">Slot 8 Is Current Inning</option>
+                    <option value="inningSlots.8.isCurrentInning">Slot 9 Is Current Inning</option>
                   </optgroup>
                 </select>
               </div>

@@ -107,7 +107,9 @@ export default function LayerPanel({
     };
     const groupIds = selectedComps.filter(c => c.type === 'group').map(c => c.id);
     const childrenOfGroups = collectChildren(groupIds);
-    const allComponents = [...selectedComps, ...childrenOfGroups];
+    const allComponentsMap = new Map<string, ComponentConfig>();
+    [...selectedComps, ...childrenOfGroups].forEach(c => allComponentsMap.set(c.id, c));
+    const allComponents = Array.from(allComponentsMap.values());
     const renderableComponents = allComponents.filter(c => c.type !== 'group');
 
     if (renderableComponents.length > 0) {
@@ -140,8 +142,9 @@ export default function LayerPanel({
     const groupIds = selectedComps.filter(c => c.type === 'group').map(c => c.id);
     const childrenOfGroups = collectChildren(groupIds);
 
-    // Combine selected + children, then filter out groups (keep only renderable components)
-    const allComponents = [...selectedComps, ...childrenOfGroups];
+    const allComponentsMap = new Map<string, ComponentConfig>();
+    [...selectedComps, ...childrenOfGroups].forEach(c => allComponentsMap.set(c.id, c));
+    const allComponents = Array.from(allComponentsMap.values());
     const renderableComponents = allComponents.filter(c => c.type !== 'group');
 
     if (renderableComponents.length === 0) {
