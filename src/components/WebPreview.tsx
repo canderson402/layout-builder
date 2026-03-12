@@ -1,10 +1,6 @@
 import React from 'react';
 import { Text } from 'react-native';
 import { ComponentConfig, LayoutConfig } from '../types';
-import TeamNameBox from '../shared/components/TeamNameBox';
-import ScoreBox from '../shared/components/ScoreBox';
-import ClockDisplay from '../shared/components/ClockDisplay';
-import FoulsDisplay from '../shared/components/FoulsDisplay';
 import CustomDataDisplay from '../shared/components/CustomDataDisplay';
 import DynamicList from '../shared/components/DynamicList';
 import LeaderboardList from '../shared/components/LeaderboardList';

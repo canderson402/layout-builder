@@ -1,367 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text } from 'react-native';
-
-// Base URL for assets (handles GitHub Pages base path)
-const BASE_URL = import.meta.env.BASE_URL || '/';
-
-// Helper to resolve local image paths with base URL
-const resolveImagePath = (path: string): string => {
-  if (!path) return path;
-  // If path already starts with http/https or data:, return as-is
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
-    return path;
-  }
-  // If path starts with /, remove it and prepend BASE_URL
-  if (path.startsWith('/')) {
-    return `${BASE_URL}${path.slice(1)}`;
-  }
-  // Otherwise prepend BASE_URL directly
-  return `${BASE_URL}${path}`;
-};
-
-// =============================================================================
-// FONT CONFIGURATION
-// =============================================================================
-// leftBearingRatio/rightBearingRatio: The font's side bearing as a fraction of font size.
-// These values are used by React Native which doesn't have Canvas TextMetrics.
-// The web version measures dynamically but these provide fallback consistency.
-// =============================================================================
-interface FontConfig {
-  web: string;
-  dyOffset: string;
-  leftBearingRatio: number;  // Typical left bearing as fraction of em (e.g., 0.05 = 5%)
-  rightBearingRatio: number; // Typical right bearing as fraction of em
-}
-
-const FONT_CONFIG: Record<string, FontConfig> = {
-  'Score-Regular': {
-    web: 'Score-Regular',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'Helvetica-Bold': {
-    web: 'Helvetica, Arial, sans-serif',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.06,
-    rightBearingRatio: 0.06,
-  },
-  'Inter-Bold': {
-    web: 'Inter-Bold',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'Roboto-Bold': {
-    web: 'Roboto-Bold',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'Montserrat-Bold': {
-    web: 'Montserrat-Bold',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'Oswald-Bold': {
-    web: 'Oswald-Bold',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'BebasNeue': {
-    web: 'BebasNeue',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'Anton': {
-    web: 'Anton',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-  'Teko-Bold': {
-    web: 'Teko-Bold',
-    dyOffset: '0.35em',
-    leftBearingRatio: 0.05,
-    rightBearingRatio: 0.05,
-  },
-};
-
-const DEFAULT_FONT = 'Score-Regular';
-
-const getFontConfig = (fontFamily: string): FontConfig => {
-  return FONT_CONFIG[fontFamily] || FONT_CONFIG[DEFAULT_FONT];
-};
-
-// =============================================================================
-// TEXT BEARING MEASUREMENT
-// Uses Canvas TextMetrics to calculate font bearing (whitespace around glyphs).
-//
-// For textAnchor="start" (left-aligned):
-//   - Origin is at start of text box
-//   - actualBoundingBoxLeft = left bearing (space before first pixel)
-//   - Need to shift text RIGHT by this amount to flush left edge
-//
-// For textAnchor="end" (right-aligned):
-//   - Origin is at end of text box
-//   - Right bearing = advanceWidth - actualBoundingBoxRight (space after last pixel)
-//   - Need to shift text RIGHT by this amount to flush right edge
-// =============================================================================
-const getTextBearings = (text: string, fontFamily: string, fontSize: number): { leftBearing: number; rightBearing: number } => {
-  if (typeof document === 'undefined' || !text) {
-    return { leftBearing: 0, rightBearing: 0 };
-  }
-
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    return { leftBearing: 0, rightBearing: 0 };
-  }
-
-  ctx.font = `bold ${fontSize}px ${fontFamily}`;
-  const metrics = ctx.measureText(text);
-
-  // Left bearing: distance from origin to leftmost pixel
-  const leftBearing = metrics.actualBoundingBoxLeft || 0;
-
-  // Right bearing: distance from rightmost pixel to end of advance width
-  // advanceWidth (metrics.width) = leftBearing + inkWidth + rightBearing
-  // actualBoundingBoxRight = leftBearing + inkWidth (distance from origin to rightmost pixel)
-  // Therefore: rightBearing = advanceWidth - actualBoundingBoxRight
-  const advanceWidth = metrics.width || 0;
-  const actualBoundingBoxRight = metrics.actualBoundingBoxRight || advanceWidth;
-  const rightBearing = Math.max(0, advanceWidth - actualBoundingBoxRight);
-
-  // Debug: log bearing ratios for calibrating TV lookup tables
-  const firstChar = text.charAt(0);
-  const lastChar = text.charAt(text.length - 1);
-  console.log(`[Bearings] "${text}" font=${fontFamily} size=${fontSize} | first='${firstChar}' leftRatio=${(leftBearing/fontSize).toFixed(4)} | last='${lastChar}' rightRatio=${(rightBearing/fontSize).toFixed(4)}`);
-
-  return {
-    leftBearing,
-    rightBearing,
-  };
-};
-
-
-interface CustomDataDisplayProps {
-  dataPath: string;
-  gameData?: any;
-  label?: string;
-  backgroundColor?: string;
-  textColor?: string;
-  width?: number;
-  height?: number;
-  fontSize?: number;
-  format?: 'number' | 'text' | 'time' | 'boolean';
-  prefix?: string;
-  suffix?: string;
-  customText?: string; // Static text that overrides dataPath value
-  textAlign?: 'left' | 'center' | 'right';
-  paddingTop?: number;
-  paddingRight?: number;
-  paddingBottom?: number;
-  paddingLeft?: number;
-  imageSource?: 'none' | 'local' | 'url';
-  imagePath?: string;
-  imageUrl?: string;
-  objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
-  imageAnchor?: 'top-left' | 'top-right' | 'center' | 'bottom-left' | 'bottom-right';
-  flipHorizontal?: boolean;
-  flipVertical?: boolean;
-  imageTintColor?: string;
-  useImageTint?: boolean;
-  borderWidth?: number;
-  borderColor?: string;
-  borderStyle?: string;
-  borderTopWidth?: number;
-  borderBottomWidth?: number;
-  borderLeftWidth?: number;
-  borderRightWidth?: number;
-  borderTopLeftRadius?: number;
-  borderTopRightRadius?: number;
-  borderBottomLeftRadius?: number;
-  borderBottomRightRadius?: number;
-  useTeamColor?: boolean;
-  teamColorSide?: 'home' | 'away';
-  autoFitText?: boolean;
-  minFontScale?: number;
-  previewText?: string; // Preview text for testing auto-fit in layout builder
-  canToggle?: boolean;
-  toggleState?: boolean;
-  state1Props?: any;
-  state2Props?: any;
-  autoToggle?: boolean; // Whether to automatically use boolean data values for toggle state
-  toggleDataPath?: string; // Separate path for controlling toggle state (e.g., isOvertimeActive) - if set, used instead of dataPath for toggle
-  visibilityPath?: string; // Separate path for controlling visibility (e.g., penaltySlots.home.slot0.active)
-  isVisible?: boolean; // Pre-computed visibility from WebPreview (for smooth opacity transitions)
-  fontFamily?: string; // Font family for text display
-  // Multi-state support (for penalty boxes with 0-3 states)
-  multiStateEnabled?: boolean;
-  statePath?: string; // Path to get state value (e.g., penaltySlots.home.count)
-  stateImages?: Record<string, string>; // Images for each state { '0': 'path', '1': 'path', ... }
-  // Auto contrast - automatically switch text color between black/white based on background luminance
-  autoContrastText?: boolean;
-}
-
-// Mock data for preview in layout builder
-const mockData = {
-  homeTeam: {
-    name: 'HOME',
-    score: 1,
-    fouls: 4,
-    timeouts: 3,
-    bonus: true,
-    doubleBonus: false,
-    possession: false,
-    color: '#c41e3a',
-    hits: 0,        // Baseball
-    errors: 0,      // Baseball
-    cornerKicks: 0  // Soccer
-  },
-  awayTeam: {
-    name: 'AWAY',
-    score: 0,
-    fouls: 6,
-    timeouts: 2,
-    bonus: false,
-    doubleBonus: true,
-    possession: true,
-    color: '#003f7f',
-    hits: 0,        // Baseball
-    errors: 0,      // Baseball
-    cornerKicks: 0  // Soccer
-  },
-  gameClock: '5:42',
-  activityClock: '1:30',
-  timeoutClock: '0:30',
-  timeOfDay: '2:45',
-  preGameClock: '15:00',
-  halftimeClock: '10:00',
-  periodBreakClock: '5:00',
-  timerName: 'Timer Name',
-  sessionName: 'Session Name',
-  nextUp: 'Next Up',
-  period: '3',
-  shotClock: 14,
-  quarter: 4,
-  half: 2,
-  set: 3,
-  isOvertimeActive: true,  // Boolean - true when game is in overtime
-  // Football
-  down: 1,
-  yardsToGo: 10,
-  ballOn: 35,
-  // Baseball
-  balls: 0,
-  strikes: 0,
-  outs: 0,
-  firstBase: false,
-  secondBase: false,
-  thirdBase: false,
-  onBase: '000',
-  // Period/Inning scores (raw data)
-  gamePeriodScores: [
-    { period: 1, homeScore: 0, awayScore: 0 },
-    { period: 2, homeScore: 0, awayScore: 0 },
-    { period: 3, homeScore: 0, awayScore: 0 },
-    { period: 4, homeScore: 0, awayScore: 0 },
-    { period: 5, homeScore: 0, awayScore: 0 },
-    { period: 6, homeScore: 0, awayScore: 0 },
-    { period: 7, homeScore: 0, awayScore: 0 },
-    { period: 8, homeScore: 0, awayScore: 0 },
-    { period: 9, homeScore: 0, awayScore: 0 },
-  ],
-  inningSlots: [
-    { period: 1, homeScore: 2, awayScore: 1, isCurrentInning: false, isTopHalf: false },
-    { period: 2, homeScore: 0, awayScore: 3, isCurrentInning: false, isTopHalf: false },
-    { period: 3, homeScore: 0, awayScore: 0, isCurrentInning: true, isTopHalf: true },
-    { period: 4, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
-    { period: 5, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
-    { period: 6, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
-    { period: 7, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
-    { period: 8, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
-    { period: 9, homeScore: 0, awayScore: 0, isCurrentInning: false, isTopHalf: false },
-  ],
-  inningDisplayCount: 9,
-  home_sets_won: 0,
-  away_sets_won: 0,
-  home_player_points: 0,
-  away_player_points: 0,
-  home_player_name: 'Green',
-  away_player_name: 'Red',
-  home_team_color: '#c41e3a',
-  away_team_color: '#003f7f',
-  // Penalty slots for lacrosse/hockey - all slots have test data
-  penaltySlots: {
-    home: {
-      count: 3,
-      isState0: false,
-      isState1: false,
-      isState2: false,
-      isState3: true, // 3 penalties active
-      slot0: { jersey: 90, time: '0:45', active: true },
-      slot1: { jersey: 3, time: '1:30', active: true },
-      slot2: { jersey: 17, time: '2:15', active: true },
-    },
-    away: {
-      count: 3,
-      isState0: false,
-      isState1: false,
-      isState2: false,
-      isState3: true,
-      slot0: { jersey: 14, time: '1:00', active: true },
-      slot1: { jersey: 22, time: '1:45', active: true },
-      slot2: { jersey: 8, time: '2:30', active: true },
-    },
-  },
-  // Leaderboard slots for player stats
-  leaderboardSlots: {
-    home: {
-      count: 5,
-      isState0: false,
-      isState1: false,
-      isState2: false,
-      isState3: false,
-      isState4: false,
-      isState5: true,
-      slot0: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, active: true },
-      slot1: { jersey: '33', name: 'S. Pippen', points: 22, fouls: 3, isTopScorer: false, active: true },
-      slot2: { jersey: '91', name: 'D. Rodman', points: 8, fouls: 4, isTopScorer: false, active: true },
-      slot3: { jersey: '7', name: 'T. Kukoc', points: 12, fouls: 1, isTopScorer: false, active: true },
-      slot4: { jersey: '25', name: 'S. Kerr', points: 6, fouls: 0, isTopScorer: false, active: true },
-    },
-    away: {
-      count: 5,
-      isState0: false,
-      isState1: false,
-      isState2: false,
-      isState3: false,
-      isState4: false,
-      isState5: true,
-      slot0: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, active: true },
-      slot1: { jersey: '12', name: 'J. Stockton', points: 18, fouls: 2, isTopScorer: false, active: true },
-      slot2: { jersey: '4', name: 'J. Hornacek', points: 14, fouls: 1, isTopScorer: false, active: true },
-      slot3: { jersey: '53', name: 'M. Eaton', points: 4, fouls: 4, isTopScorer: false, active: true },
-      slot4: { jersey: '35', name: 'A. Carr', points: 10, fouls: 2, isTopScorer: false, active: true },
-    },
-  },
-};
+import { getFontConfig } from './customDataDisplay/fontConfig';
+import { mockGameData, mockBannerData } from './customDataDisplay/mockGameData';
+import {
+  formatColor,
+  getContrastTextColor,
+  getTeamColor,
+} from './customDataDisplay/colorUtils';
+import {
+  getImageSource,
+  getAnchorAlignment,
+} from './customDataDisplay/imageUtils';
+import type { CustomDataDisplayProps } from './customDataDisplay/types';
 
 export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   const {
     dataPath = 'gameClock',
-    gameData, // Don't set default here, handle it below
+    gameData,
     width = 100,
     height = 50,
     canToggle = false,
     toggleState = false,
     state1Props = {},
     state2Props = {},
-    autoToggle = false,
     toggleDataPath,
     visibilityPath,
     isVisible: isVisibleProp,
@@ -376,14 +37,15 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     ...defaultProps
   } = props;
 
-  // Banner rotation state for layout builder preview
+  // Banner rotation state
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
-  const bannerTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const bannerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Image retry state for handling intermittent load failures
+  // Image retry state
   const [imageRetryCount, setImageRetryCount] = useState(0);
   const maxImageRetries = 3;
 
+  // Time of day state
   const isTimeOfDay = dataPath === 'timeOfDay';
   const [currentTimeOfDay, setCurrentTimeOfDay] = useState<string>(() => {
     if (!isTimeOfDay) return '';
@@ -405,9 +67,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       setCurrentTimeOfDay(`${displayHours}:${minutes.toString().padStart(2, '0')}`);
     };
 
-    updateTime(); // Update immediately
-    const interval = setInterval(updateTime, 1000); // Update every second to catch minute changes
-
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, [isTimeOfDay]);
 
@@ -416,39 +77,16 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     setImageRetryCount(0);
   }, [defaultProps.imagePath, defaultProps.imageUrl]);
 
-  // Mock banner data for layout builder preview
-  const mockBannerData = {
-    entries: [
-      {
-        id: 1,
-        image: { url: 'https://via.placeholder.com/300x100/FF0000/FFFFFF?text=Banner+1' },
-        rotation_interval: 3
-      },
-      {
-        id: 2,
-        image: { url: 'https://via.placeholder.com/300x100/00FF00/FFFFFF?text=Banner+2' },
-        rotation_interval: 3
-      },
-      {
-        id: 3,
-        image: { url: 'https://via.placeholder.com/300x100/0000FF/FFFFFF?text=Banner+3' },
-        rotation_interval: 3
-      }
-    ]
-  };
-
-  // Banner rotation logic for layout builder
+  // Banner rotation logic
   useEffect(() => {
     if (dataPath === 'user_sequences.banner') {
       const bannerEntries = mockBannerData.entries;
 
       if (bannerEntries.length > 1) {
-        // Clear any existing timer
         if (bannerTimerRef.current) {
           clearInterval(bannerTimerRef.current);
         }
 
-        // Use 3 second intervals for layout builder preview
         bannerTimerRef.current = setInterval(() => {
           setCurrentBannerIndex((prevIndex) =>
             prevIndex >= bannerEntries.length - 1 ? 0 : prevIndex + 1
@@ -464,8 +102,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }
   }, [dataPath]);
 
-  // Use provided gameData or fall back to mockData, prioritizing the dynamic data
-  const effectiveGameData = gameData || mockData;
+  const effectiveGameData = gameData || mockGameData;
 
   // Helper function to get nested data using dot notation
   const getNestedData = (obj: any, path: string) => {
@@ -474,8 +111,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }, obj);
   };
 
-  // Check if component should be visible - use pre-computed isVisibleProp if provided,
-  // otherwise fall back to checking visibilityPath (for backwards compatibility)
+  // Visibility check
   const isVisible = isVisibleProp !== undefined ? isVisibleProp : (() => {
     if (visibilityPath && effectiveGameData) {
       const visibilityValue = getNestedData(effectiveGameData, visibilityPath);
@@ -486,31 +122,24 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return true;
   })();
 
-  // Compute effective toggle state - use toggleDataPath if set, otherwise fall back to dataPath for booleans
+  // Compute effective toggle state
   const effectiveToggleState = (() => {
     if (!canToggle) return false;
 
-    // If toggleDataPath is set, use it for toggle state (must be boolean)
     if (toggleDataPath) {
       const rawValue = getNestedData(effectiveGameData, toggleDataPath);
-      if (typeof rawValue === 'boolean') {
-        return rawValue;
-      }
+      if (typeof rawValue === 'boolean') return rawValue;
     }
 
-    // Fallback: if dataPath points to a boolean, use that value (legacy behavior)
     if (dataPath) {
       const rawValue = getNestedData(effectiveGameData, dataPath);
-      if (typeof rawValue === 'boolean') {
-        return rawValue;
-      }
+      if (typeof rawValue === 'boolean') return rawValue;
     }
 
-    // Manual toggle state as final fallback
     return toggleState;
   })();
 
-  // Multi-state image support (for penalty boxes with 0-3 states)
+  // Multi-state image support
   const multiStateImagePath = (() => {
     if (!multiStateEnabled || !statePath || !stateImages) return null;
     const stateValue = getNestedData(effectiveGameData, statePath);
@@ -518,20 +147,18 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return stateImages[stateKey] || stateImages['0'] || null;
   })();
 
-  // If multi-state is enabled, override the imagePath in defaultProps
   const propsWithMultiState = multiStateEnabled && multiStateImagePath
     ? { ...defaultProps, imagePath: multiStateImagePath }
     : defaultProps;
 
-  // Merge the appropriate state props based on effective toggle state
-  // Keep dataPath at base level, only merge visual/formatting properties
+  // Merge props based on toggle state
   const baseProps = { dataPath, useTeamColor, teamColorSide, imageTintColor, useImageTint };
-  const visualProps = canToggle ?
-    (effectiveToggleState ? { ...propsWithMultiState, ...state2Props } : { ...propsWithMultiState, ...state1Props }) :
-    propsWithMultiState;
+  const visualProps = canToggle
+    ? (effectiveToggleState ? { ...propsWithMultiState, ...state2Props } : { ...propsWithMultiState, ...state1Props })
+    : propsWithMultiState;
   const activeProps = { ...baseProps, ...visualProps };
-  
-  // Extract all properties from the active props
+
+  // Extract all properties
   const {
     label,
     backgroundColor = 'transparent',
@@ -568,93 +195,31 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     fontFamily = 'Score-Regular',
     autoFitText = false
   } = activeProps;
-  
-  // State to track image natural dimensions for native resolution mode
-  const [imageDimensions, setImageDimensions] = useState<{width: number, height: number} | null>(null);
-  
-  // Helper function to ensure proper hex color format and handle black/empty colors
-  const formatColor = (color: string | undefined): string | undefined => {
-    if (!color) return undefined;
-    const colorStr = color.toString().trim();
-    if (!colorStr) return undefined;
-    
-    const formatted = colorStr.startsWith('#') ? colorStr : `#${colorStr}`;
-    
-    // Don't use black as team color - it's likely an unset/default value
-    if (formatted === '#000000' || formatted === '#000') {
-      return undefined;
-    }
-    
-    return formatted;
-  };
 
-  // Determine effective colors based on team color settings
-  // For tint, we want to use team colors even in preview (mockData)
-  // For background color, we only use team colors with real game data
-  const hasRealGameData = effectiveGameData && effectiveGameData !== mockData && (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
-  const hasAnyTeamColorData = effectiveGameData && (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
+  // Determine colors
+  const hasRealGameData = effectiveGameData && effectiveGameData !== mockGameData &&
+    (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
+  const hasAnyTeamColorData = effectiveGameData &&
+    (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
 
-  // Only use team color for background if NOT using image tint
-  // This prevents team color from affecting both background and tint at the same time
-  const teamColorForBackground = useTeamColor && teamColorSide && hasRealGameData && !effectiveUseImageTint ?
-    formatColor(teamColorSide === 'home' ? effectiveGameData.home_team_color : effectiveGameData.away_team_color) :
-    undefined;
+  const teamColorForBackground = useTeamColor && teamColorSide && hasRealGameData && !effectiveUseImageTint
+    ? getTeamColor(effectiveGameData, teamColorSide)
+    : undefined;
 
-  // Only use team color for tint if image tint is enabled
-  const teamColorForTint = useTeamColor && teamColorSide && hasAnyTeamColorData && effectiveUseImageTint ?
-    formatColor(teamColorSide === 'home' ? effectiveGameData.home_team_color : effectiveGameData.away_team_color) :
-    undefined;
+  const teamColorForTint = useTeamColor && teamColorSide && hasAnyTeamColorData && effectiveUseImageTint
+    ? getTeamColor(effectiveGameData, teamColorSide)
+    : undefined;
 
-  // Calculate relative luminance of a color for auto-contrast
-  const getLuminance = (hexColor: string | undefined): number => {
-    if (!hexColor) return 0;
-    const hex = hexColor.replace('#', '');
-    if (hex.length !== 6 && hex.length !== 3) return 0;
+  const isBannerOrSequence = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';
+  const effectiveBackgroundColor = isBannerOrSequence ? '#000000' : (teamColorForBackground || backgroundColor);
 
-    let r: number, g: number, b: number;
-    if (hex.length === 3) {
-      r = parseInt(hex[0] + hex[0], 16) / 255;
-      g = parseInt(hex[1] + hex[1], 16) / 255;
-      b = parseInt(hex[2] + hex[2], 16) / 255;
-    } else {
-      r = parseInt(hex.substring(0, 2), 16) / 255;
-      g = parseInt(hex.substring(2, 4), 16) / 255;
-      b = parseInt(hex.substring(4, 6), 16) / 255;
-    }
-
-    // Apply gamma correction
-    r = r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
-    g = g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
-    b = b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
-
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  };
-
-  // Get contrasting text color based on background luminance
-  const getContrastTextColor = (bgColor: string | undefined): string => {
-    const luminance = getLuminance(bgColor);
-    return luminance > 0.4 ? '#000000' : '#ffffff';
-  };
-
-  // Use team color if available, otherwise use the active background/text colors
-  // Use black background for banners to help identify overlap
-  const isBannerOrSequenceForBg = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';
-  const effectiveBackgroundColor = isBannerOrSequenceForBg ? '#000000' : (teamColorForBackground || backgroundColor);
-
-  // Get the color to use for auto-contrast calculation
+  // Auto-contrast calculation
   let contrastSourceColor: string | undefined = effectiveBackgroundColor;
-
-  // Always use team color for contrast calculation when autoContrastText is enabled and teamColorSide is set
-  // This handles text placed over team-colored backgrounds from other components
   if (autoContrastText && teamColorSide && effectiveGameData) {
-    const teamColorForContrast = teamColorSide === 'home'
-      ? effectiveGameData.home_team_color
-      : effectiveGameData.away_team_color;
-    contrastSourceColor = formatColor(teamColorForContrast) || contrastSourceColor;
+    const teamColorForContrast = getTeamColor(effectiveGameData, teamColorSide);
+    contrastSourceColor = teamColorForContrast || contrastSourceColor;
   }
 
-  // Determine text color - use auto contrast if enabled, otherwise use configured color
-  // For toggle components with explicit state props, respect the textColor setting
   const hasExplicitStateTextColor = canToggle && (
     (effectiveToggleState && state2Props?.textColor) ||
     (!effectiveToggleState && state1Props?.textColor)
@@ -662,7 +227,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
   let effectiveTextColor: string;
   if (hasExplicitStateTextColor) {
-    // Use the explicit textColor from state props for toggle components
     effectiveTextColor = textColor;
   } else if (autoContrastText && contrastSourceColor && contrastSourceColor !== 'transparent') {
     effectiveTextColor = getContrastTextColor(contrastSourceColor);
@@ -672,29 +236,23 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     effectiveTextColor = textColor;
   }
 
-  // Calculate effective tint color for image masking
-  const effectiveTintColor = effectiveUseImageTint ?
-    (teamColorForTint || formatColor(effectiveImageTintColor)) :
-    undefined;
+  const effectiveTintColor = effectiveUseImageTint
+    ? (teamColorForTint || formatColor(effectiveImageTintColor))
+    : undefined;
 
   // Get the data value
   const rawValue = getNestedData(effectiveGameData, dataPath);
-
-  // For boolean data paths with toggle enabled, don't show text - just show the visual state
   const isBooleanToggle = canToggle && typeof rawValue === 'boolean';
 
-  // Check for currentPlayer name paths - provide defaults when empty
+  // Handle currentPlayer name paths
   const isCurrentPlayerName = dataPath === 'currentPlayer.home.name' || dataPath === 'currentPlayer.away.name';
   const defaultName = dataPath === 'currentPlayer.home.name' ? 'Home' :
                       dataPath === 'currentPlayer.away.name' ? 'Away' : '--';
 
-  // Format the value based on the format type
+  // Format value
   const formatValue = (value: any) => {
     if (value === null || value === undefined || value === '') {
-      // Use team name defaults for currentPlayer name paths
-      if (isCurrentPlayerName) {
-        return defaultName;
-      }
+      if (isCurrentPlayerName) return defaultName;
       return '--';
     }
 
@@ -712,8 +270,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   };
 
   const formattedValue = formatValue(rawValue);
-  // Don't show text for boolean toggles, just show the visual state
-  // Priority: customText > previewText > timeOfDay > dataPath value
   const customText = activeProps.customText;
   const previewText = activeProps.previewText;
   const displayText = customText
@@ -724,7 +280,7 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     ? `${prefix}${currentTimeOfDay}${suffix}`
     : ((!dataPath || dataPath.trim() === '' || dataPath === 'none' || isBooleanToggle) ? '' : `${prefix}${formattedValue}${suffix}`);
 
-  // Convert textAlign to flexbox alignment
+  // Text alignment helper
   const getJustifyContent = () => {
     switch (textAlign) {
       case 'left': return 'left';
@@ -734,93 +290,23 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }
   };
 
-  // Check if dataPath is an image path (ends with imageUrl, image, etc.)
-  const isImageDataPath = dataPath && (
-    dataPath.endsWith('.imageUrl') ||
-    dataPath.endsWith('.image') ||
-    dataPath === 'imageUrl' ||
-    dataPath === 'image'
+  // Get image source
+  const imageSourceObj = getImageSource(
+    imageSource,
+    imagePath,
+    imageUrl,
+    dataPath,
+    rawValue,
+    mockBannerData,
+    currentBannerIndex
   );
 
-  // Get image source
-  const getImageSource = () => {
-    // If user has explicitly set a local or URL image, use that for preview
-    if (imageSource === 'local' && imagePath) {
-      return { uri: resolveImagePath(imagePath) };
-    }
-    if (imageSource === 'url' && imageUrl) {
-      return { uri: imageUrl };
-    }
-
-    // If dataPath points to an image URL, use the value from game data
-    if (isImageDataPath && rawValue) {
-      const imageUrlValue = String(rawValue);
-      // Only use if it looks like a valid URL or path
-      if (imageUrlValue && imageUrlValue !== '--' && (
-        imageUrlValue.startsWith('http://') ||
-        imageUrlValue.startsWith('https://') ||
-        imageUrlValue.startsWith('/') ||
-        imageUrlValue.startsWith('data:')
-      )) {
-        return { uri: resolveImagePath(imageUrlValue) };
-      }
-    }
-
-    // Handle banner ads with mock data (only if no image explicitly set)
-    if (dataPath === 'user_sequences.banner') {
-      const bannerEntries = mockBannerData.entries;
-      if (bannerEntries.length > 0) {
-        const currentEntry = bannerEntries[currentBannerIndex] || bannerEntries[0];
-        return { uri: currentEntry.image?.url };
-      }
-      return null;
-    }
-
-    return null;
-  };
-
-  const imageSourceObj = getImageSource();
-
-  // For banner/sequence media, use 'fill' to stretch to container size
-  const isBannerOrSequence = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';
   const effectiveObjectFit = isBannerOrSequence ? 'fill' : objectFit;
-
-  // Debug logging for tint
-  if (imageSourceObj && effectiveUseImageTint) {
-    console.log('Tint Debug (Web):', {
-      useImageTint: effectiveUseImageTint,
-      imageTintColor: effectiveImageTintColor,
-      teamColorForTint,
-      effectiveTintColor,
-      imagePath
-    });
-  }
-
-  // For native resolution mode with contain behavior - always use container dimensions
-  // The image will scale to fit within the bounds while maintaining aspect ratio
   const containerWidth = width;
   const containerHeight = height;
+  const anchorAlignment = getAnchorAlignment(imageAnchor);
 
-  // Convert anchor point to flexbox alignment
-  const getAnchorAlignment = () => {
-    switch (imageAnchor) {
-      case 'top-left':
-        return { justifyContent: 'flex-start', alignItems: 'flex-start' };
-      case 'top-right':
-        return { justifyContent: 'flex-start', alignItems: 'flex-end' };
-      case 'bottom-left':
-        return { justifyContent: 'flex-end', alignItems: 'flex-start' };
-      case 'bottom-right':
-        return { justifyContent: 'flex-end', alignItems: 'flex-end' };
-      case 'center':
-      default:
-        return { justifyContent: 'center', alignItems: 'center' };
-    }
-  };
-
-  const anchorAlignment = getAnchorAlignment();
-
-  // Calculate final font size - only scale if autoFitText is enabled
+  // Calculate final font size
   const finalFontSize = React.useMemo(() => {
     if (!autoFitText || !displayText || displayText.length === 0) {
       return fontSize;
@@ -828,7 +314,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
 
     const availableWidth = containerWidth - paddingLeft - paddingRight;
     const availableHeight = containerHeight - paddingTop - paddingBottom;
-
     const charWidthRatio = 0.6;
     const widthBasedFontSize = availableWidth / (displayText.length * charWidthRatio);
     const heightBasedFontSize = availableHeight;
@@ -836,7 +321,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return Math.min(widthBasedFontSize, heightBasedFontSize, fontSize);
   }, [autoFitText, displayText, fontSize, containerWidth, containerHeight, paddingLeft, paddingRight, paddingTop, paddingBottom]);
 
-  // Use opacity for smooth visibility transitions instead of returning null
   return (
     <View style={{
       width: containerWidth,
@@ -845,7 +329,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       justifyContent: imageSourceObj ? anchorAlignment.justifyContent : 'flex-start',
       alignItems: imageSourceObj ? anchorAlignment.alignItems : 'flex-start',
       overflow: imageSourceObj ? 'visible' : 'hidden',
-      // Apply border properties
       borderWidth: imageSourceObj ? 0 : borderWidth,
       borderColor: imageSourceObj ? 'transparent' : borderColor,
       borderStyle: borderStyle,
@@ -857,19 +340,16 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       borderTopRightRadius: borderTopRightRadius,
       borderBottomLeftRadius: borderBottomLeftRadius,
       borderBottomRightRadius: borderBottomRightRadius,
-      // No container padding - SVG text positioning handles padding via x coordinate
       paddingTop: 0,
       paddingRight: 0,
       paddingBottom: 0,
       paddingLeft: 0,
       position: 'relative',
-      // Smooth opacity transition for visibility changes
       opacity: isVisible ? 1 : 0,
       transition: 'opacity 150ms ease-in-out',
       flexDirection: 'column'
     }}>
       {imageSourceObj ? (
-        // Render image
         <>
           {label && (
             <View style={{
@@ -892,7 +372,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             {effectiveTintColor && effectiveUseImageTint ? (
               <>
-                {/* Hidden img for preloading and error handling with mask images */}
                 <img
                   key={`preload-${imageSourceObj.uri}-${imageRetryCount}`}
                   src={imageSourceObj.uri}
@@ -900,7 +379,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
                   style={{ display: 'none' }}
                   onError={() => {
                     if (imageRetryCount < maxImageRetries) {
-                      console.warn(`Mask image load failed, retrying (${imageRetryCount + 1}/${maxImageRetries}):`, imageSourceObj.uri);
                       setTimeout(() => {
                         setImageRetryCount(prev => prev + 1);
                       }, 500 * (imageRetryCount + 1));
@@ -945,26 +423,17 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
                   transform: (flipHorizontal || flipVertical) ? `scale(${flipHorizontal ? -1 : 1}, ${flipVertical ? -1 : 1})` : undefined,
                   transformOrigin: 'center',
                 }}
-                onLoad={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  setImageDimensions({
-                    width: img.naturalWidth,
-                    height: img.naturalHeight
-                  });
-                  // Reset retry count on successful load
+                onLoad={() => {
                   if (imageRetryCount > 0) {
                     setImageRetryCount(0);
                   }
                 }}
                 onError={(e) => {
                   if (imageRetryCount < maxImageRetries) {
-                    // Retry loading the image after a short delay
-                    console.warn(`Image load failed, retrying (${imageRetryCount + 1}/${maxImageRetries}):`, imageSourceObj.uri);
                     setTimeout(() => {
                       setImageRetryCount(prev => prev + 1);
-                    }, 500 * (imageRetryCount + 1)); // Exponential backoff: 500ms, 1000ms, 1500ms
+                    }, 500 * (imageRetryCount + 1));
                   } else {
-                    console.error('Failed to load image after retries:', imageSourceObj.uri);
                     e.currentTarget.style.display = 'none';
                   }
                 }}
@@ -973,7 +442,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
           </div>
         </>
       ) : (
-        // Render text using SVG with bearing compensation for flush alignment
         <svg
           width={containerWidth}
           height={containerHeight}
@@ -982,12 +450,8 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
         >
           <text
             x={(() => {
-              // Simple positioning - matches TV exactly
-              if (textAlign === 'left') {
-                return paddingLeft;
-              } else if (textAlign === 'right') {
-                return containerWidth - paddingRight;
-              }
+              if (textAlign === 'left') return paddingLeft;
+              if (textAlign === 'right') return containerWidth - paddingRight;
               return containerWidth / 2;
             })()}
             y="50%"
