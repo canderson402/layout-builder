@@ -2560,6 +2560,7 @@ function PropertyPanel({
                     <option value="preGameClock">Pre-Game Clock</option>
                     <option value="halftimeClock">Halftime Clock</option>
                     <option value="periodBreakClock">Period Break Clock</option>
+                    <option value="shotClockClock">Shot Clock</option>
                     <option value="timeOfDay">Time of Day (Local Clock)</option>
                     <option value="period">Period/Quarter</option>
                     <option value="isOvertimeActive">Overtime Active (boolean)</option>

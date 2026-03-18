@@ -37,6 +37,7 @@ export const mockGameData = {
   preGameClock: '15:00',
   halftimeClock: '10:00',
   periodBreakClock: '5:00',
+  shotClockClock: '24',
   timerName: 'Timer Name',
   sessionName: 'Session Name',
   nextUp: 'Next Up',
