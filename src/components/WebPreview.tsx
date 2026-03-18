@@ -52,45 +52,59 @@ const mockGameData = {
       slot2: { jersey: 8, time: '2:30', active: true },
     },
   },
-  // Mock leaderboard slots for preview
+  // Mock shootout slots for soccer/hockey/water polo preview
+  home_shootout_made: 2,
+  away_shootout_made: 1,
+  shootoutSlots: [
+    { round: 1, homeActive: true, awayActive: true, homeState: 1, awayState: 0, isCurrentRound: false },
+    { round: 2, homeActive: true, awayActive: true, homeState: 0, awayState: 1, isCurrentRound: false },
+    { round: 3, homeActive: true, awayActive: false, homeState: 1, awayState: 0, isCurrentRound: true },
+    { round: 4, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+    { round: 5, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+  ],
+  // Mock leaderboard slots for preview (includes both basketball and volleyball stats)
   leaderboardSlots: {
     home: {
-      count: 5,
+      count: 6,
       isState0: false,
       isState1: false,
       isState2: false,
       isState3: false,
       isState4: false,
-      isState5: true,
-      slot0: { jersey: 23, name: 'M. JORDAN', points: 32, fouls: 2, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_home_1.png' },
-      slot1: { jersey: 33, name: 'S. PIPPEN', points: 18, fouls: 3, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_2.png' },
-      slot2: { jersey: 91, name: 'D. RODMAN', points: 8, fouls: 4, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_3.png' },
-      slot3: { jersey: 7, name: 'T. KUKOC', points: 12, fouls: 1, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_4.png' },
-      slot4: { jersey: 25, name: 'S. KERR', points: 6, fouls: 0, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_5.png' },
+      isState5: false,
+      isState6: true,
+      slot0: { jersey: 23, name: 'M. JORDAN', points: 32, fouls: 2, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_home_1.png', aces: 5, kills: 18, blocks: 2 },
+      slot1: { jersey: 33, name: 'S. PIPPEN', points: 18, fouls: 3, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_2.png', aces: 3, kills: 12, blocks: 4 },
+      slot2: { jersey: 91, name: 'D. RODMAN', points: 8, fouls: 4, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_3.png', aces: 2, kills: 8, blocks: 6 },
+      slot3: { jersey: 7, name: 'T. KUKOC', points: 12, fouls: 1, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_4.png', aces: 4, kills: 6, blocks: 1 },
+      slot4: { jersey: 25, name: 'S. KERR', points: 6, fouls: 0, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_5.png', aces: 1, kills: 10, blocks: 3 },
+      slot5: { jersey: 10, name: 'B. HARPER', points: 4, fouls: 1, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_home_6.png', aces: 2, kills: 5, blocks: 2 },
       // currentPlayer = slot0 (updates when cycling)
-      currentPlayer: { jersey: 23, name: 'M. JORDAN', points: 32, fouls: 2, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_home_1.png' },
+      currentPlayer: { jersey: 23, name: 'M. JORDAN', points: 32, fouls: 2, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_home_1.png', aces: 5, kills: 18, blocks: 2 },
     },
     away: {
-      count: 5,
+      count: 6,
       isState0: false,
       isState1: false,
       isState2: false,
       isState3: false,
       isState4: false,
-      isState5: true,
-      slot0: { jersey: 32, name: 'K. MALONE', points: 28, fouls: 3, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_away_1.png' },
-      slot1: { jersey: 12, name: 'J. STOCKTON', points: 14, fouls: 2, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_2.png' },
-      slot2: { jersey: 4, name: 'B. RUSSELL', points: 10, fouls: 1, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_3.png' },
-      slot3: { jersey: 14, name: 'J. HORNACEK', points: 8, fouls: 2, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_4.png' },
-      slot4: { jersey: 55, name: 'G. OSTERTAG', points: 4, fouls: 4, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_5.png' },
+      isState5: false,
+      isState6: true,
+      slot0: { jersey: 32, name: 'K. MALONE', points: 28, fouls: 3, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_away_1.png', aces: 4, kills: 15, blocks: 3 },
+      slot1: { jersey: 12, name: 'J. STOCKTON', points: 14, fouls: 2, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_2.png', aces: 2, kills: 14, blocks: 5 },
+      slot2: { jersey: 4, name: 'B. RUSSELL', points: 10, fouls: 1, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_3.png', aces: 6, kills: 7, blocks: 2 },
+      slot3: { jersey: 14, name: 'J. HORNACEK', points: 8, fouls: 2, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_4.png', aces: 1, kills: 9, blocks: 4 },
+      slot4: { jersey: 55, name: 'G. OSTERTAG', points: 4, fouls: 4, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_5.png', aces: 3, kills: 11, blocks: 1 },
+      slot5: { jersey: 24, name: 'T. BAILEY', points: 2, fouls: 0, isTopScorer: false, active: true, imageUrl: '/images/test_leaderboard/player_away_6.png', aces: 1, kills: 6, blocks: 3 },
       // currentPlayer = slot0 (updates when cycling)
-      currentPlayer: { jersey: 32, name: 'K. MALONE', points: 28, fouls: 3, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_away_1.png' },
+      currentPlayer: { jersey: 32, name: 'K. MALONE', points: 28, fouls: 3, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_away_1.png', aces: 4, kills: 15, blocks: 3 },
     },
   },
   // Top-level currentPlayer for convenience
   currentPlayer: {
-    home: { jersey: 23, name: 'M. JORDAN', points: 32, fouls: 2, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_home_1.png' },
-    away: { jersey: 32, name: 'K. MALONE', points: 28, fouls: 3, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_away_1.png' },
+    home: { jersey: 23, name: 'M. JORDAN', points: 32, fouls: 2, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_home_1.png', aces: 5, kills: 18, blocks: 2 },
+    away: { jersey: 32, name: 'K. MALONE', points: 28, fouls: 3, isTopScorer: true, active: true, imageUrl: '/images/test_leaderboard/player_away_1.png', aces: 4, kills: 15, blocks: 3 },
   },
 };
 
@@ -579,11 +593,15 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             const rawValue = getNestedData(effectiveGameData, props.toggleDataPath);
             if (typeof rawValue === 'boolean') {
               effectiveToggleState = rawValue;
+            } else if (typeof rawValue === 'number') {
+              effectiveToggleState = rawValue !== 0;
             }
           } else if (props.dataPath) {
             const rawValue = getNestedData(effectiveGameData, props.dataPath);
             if (typeof rawValue === 'boolean') {
               effectiveToggleState = rawValue;
+            } else if (typeof rawValue === 'number') {
+              effectiveToggleState = rawValue !== 0;
             }
           }
           if (!effectiveToggleState && props.toggleState) {
@@ -704,7 +722,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
 
       case 'slotList': {
         // Render the actual template components for preview
-        const template = props.templateId ? getTemplate(props.templateId) : null;
+        // Try to get template by ID first, then fallback to name for imported layouts
+        const template = props.templateId ? getTemplate(props.templateId, props.templateName) : null;
         const slotCount = props.slotCount || 5;
         const slotSpacing = props.slotSpacing ?? 5;
         const direction = props.direction || 'vertical';

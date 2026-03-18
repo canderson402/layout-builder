@@ -133,14 +133,75 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
   return { ...roundedComponent, props };
 }
 
-// Clean the entire layout for export
+// Normalize layer values so siblings have unique values reflecting their visual order
+// This ensures the TV app renders components in the same z-order as the Layout Builder
+function normalizeLayerValues(components: ComponentConfig[]): ComponentConfig[] {
+  // Group components by parentId
+  const byParent = new Map<string | undefined, ComponentConfig[]>();
+
+  components.forEach(comp => {
+    const parentId = comp.parentId;
+    if (!byParent.has(parentId)) {
+      byParent.set(parentId, []);
+    }
+    byParent.get(parentId)!.push(comp);
+  });
+
+  // For each group of siblings, normalize their layer values
+  const layerUpdates = new Map<string, number>();
+
+  byParent.forEach((siblings) => {
+    if (siblings.length <= 1) return; // No normalization needed for single components
+
+    // Sort siblings by layer (descending) - higher layer = renders on top = first in list
+    // For equal layers, maintain original array order (which is the order they appear in components array)
+    const sortedSiblings = [...siblings].sort((a, b) => {
+      const layerDiff = (b.layer ?? 0) - (a.layer ?? 0);
+      if (layerDiff !== 0) return layerDiff;
+      // For equal layers, use original array position
+      return components.indexOf(a) - components.indexOf(b);
+    });
+
+    // Assign unique layer values: first gets highest (length-1), last gets 0
+    sortedSiblings.forEach((comp, index) => {
+      const newLayer = sortedSiblings.length - 1 - index;
+      layerUpdates.set(comp.id, newLayer);
+    });
+  });
+
+  // Apply layer updates to components
+  return components.map(comp => {
+    const newLayer = layerUpdates.get(comp.id);
+    if (newLayer !== undefined && newLayer !== comp.layer) {
+      return { ...comp, layer: newLayer };
+    }
+    return comp;
+  });
+}
+
+// Clean the entire layout for TV export (expands slotLists)
 function cleanLayoutForExport(layout: LayoutConfig): LayoutConfig {
   // First expand any slotList components into concrete components
   const expandedComponents = expandLayoutForExport(layout.components);
 
+  // Normalize layer values to ensure siblings have unique z-index values
+  const normalizedComponents = normalizeLayerValues(expandedComponents);
+
   return {
     ...layout,
-    components: expandedComponents.map(cleanComponentProps)
+    components: normalizedComponents.map(cleanComponentProps)
+  };
+}
+
+// Clean the layout for preview export (preserves slotLists and templates)
+function cleanLayoutForPreview(layout: LayoutConfig): LayoutConfig {
+  // Don't expand slotLists - keep them as-is for template editing
+  // But still normalize layers to ensure siblings have unique values
+  const normalizedComponents = normalizeLayerValues(layout.components);
+
+  return {
+    ...layout,
+    components: normalizedComponents.map(cleanComponentProps)
   };
 }
 
@@ -149,13 +210,18 @@ interface ExportModalProps {
   onClose: () => void;
 }
 
+type ExportMode = 'tv' | 'preview';
+
 export default function ExportModal({ layout, onClose }: ExportModalProps) {
   const [copied, setCopied] = useState(false);
+  const [exportMode, setExportMode] = useState<ExportMode>('tv');
 
   const exportedCode = useMemo(() => {
-    const cleanedLayout = cleanLayoutForExport(layout);
+    const cleanedLayout = exportMode === 'tv'
+      ? cleanLayoutForExport(layout)
+      : cleanLayoutForPreview(layout);
     return JSON.stringify(cleanedLayout, null, 2);
-  }, [layout]);
+  }, [layout, exportMode]);
 
   const copyToClipboard = async () => {
     try {
@@ -168,8 +234,9 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
   };
 
   const downloadFile = () => {
-    const filename = `${layout.name.toLowerCase().replace(/\s+/g, '-')}.json`;
-    
+    const suffix = exportMode === 'preview' ? '-preview' : '';
+    const filename = `${layout.name.toLowerCase().replace(/\s+/g, '-')}${suffix}.json`;
+
     const blob = new Blob([exportedCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,12 +254,29 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
           <button className="close-button" onClick={onClose}>×</button>
         </div>
 
+        <div className="export-tabs">
+          <button
+            className={`export-tab ${exportMode === 'tv' ? 'active' : ''}`}
+            onClick={() => setExportMode('tv')}
+          >
+            Export for TV
+          </button>
+          <button
+            className={`export-tab ${exportMode === 'preview' ? 'active' : ''}`}
+            onClick={() => setExportMode('preview')}
+          >
+            Export Preview
+          </button>
+        </div>
+
         <div className="modal-content">
           <div className="code-container">
             <div className="code-header">
-              <span className="code-title">JSON Layout Data</span>
+              <span className="code-title">
+                {exportMode === 'tv' ? 'TV Layout (slotLists expanded)' : 'Preview Layout (templates preserved)'}
+              </span>
               <div className="code-actions">
-                <button 
+                <button
                   onClick={copyToClipboard}
                   className={`copy-button ${copied ? 'copied' : ''}`}
                 >
@@ -209,13 +293,25 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
           </div>
 
           <div className="export-instructions">
-            <h3>How to use this JSON:</h3>
-            <ol>
-              <li>Copy the JSON layout data above</li>
-              <li>Use it in the "Load JSON" tab of the preset manager to reload this layout</li>
-              <li>Send it to your TV using the "Send to TV" button</li>
-              <li>Save as a JSON file for backup or sharing</li>
-            </ol>
+            {exportMode === 'tv' ? (
+              <>
+                <h3>Export for TV:</h3>
+                <ol>
+                  <li>SlotList components are expanded into individual components</li>
+                  <li>Ready to send to TV or use in production</li>
+                  <li>Cannot be edited with templates after import</li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <h3>Export Preview:</h3>
+                <ol>
+                  <li>SlotList components and template references are preserved</li>
+                  <li>Import into Layout Builder to continue editing with templates</li>
+                  <li>Share with others who have the same templates</li>
+                </ol>
+              </>
+            )}
           </div>
         </div>
       </div>

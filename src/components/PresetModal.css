@@ -439,3 +439,78 @@
 .clear-button:hover {
   background: #777;
 }
+
+/* Templates Section */
+.templates-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.templates-description {
+  color: #aaa;
+  font-size: 14px;
+  margin: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #444;
+}
+
+.template-category {
+  background: #333;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.template-category h3 {
+  margin: 0 0 4px 0;
+  color: #fff;
+  font-size: 16px;
+}
+
+.template-hint {
+  color: #888;
+  font-size: 12px;
+  margin: 0 0 12px 0;
+}
+
+.template-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.action-btn-blue {
+  background: #2196F3;
+}
+
+.action-btn-blue:hover {
+  background: #1976D2;
+}
+
+.action-btn:disabled {
+  background: #555;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.template-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 120px;
+  overflow-y: auto;
+  background: #2a2a2a;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.template-list li {
+  color: #ccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+
+.template-list li:hover {
+  background: #3a3a3a;
+}

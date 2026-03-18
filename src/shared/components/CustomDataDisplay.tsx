@@ -129,11 +129,13 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     if (toggleDataPath) {
       const rawValue = getNestedData(effectiveGameData, toggleDataPath);
       if (typeof rawValue === 'boolean') return rawValue;
+      if (typeof rawValue === 'number') return rawValue !== 0; // 0 = false, 1+ = true
     }
 
     if (dataPath) {
       const rawValue = getNestedData(effectiveGameData, dataPath);
       if (typeof rawValue === 'boolean') return rawValue;
+      if (typeof rawValue === 'number') return rawValue !== 0; // 0 = false, 1+ = true
     }
 
     return toggleState;

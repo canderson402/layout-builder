@@ -100,6 +100,7 @@ export const LAYOUT_TYPES = [
   { value: 'playlist', label: 'Playlist' },
   { value: 'leaderboard', label: 'Leaderboard' },
   { value: 'basketball-leaderboard', label: 'Basketball Leaderboard' },
+  { value: 'volleyball-leaderboard', label: 'Volleyball Leaderboard' },
   { value: 'pre-game', label: 'Pre-Game' },
   { value: 'halftime', label: 'Halftime' },
   { value: 'period-break', label: 'Period Break' },

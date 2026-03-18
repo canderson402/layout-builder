@@ -28,9 +28,19 @@ export function saveTemplates(templates: SlotTemplate[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
 }
 
-// Get a single template by ID
-export function getTemplate(id: string): SlotTemplate | undefined {
-  return loadTemplates().find(t => t.id === id);
+// Get a single template by ID, or by name as fallback
+export function getTemplate(id: string, fallbackName?: string): SlotTemplate | undefined {
+  const templates = loadTemplates();
+  // First try exact ID match
+  const byId = templates.find(t => t.id === id);
+  if (byId) return byId;
+
+  // Fallback: try matching by name if provided
+  if (fallbackName) {
+    return templates.find(t => t.name === fallbackName);
+  }
+
+  return undefined;
 }
 
 // Calculate bounding box of components
@@ -196,6 +206,11 @@ export function expandSlotList(
         clonedComp.props.visibilityPath = `${dataPathPrefix}.${team}.slot${i}.active`;
       }
 
+      // Prefix toggle data paths (if template component has one)
+      if (clonedComp.props?.toggleDataPath) {
+        clonedComp.props.toggleDataPath = `${dataPathPrefix}.${team}.slot${i}.${clonedComp.props.toggleDataPath}`;
+      }
+
       expandedComponents.push(clonedComp);
     });
   }
@@ -209,7 +224,8 @@ export function expandLayoutForExport(components: ComponentConfig[]): ComponentC
 
   components.forEach(comp => {
     if (comp.type === 'slotList') {
-      const template = getTemplate(comp.props?.templateId);
+      // Try to get template by ID first, then fallback to name for imported layouts
+      const template = getTemplate(comp.props?.templateId, comp.props?.templateName);
       if (template) {
         expandedComponents.push(...expandSlotList(comp, template));
       }
@@ -220,4 +236,74 @@ export function expandLayoutForExport(components: ComponentConfig[]): ComponentC
   });
 
   return expandedComponents;
+}
+
+// Repair template references in a layout by matching by name when ID not found
+// This helps when templates were imported separately with different UUIDs
+export function repairTemplateReferences(components: ComponentConfig[]): {
+  components: ComponentConfig[],
+  repaired: number,
+  brokenRefs: string[] // Component IDs with unfixable broken references
+} {
+  const templates = loadTemplates();
+  let repaired = 0;
+  const brokenRefs: string[] = [];
+
+  const repairedComponents = components.map(comp => {
+    if (comp.type === 'slotList' && comp.props?.templateId) {
+      // Check if template exists by ID
+      const existsById = templates.find(t => t.id === comp.props.templateId);
+      if (!existsById) {
+        // Try to find by name if templateName is stored
+        if (comp.props.templateName) {
+          const byName = templates.find(t => t.name === comp.props.templateName);
+          if (byName) {
+            repaired++;
+            return {
+              ...comp,
+              props: {
+                ...comp.props,
+                templateId: byName.id,
+              }
+            };
+          }
+        }
+        // If no templateName, try to find any template that might match by partial name match
+        // This is a last resort for layouts that didn't store templateName
+        const partialMatch = templates.find(t =>
+          t.name.toLowerCase().includes('slot') ||
+          t.name.toLowerCase().includes('leader') ||
+          t.name.toLowerCase().includes('stat')
+        );
+        if (partialMatch && templates.length === 1) {
+          // Only auto-match if there's exactly one template (to avoid wrong matches)
+          repaired++;
+          return {
+            ...comp,
+            props: {
+              ...comp.props,
+              templateId: partialMatch.id,
+              templateName: partialMatch.name,
+            }
+          };
+        }
+        // If we get here, the reference is broken and couldn't be repaired
+        brokenRefs.push(comp.id);
+      } else {
+        // Template exists by ID - make sure templateName is stored for future compatibility
+        if (!comp.props.templateName) {
+          return {
+            ...comp,
+            props: {
+              ...comp.props,
+              templateName: existsById.name,
+            }
+          };
+        }
+      }
+    }
+    return comp;
+  });
+
+  return { components: repairedComponents, repaired, brokenRefs };
 }

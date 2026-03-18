@@ -7,7 +7,7 @@ import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
 import { ToastProvider, useToast } from './components/Toast';
-import { expandLayoutForExport } from './utils/slotTemplates';
+import { expandLayoutForExport, repairTemplateReferences } from './utils/slotTemplates';
 import './App.css';
 
 // Panel resize constants
@@ -172,6 +172,15 @@ function App() {
     away_shots: 0,
     home_saves: 0,
     away_saves: 0,
+    // Rugby
+    home_tries: 0,
+    away_tries: 0,
+    home_penalty_goals: 0,
+    away_penalty_goals: 0,
+    home_dropped_goals: 0,
+    away_dropped_goals: 0,
+    home_conversions: 0,
+    away_conversions: 0,
     // Penalty slots for lacrosse/hockey preview
     penaltySlots: {
       home: {
@@ -195,8 +204,53 @@ function App() {
         slot2: { jersey: 8, time: '2:30', active: false },
       },
     },
-    // Leaderboard slots for player stats preview
+    // Shootout slots for soccer/hockey/water polo preview
+    home_shootout_made: 0,
+    away_shootout_made: 0,
+    shootoutSlots: [
+      { round: 1, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+      { round: 2, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+      { round: 3, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+      { round: 4, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+      { round: 5, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
+    ],
+    // Leaderboard slots for player stats preview (includes both basketball and volleyball stats)
     leaderboardSlots: {
+      home: {
+        count: 6,
+        isState0: false,
+        isState1: false,
+        isState2: false,
+        isState3: false,
+        isState4: false,
+        isState5: false,
+        isState6: true,
+        slot0: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, active: true, aces: 5, kills: 18, blocks: 2 },
+        slot1: { jersey: '33', name: 'S. Pippen', points: 22, fouls: 3, isTopScorer: false, active: true, aces: 3, kills: 12, blocks: 4 },
+        slot2: { jersey: '91', name: 'D. Rodman', points: 8, fouls: 4, isTopScorer: false, active: true, aces: 2, kills: 8, blocks: 6 },
+        slot3: { jersey: '7', name: 'T. Kukoc', points: 12, fouls: 1, isTopScorer: false, active: true, aces: 4, kills: 6, blocks: 1 },
+        slot4: { jersey: '25', name: 'S. Kerr', points: 6, fouls: 0, isTopScorer: false, active: true, aces: 1, kills: 10, blocks: 3 },
+        slot5: { jersey: '10', name: 'B. Harper', points: 4, fouls: 1, isTopScorer: false, active: true, aces: 2, kills: 5, blocks: 2 },
+      },
+      away: {
+        count: 6,
+        isState0: false,
+        isState1: false,
+        isState2: false,
+        isState3: false,
+        isState4: false,
+        isState5: false,
+        isState6: true,
+        slot0: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, active: true, aces: 4, kills: 15, blocks: 3 },
+        slot1: { jersey: '12', name: 'J. Stockton', points: 18, fouls: 2, isTopScorer: false, active: true, aces: 2, kills: 14, blocks: 5 },
+        slot2: { jersey: '4', name: 'J. Hornacek', points: 14, fouls: 1, isTopScorer: false, active: true, aces: 6, kills: 7, blocks: 2 },
+        slot3: { jersey: '53', name: 'M. Eaton', points: 4, fouls: 4, isTopScorer: false, active: true, aces: 1, kills: 9, blocks: 4 },
+        slot4: { jersey: '35', name: 'A. Carr', points: 10, fouls: 2, isTopScorer: false, active: true, aces: 3, kills: 11, blocks: 1 },
+        slot5: { jersey: '24', name: 'T. Bailey', points: 2, fouls: 0, isTopScorer: false, active: true, aces: 1, kills: 6, blocks: 3 },
+      },
+    },
+    // Volleyball leaderboard slots for player stats preview (aces, kills, blocks)
+    volleyballLeaderboardSlots: {
       home: {
         count: 5,
         isState0: false,
@@ -205,11 +259,11 @@ function App() {
         isState3: false,
         isState4: false,
         isState5: true,
-        slot0: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, active: true },
-        slot1: { jersey: '33', name: 'S. Pippen', points: 22, fouls: 3, isTopScorer: false, active: true },
-        slot2: { jersey: '91', name: 'D. Rodman', points: 8, fouls: 4, isTopScorer: false, active: true },
-        slot3: { jersey: '7', name: 'T. Kukoc', points: 12, fouls: 1, isTopScorer: false, active: true },
-        slot4: { jersey: '25', name: 'S. Kerr', points: 6, fouls: 0, isTopScorer: false, active: true },
+        slot0: { jersey: '10', name: 'K. Plummer', aces: 5, kills: 18, blocks: 2, active: true },
+        slot1: { jersey: '2', name: 'M. Ratterman', aces: 3, kills: 12, blocks: 4, active: true },
+        slot2: { jersey: '15', name: 'T. Shoji', aces: 2, kills: 8, blocks: 6, active: true },
+        slot3: { jersey: '8', name: 'J. Smith', aces: 4, kills: 6, blocks: 1, active: true },
+        slot4: { jersey: '22', name: 'R. Chen', aces: 1, kills: 10, blocks: 3, active: true },
       },
       away: {
         count: 5,
@@ -219,12 +273,17 @@ function App() {
         isState3: false,
         isState4: false,
         isState5: true,
-        slot0: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, active: true },
-        slot1: { jersey: '12', name: 'J. Stockton', points: 18, fouls: 2, isTopScorer: false, active: true },
-        slot2: { jersey: '4', name: 'J. Hornacek', points: 14, fouls: 1, isTopScorer: false, active: true },
-        slot3: { jersey: '53', name: 'M. Eaton', points: 4, fouls: 4, isTopScorer: false, active: true },
-        slot4: { jersey: '35', name: 'A. Carr', points: 10, fouls: 2, isTopScorer: false, active: true },
+        slot0: { jersey: '7', name: 'A. Johnson', aces: 4, kills: 15, blocks: 3, active: true },
+        slot1: { jersey: '11', name: 'S. Williams', aces: 2, kills: 14, blocks: 5, active: true },
+        slot2: { jersey: '3', name: 'D. Garcia', aces: 6, kills: 7, blocks: 2, active: true },
+        slot3: { jersey: '19', name: 'M. Lee', aces: 1, kills: 9, blocks: 4, active: true },
+        slot4: { jersey: '5', name: 'C. Brown', aces: 3, kills: 11, blocks: 1, active: true },
       },
+    },
+    // Current player for featured player display (leaderboard cycling)
+    currentPlayer: {
+      home: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, imageUrl: '/images/test_leaderboard/player_home_1.png', aces: 5, kills: 18, blocks: 2 },
+      away: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, imageUrl: '/images/test_leaderboard/player_away_1.png', aces: 4, kills: 15, blocks: 3 },
     }
   });
 
@@ -264,6 +323,7 @@ function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [templateRefreshKey, setTemplateRefreshKey] = useState(0);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
 
   // Clipboard state for copy/paste
@@ -1361,12 +1421,28 @@ function App() {
 
 
   const loadCustomPreset = useCallback((customLayout: LayoutConfig) => {
+    // Repair template references for slotList components (helps when templates were imported separately)
+    const { components: repairedComponents, repaired, brokenRefs } = repairTemplateReferences(customLayout.components || []);
+
     setLayout(prev => {
       saveStateForUndo('LOAD_PRESET', `Load custom preset "${customLayout.name}"`, prev);
       setSelectedComponents([]);
-      return customLayout;
+      return {
+        ...customLayout,
+        components: repairedComponents,
+      };
     });
-  }, [saveStateForUndo]);
+
+    // Show notifications after state update
+    if (repaired > 0) {
+      console.log(`Repaired ${repaired} template reference(s) in loaded layout`);
+      toast.success(`Auto-repaired ${repaired} template reference(s)`);
+    }
+    if (brokenRefs.length > 0) {
+      console.warn(`${brokenRefs.length} slotList component(s) have missing templates`);
+      toast.warning(`${brokenRefs.length} slot list(s) have missing templates. Select templates in the property panel.`, 6000);
+    }
+  }, [saveStateForUndo, toast]);
 
   // Handler to properly merge partial layout updates (used by Canvas for resolution changes)
   const handleUpdateLayout = useCallback((updates: Partial<LayoutConfig>) => {
@@ -1502,6 +1578,7 @@ function App() {
                 onCopyComponents={copyComponents}
                 onPasteComponents={pasteComponents}
                 hasClipboard={clipboard !== null && clipboard.length > 0}
+                templateRefreshKey={templateRefreshKey}
               />
               <div
                 className="panel-resize-edge right-edge"
@@ -1550,6 +1627,7 @@ function App() {
                 gameData={gameData}
                 onUpdateGameData={setGameData}
                 panelWidth={rightPanelWidth}
+                templateRefreshKey={templateRefreshKey}
               />
             </aside>
       </main>
@@ -1568,6 +1646,22 @@ function App() {
           onLoadPreset={loadCustomPreset}
           onBackup={exportLocalStorage}
           onRestore={importLocalStorage}
+          onTemplatesImported={() => {
+            setTemplateRefreshKey(k => k + 1);
+            // Auto-repair template references in current layout when templates are imported
+            const { components: repairedComponents, repaired, brokenRefs } = repairTemplateReferences(layout.components || []);
+            if (repaired > 0 || brokenRefs.length > 0) {
+              setLayout(prev => ({ ...prev, components: repairedComponents }));
+            }
+            if (repaired > 0) {
+              console.log(`Auto-repaired ${repaired} template reference(s) after template import`);
+              toast.success(`Auto-repaired ${repaired} template reference(s)`);
+            }
+            if (brokenRefs.length > 0) {
+              console.warn(`${brokenRefs.length} slotList component(s) still have missing templates`);
+              toast.warning(`${brokenRefs.length} slot list(s) still missing templates. Re-select templates in property panel.`, 6000);
+            }
+          }}
         />
       )}
 

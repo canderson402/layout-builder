@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-03-11T22:23:55.864Z
+// Generated: 2026-03-17T15:59:46.516Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling"] as const;
+export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling","shootout"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -48,7 +48,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
   },
   "Leaderboard": {
     rootImages: [],
-    subsections: {"Basketball":["basketball-leaderboard-base.png","basketball-leaderboard-clock-bg.png","basketball-leaderboard-leader-left-overlay.png","basketball-leaderboard-leader-right-overlay.png","leaderboard-basketball-base.png","leaderboard-basketball-stat-row-left.png","leaderboard-basketball-stat-row-right.png"]},
+    subsections: {"Basketball":["basketball-leaderboard-base.png","basketball-leaderboard-clock-bg.png","basketball-leaderboard-leader-left-overlay.png","basketball-leaderboard-leader-right-overlay.png","leaderboard-basketball-base.png","leaderboard-basketball-stat-row-left.png","leaderboard-basketball-stat-row-right.png"],"volleyball":["volleyball-leaderboard-base.png","volleyball-leaderboard-clock-bg.png","volleyball-leaderboard-leaders-overlay.png","volleyball-leaderboard-left-stat-row.png","volleyball-leaderboard-right-stat-row.png"]},
     hasSubsections: true,
   },
   "Mocks": {
@@ -96,6 +96,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  "shootout": {
+    rootImages: ["shootout-base.png","shootout-shots-base.png","shootout-shots-left-1-made.png","shootout-shots-left-1-missed.png","shootout-shots-left-2-made.png","shootout-shots-left-2-missed.png","shootout-shots-left-3-made.png","shootout-shots-left-3-missed.png","shootout-shots-left-4-made.png","shootout-shots-left-4-missed.png","shootout-shots-left-5-made.png","shootout-shots-left-5-missed.png","shootout-shots-right-1-made.png","shootout-shots-right-1-missed.png","shootout-shots-right-2-made.png","shootout-shots-right-2-missed.png","shootout-shots-right-3-made.png","shootout-shots-right-3-missed.png","shootout-shots-right-4-made.png","shootout-shots-right-4-missed.png","shootout-shots-right-5-made.png","shootout-shots-right-5-missed.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
 };
 
 // Legacy flat manifest (root images only, for backwards compatibility)
@@ -116,6 +121,7 @@ export const KNOWN_IMAGES: Record<Sport, string[]> = {
   "Utility": ["break-base.png","halftime-base.png","pregame-base.png","timeout-base.png"],
   "Volleyball": ["volleyball-base.png","volleyball-posession-left.png","volleyball-posession-right.png"],
   "Wrestling": ["wrestling-base.png","wrestling-clock-bg-paused.png","wrestling-clock-bg.png","wrestling-no_clock-bg.png"],
+  "shootout": ["shootout-base.png","shootout-shots-base.png","shootout-shots-left-1-made.png","shootout-shots-left-1-missed.png","shootout-shots-left-2-made.png","shootout-shots-left-2-missed.png","shootout-shots-left-3-made.png","shootout-shots-left-3-missed.png","shootout-shots-left-4-made.png","shootout-shots-left-4-missed.png","shootout-shots-left-5-made.png","shootout-shots-left-5-missed.png","shootout-shots-right-1-made.png","shootout-shots-right-1-missed.png","shootout-shots-right-2-made.png","shootout-shots-right-2-missed.png","shootout-shots-right-3-made.png","shootout-shots-right-3-missed.png","shootout-shots-right-4-made.png","shootout-shots-right-4-missed.png","shootout-shots-right-5-made.png","shootout-shots-right-5-missed.png"],
 };
 
 /**

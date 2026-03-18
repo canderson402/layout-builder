@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ComponentConfig, LayoutConfig, SlotTemplate, ComponentGroupTemplate } from '../types';
 import { loadTemplates, createTemplate, deleteTemplate, calculateBoundingBox } from '../utils/slotTemplates';
 import {
@@ -35,6 +35,7 @@ interface LayerPanelProps {
   onCopyComponents?: () => void;
   onPasteComponents?: () => void;
   hasClipboard?: boolean;
+  templateRefreshKey?: number;
 }
 
 interface DragState {
@@ -54,7 +55,8 @@ export default function LayerPanel({
   onEndDragOperation,
   onCopyComponents,
   onPasteComponents,
-  hasClipboard
+  hasClipboard,
+  templateRefreshKey
 }: LayerPanelProps) {
   const toast = useToast();
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
@@ -92,6 +94,14 @@ export default function LayerPanel({
   const refreshComponentTemplates = () => {
     setComponentTemplates(loadComponentTemplates());
   };
+
+  // Refresh templates when templateRefreshKey changes (e.g., after import)
+  useEffect(() => {
+    if (templateRefreshKey !== undefined && templateRefreshKey > 0) {
+      refreshTemplates();
+      refreshComponentTemplates();
+    }
+  }, [templateRefreshKey]);
 
   // Save selected components as a slot template
   const handleSaveAsTemplate = () => {
