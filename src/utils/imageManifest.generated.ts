@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-03-17T15:59:46.516Z
+// Generated: 2026-03-20T14:21:47.521Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling","shootout"] as const;
+export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling","scoreTable","shootout"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -96,6 +96,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  "scoreTable": {
+    rootImages: [],
+    subsections: {"baseball":["baseball-base-1-empty.png","baseball-base-1-filled.png","baseball-base-2-empty.png","baseball-base-2-filled.png","baseball-base-3-empty.png","baseball-base-3-filled.png","baseball-base.png"],"basketball":["basketball-base.png","basketball-bonus-left-1-off.png","basketball-bonus-left-1-on.png","basketball-bonus-left-2-off.png","basketball-bonus-left-2-on.png","basketball-bonus-right-1-off.png","basketball-bonus-right-1-on.png","basketball-bonus-right-2-off.png","basketball-bonus-right-2-on.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-possession-left.png","basketball-possession-right.png"],"football":["football-base.png","football-clock-bg.png","football-overtime-overlay.png"],"hockey_lacrosse_waterpolo":["hockey_lacrosse_waterpolo-base.png","hockey_lacrosse_waterpolo-clock-bg.png","hockey_lacrosse_waterpolo-overtime-overlay.png"],"rugby":["rugby-base.png","rugby-overtime-overlay.png"],"soccer":["soccer-base.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],"tennis":["tennis-base.png"],"universal":["universal-base.png","universal-clock-bg.png"],"volleyball":["volleyball-base.png"],"wrestling":["wrestling-base.png","wrestling-clock-overlay.png"]},
+    hasSubsections: true,
+  },
   "shootout": {
     rootImages: ["shootout-base.png","shootout-shots-base.png","shootout-shots-left-1-made.png","shootout-shots-left-1-missed.png","shootout-shots-left-2-made.png","shootout-shots-left-2-missed.png","shootout-shots-left-3-made.png","shootout-shots-left-3-missed.png","shootout-shots-left-4-made.png","shootout-shots-left-4-missed.png","shootout-shots-left-5-made.png","shootout-shots-left-5-missed.png","shootout-shots-right-1-made.png","shootout-shots-right-1-missed.png","shootout-shots-right-2-made.png","shootout-shots-right-2-missed.png","shootout-shots-right-3-made.png","shootout-shots-right-3-missed.png","shootout-shots-right-4-made.png","shootout-shots-right-4-missed.png","shootout-shots-right-5-made.png","shootout-shots-right-5-missed.png"],
     subsections: {},
@@ -121,6 +126,7 @@ export const KNOWN_IMAGES: Record<Sport, string[]> = {
   "Utility": ["break-base.png","halftime-base.png","pregame-base.png","timeout-base.png"],
   "Volleyball": ["volleyball-base.png","volleyball-posession-left.png","volleyball-posession-right.png"],
   "Wrestling": ["wrestling-base.png","wrestling-clock-bg-paused.png","wrestling-clock-bg.png","wrestling-no_clock-bg.png"],
+  "scoreTable": [],
   "shootout": ["shootout-base.png","shootout-shots-base.png","shootout-shots-left-1-made.png","shootout-shots-left-1-missed.png","shootout-shots-left-2-made.png","shootout-shots-left-2-missed.png","shootout-shots-left-3-made.png","shootout-shots-left-3-missed.png","shootout-shots-left-4-made.png","shootout-shots-left-4-missed.png","shootout-shots-left-5-made.png","shootout-shots-left-5-missed.png","shootout-shots-right-1-made.png","shootout-shots-right-1-missed.png","shootout-shots-right-2-made.png","shootout-shots-right-2-missed.png","shootout-shots-right-3-made.png","shootout-shots-right-3-missed.png","shootout-shots-right-4-made.png","shootout-shots-right-4-missed.png","shootout-shots-right-5-made.png","shootout-shots-right-5-missed.png"],
 };
 
