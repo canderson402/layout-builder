@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-03-26T17:24:44.367Z
+// Generated: 2026-03-27T15:49:10.474Z
 
 // Available sports (auto-detected from folder structure)
 export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling","scoreTable","shootout"] as const;
@@ -98,7 +98,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
   },
   "scoreTable": {
     rootImages: [],
-    subsections: {"baseball":["baseball-base-1-empty.png","baseball-base-1-filled.png","baseball-base-2-empty.png","baseball-base-2-filled.png","baseball-base-3-empty.png","baseball-base-3-filled.png","baseball-base.png"],"basketball":["basketball-base.png","basketball-bonus-left-1-off.png","basketball-bonus-left-1-on.png","basketball-bonus-left-2-off.png","basketball-bonus-left-2-on.png","basketball-bonus-right-1-off.png","basketball-bonus-right-1-on.png","basketball-bonus-right-2-off.png","basketball-bonus-right-2-on.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-possession-left.png","basketball-possession-right.png"],"football":["football-base.png","football-clock-bg.png","football-overtime-overlay.png"],"hockey_lacrosse_waterpolo":["hockey_lacrosse_waterpolo-base.png","hockey_lacrosse_waterpolo-clock-bg.png","hockey_lacrosse_waterpolo-overtime-overlay.png"],"rugby":["rugby-base.png","rugby-overtime-overlay.png"],"soccer":["soccer-base.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],"tennis":["tennis-base.png"],"universal":["universal-base.png","universal-clock-bg.png"],"volleyball":["volleyball-base.png"],"wrestling":["wrestling-base.png","wrestling-clock-overlay.png"]},
+    subsections: {"baseball":["baseball-base-1-empty.png","baseball-base-1-filled.png","baseball-base-2-empty.png","baseball-base-2-filled.png","baseball-base-3-empty.png","baseball-base-3-filled.png","baseball-base.png"],"basketball":["basketball-base.png","basketball-bonus-left-1-off.png","basketball-bonus-left-1-on.png","basketball-bonus-left-2-off.png","basketball-bonus-left-2-on.png","basketball-bonus-right-1-off.png","basketball-bonus-right-1-on.png","basketball-bonus-right-2-off.png","basketball-bonus-right-2-on.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-possession-left.png","basketball-possession-right.png"],"football":["football-base.png","football-clock-bg.png","football-overtime-overlay.png"],"hockey_lacrosse_waterpolo":["hockey_lacrosse_waterpolo-base.png","hockey_lacrosse_waterpolo-clock-bg.png","hockey_lacrosse_waterpolo-overtime-overlay.png"],"rugby":["rugby-base.png","rugby-overtime-overlay.png"],"soccer":["soccer-base.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],"tennis":["tennis-base.png"],"universal":["universal-base.png","universal-clock-bg.png"],"utility":["st-break-overlay.png","st-halftime-overlay.png","st-pregame-overlay.png","st-timeout-overlay.png","st-utility-base.png"],"volleyball":["volleyball-base.png"],"wrestling":["wrestling-base.png","wrestling-clock-overlay.png"]},
     hasSubsections: true,
   },
   "shootout": {
