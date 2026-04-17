@@ -1,0 +1,408 @@
+[
+  {
+    "id": "9727cf93-9b5f-4e28-9713-9643aa9059ee",
+    "name": "PanelAdBasic",
+    "components": [
+      {
+        "id": "1e4f772a-8f66-402f-969f-36d647b328d5",
+        "displayName": "PanelAdBasic",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 1600,
+          "height": 250
+        },
+        "layer": 0,
+        "props": {
+          "dataPath": "user_sequences.banner",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingTop": 0,
+          "paddingRight": 0,
+          "paddingBottom": 0,
+          "paddingLeft": 0,
+          "objectFit": "none",
+          "imagePath": "/images/Sequence/panel-mockup.png"
+        },
+        "originalSize": {
+          "width": 1920,
+          "height": 300
+        }
+      }
+    ],
+    "boundingBox": {
+      "width": 1600,
+      "height": 250
+    },
+    "createdAt": 1771523872568,
+    "updatedAt": 1771526435429
+  },
+  {
+    "id": "57689109-9f7a-4746-9de3-13dc54af90db",
+    "name": "FramePlaceholder",
+    "components": [
+      {
+        "id": "37ef807c-b390-406e-8470-5eef1f4a5184",
+        "displayName": "FramePlaceholder",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 1600,
+          "height": 640
+        },
+        "layer": 5,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "rgba(51, 51, 51, 0.73)",
+          "textColor": "rgba(255, 255, 255, 0.5)",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0
+        }
+      }
+    ],
+    "boundingBox": {
+      "width": 1600,
+      "height": 640
+    },
+    "originalPosition": {
+      "x": 160,
+      "y": 190
+    },
+    "createdAt": 1771868459921,
+    "updatedAt": 1771954821330
+  },
+  {
+    "id": "59d9a110-113b-4088-9771-6446e5f84a01",
+    "name": "PeriodBG",
+    "components": [
+      {
+        "id": "dde71164-ebd3-4e4f-a632-37383700f1d0",
+        "displayName": "PeriodBG",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 1610,
+          "height": 645
+        },
+        "layer": 5,
+        "props": {
+          "imageSource": "local",
+          "imagePath": "/images/Basketball/Full/bb-full-period-bg.png",
+          "objectFit": "none"
+        },
+        "visible": true
+      }
+    ],
+    "boundingBox": {
+      "width": 1610,
+      "height": 645
+    },
+    "originalPosition": {
+      "x": 155,
+      "y": 185
+    },
+    "createdAt": 1771954519126,
+    "updatedAt": 1771954519126
+  },
+  {
+    "id": "7a8663cd-41ba-4da4-a55d-093b09f9880c",
+    "name": "HomeTimeouts",
+    "components": [
+      {
+        "id": "969f8687-48c4-4636-82ab-5c140ffa14ba",
+        "displayName": "HomeTimeouts",
+        "type": "dynamicList",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 790,
+          "height": 30
+        },
+        "layer": 4,
+        "props": {
+          "totalCount": 5,
+          "activeCount": 2,
+          "activeBackgroundColor": "#4CAF50",
+          "activeTextColor": "#ffffff",
+          "activeBorderWidth": 0,
+          "activeBorderColor": "#ffffff",
+          "inactiveBackgroundColor": "#666666",
+          "inactiveTextColor": "#ffffff",
+          "inactiveBorderWidth": 0,
+          "inactiveBorderColor": "#ffffff",
+          "direction": "horizontal",
+          "itemSpacing": 4,
+          "borderRadius": 4,
+          "showNumbers": false,
+          "reverseOrder": false,
+          "borderWidth": 1,
+          "borderColor": "#000000",
+          "totalCountPath": "timeoutsAllowed",
+          "activeCountPath": "homeTeam.timeouts",
+          "itemAlignment": "start"
+        },
+        "visible": true
+      }
+    ],
+    "boundingBox": {
+      "width": 790,
+      "height": 30
+    },
+    "originalPosition": {
+      "x": 160,
+      "y": 325
+    },
+    "createdAt": 1771954708856,
+    "updatedAt": 1771954708856
+  },
+  {
+    "id": "bd3c6dd1-2460-4d7a-9ab3-ad65f76e4236",
+    "name": "AwayTimeouts",
+    "components": [
+      {
+        "id": "ff7ae34a-8dd8-4914-b897-b1d27c06af20",
+        "displayName": "AwayTimeouts",
+        "type": "dynamicList",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 790,
+          "height": 30
+        },
+        "layer": 3,
+        "props": {
+          "totalCount": 5,
+          "activeCount": 2,
+          "activeBackgroundColor": "#4CAF50",
+          "activeTextColor": "#ffffff",
+          "activeBorderWidth": 0,
+          "activeBorderColor": "#ffffff",
+          "inactiveBackgroundColor": "#666666",
+          "inactiveTextColor": "#ffffff",
+          "inactiveBorderWidth": 0,
+          "inactiveBorderColor": "#ffffff",
+          "direction": "horizontal",
+          "itemSpacing": 4,
+          "borderRadius": 4,
+          "showNumbers": false,
+          "reverseOrder": false,
+          "borderWidth": 1,
+          "borderColor": "#000000",
+          "totalCountPath": "timeoutsAllowed",
+          "activeCountPath": "awayTeam.timeouts"
+        }
+      }
+    ],
+    "boundingBox": {
+      "width": 790,
+      "height": 30
+    },
+    "originalPosition": {
+      "x": 970,
+      "y": 325
+    },
+    "createdAt": 1771954712533,
+    "updatedAt": 1771954712533
+  },
+  {
+    "id": "630a3777-f631-4075-8b9e-29dd7274f0d4",
+    "name": "HomeTeamName",
+    "components": [
+      {
+        "id": "78f2760b-aab3-41d6-92fb-d6b5fa112fb0",
+        "displayName": "HomeTeamName",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 790,
+          "height": 130
+        },
+        "layer": 7,
+        "props": {
+          "dataPath": "homeTeam.name",
+          "fontSize": 100,
+          "textColor": "#ffffff",
+          "textAlign": "left",
+          "paddingLeft": 25,
+          "autoFitText": true,
+          "fontFamily": "Montserrat-Bold",
+          "previewText": "",
+          "autoContrastText": true
+        }
+      }
+    ],
+    "boundingBox": {
+      "width": 790,
+      "height": 130
+    },
+    "originalPosition": {
+      "x": 160,
+      "y": 190
+    },
+    "createdAt": 1771955050713,
+    "updatedAt": 1771956012765
+  },
+  {
+    "id": "4e9a06cc-f699-4b64-8bd5-cc1dc0e56e0a",
+    "name": "AwayTeamName",
+    "components": [
+      {
+        "id": "c4bf1c4e-904c-4ca4-b904-90878c2b4862",
+        "displayName": "AwayTeamName",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 790,
+          "height": 130
+        },
+        "layer": 6,
+        "props": {
+          "dataPath": "awayTeam.name",
+          "fontSize": 100,
+          "textColor": "#ffffff",
+          "textAlign": "right",
+          "paddingLeft": 0,
+          "paddingRight": 25,
+          "autoFitText": true,
+          "fontFamily": "Montserrat-Bold",
+          "autoContrastText": true,
+          "previewText": ""
+        }
+      }
+    ],
+    "boundingBox": {
+      "width": 790,
+      "height": 130
+    },
+    "originalPosition": {
+      "x": 970,
+      "y": 190
+    },
+    "createdAt": 1771955053313,
+    "updatedAt": 1771956015263
+  },
+  {
+    "id": "2d987a89-1c39-44c5-8c92-1fcf17e93188",
+    "name": "LeftTeamNameBG",
+    "components": [
+      {
+        "id": "04a7d0f7-8d38-48c9-b4d0-f4fb4d7f19aa",
+        "displayName": "LeftTeamNameBG",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 1610,
+          "height": 631
+        },
+        "layer": 1,
+        "props": {
+          "imageSource": "local",
+          "imagePath": "/images/Basketball/Full/bb-full-team-color-left.png",
+          "objectFit": "none",
+          "useImageTint": true,
+          "imageTintColor": "#ffffff"
+        },
+        "visible": true,
+        "useTeamColor": true,
+        "teamColorSide": "home"
+      }
+    ],
+    "boundingBox": {
+      "width": 1610,
+      "height": 631
+    },
+    "originalPosition": {
+      "x": 155,
+      "y": 185
+    },
+    "createdAt": 1771955912556,
+    "updatedAt": 1771955912556
+  },
+  {
+    "id": "8613edba-298f-4f25-b06f-ed4fe93641d6",
+    "name": "RightTeamNameBG",
+    "components": [
+      {
+        "id": "f3653d6e-3ccb-4894-ab48-5821cb7fdb97",
+        "displayName": "RightTeamNameBG",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 1610,
+          "height": 631
+        },
+        "layer": 0,
+        "props": {
+          "imageSource": "local",
+          "imagePath": "/images/Basketball/Full/bb-full-team-color-right.png",
+          "objectFit": "none",
+          "useImageTint": true,
+          "imageTintColor": "#ffffff"
+        },
+        "useTeamColor": true,
+        "teamColorSide": "away"
+      }
+    ],
+    "boundingBox": {
+      "width": 1610,
+      "height": 631
+    },
+    "originalPosition": {
+      "x": 155,
+      "y": 185
+    },
+    "createdAt": 1771955915385,
+    "updatedAt": 1771955915385
+  }
+]

@@ -1,0 +1,1004 @@
+[
+  {
+    "id": "b2bcf969-401a-4dae-a4ee-c0e50832488f",
+    "name": "LeaderboardBGHome",
+    "components": [
+      {
+        "id": "ec43a642-2a24-4438-9968-84a54cb27957",
+        "displayName": "SlotBG",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 450,
+          "height": 90
+        },
+        "layer": 0,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingTop": 0,
+          "paddingRight": 0,
+          "paddingBottom": 0,
+          "paddingLeft": 0,
+          "objectFit": "none",
+          "imagePath": "/images/test_leaderboard/lb_bb_home_slot.png",
+          "autoContrastText": false
+        }
+      },
+      {
+        "id": "45cd3d34-f911-46da-8453-34e006ee30e4",
+        "displayName": "TopPoints2",
+        "type": "custom",
+        "position": {
+          "x": 4,
+          "y": 4
+        },
+        "size": {
+          "width": 105,
+          "height": 83
+        },
+        "layer": 1,
+        "props": {
+          "dataPath": "isTopScorer",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": true,
+          "state1Props": {
+            "backgroundColor": "rgba(232, 78, 60, 0)",
+            "textColor": "#ffffff"
+          },
+          "state2Props": {
+            "backgroundColor": "#cddb2c",
+            "textColor": "#3a3b3d",
+            "autoContrastText": false
+          },
+          "autoToggle": true
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 450,
+      "height": 90
+    },
+    "originalSlotSize": {
+      "width": 500,
+      "height": 100
+    },
+    "createdAt": 1771361259444,
+    "updatedAt": 1771529273674
+  },
+  {
+    "id": "31ce31e8-bbef-4fae-b2d1-6c10e7aa84fb",
+    "name": "LeaderboardDataHome",
+    "components": [
+      {
+        "id": "5253bbc4-ca7e-46b9-908b-9e6432b544f6",
+        "displayName": "HPP2",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 113,
+          "height": 90
+        },
+        "layer": 6,
+        "props": {
+          "dataPath": "points",
+          "label": "",
+          "fontSize": 60,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "autoContrastText": false
+        }
+      },
+      {
+        "id": "3c27eef7-e371-4f96-b459-8df70d67691c",
+        "displayName": "HPF2",
+        "type": "custom",
+        "position": {
+          "x": 117,
+          "y": 0
+        },
+        "size": {
+          "width": 113,
+          "height": 90
+        },
+        "layer": 5,
+        "props": {
+          "dataPath": "fouls",
+          "label": "",
+          "fontSize": 60,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "autoContrastText": false
+        }
+      },
+      {
+        "id": "a0c27a84-89c4-44db-a90a-f542c4c9fd9c",
+        "displayName": "HPJ2",
+        "type": "custom",
+        "position": {
+          "x": 234,
+          "y": 0
+        },
+        "size": {
+          "width": 216,
+          "height": 90
+        },
+        "layer": 4,
+        "props": {
+          "dataPath": "jersey",
+          "label": "",
+          "fontSize": 60,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "right",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingLeft": 0,
+          "paddingRight": 30,
+          "autoContrastText": false
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 450,
+      "height": 90
+    },
+    "createdAt": 1771361343776,
+    "updatedAt": 1771529325068,
+    "originalSlotSize": {
+      "width": 500,
+      "height": 100
+    }
+  },
+  {
+    "id": "c9bf7275-a947-4d87-8e75-53f1827c3bf8",
+    "name": "LeaderboardBGAway",
+    "components": [
+      {
+        "id": "7be9a1ec-788a-4b57-b265-26dc946fdda5",
+        "displayName": "SlotBG32",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 450,
+          "height": 90
+        },
+        "layer": 0,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingTop": 0,
+          "paddingRight": 0,
+          "paddingBottom": 0,
+          "paddingLeft": 0,
+          "objectFit": "none",
+          "imagePath": "/images/test_leaderboard/lb_bb_away_slot.png",
+          "autoContrastText": false
+        }
+      },
+      {
+        "id": "e2ab7fca-a7f3-4e95-89dc-5c070ea08c18",
+        "displayName": "TopPoints232",
+        "type": "custom",
+        "position": {
+          "x": 342,
+          "y": 5
+        },
+        "size": {
+          "width": 104,
+          "height": 81
+        },
+        "layer": 1,
+        "props": {
+          "dataPath": "isTopScorer",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": true,
+          "state1Props": {
+            "backgroundColor": "rgba(232, 78, 60, 0)",
+            "textColor": "#ffffff"
+          },
+          "state2Props": {
+            "backgroundColor": "#cddb2c",
+            "textColor": "#3a3b3d",
+            "autoContrastText": false
+          },
+          "autoToggle": true
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 450,
+      "height": 90
+    },
+    "createdAt": 1771361721708,
+    "updatedAt": 1771531354269,
+    "originalSlotSize": {
+      "width": 500,
+      "height": 100
+    }
+  },
+  {
+    "id": "dc2568cc-391c-4f64-b5bb-3f27f59a3b4c",
+    "name": "LeaderboardDataAway",
+    "components": [
+      {
+        "id": "4461fd11-643b-472c-8cfe-daf0f143f1ca",
+        "displayName": "HPP2",
+        "type": "custom",
+        "position": {
+          "x": 345,
+          "y": 0
+        },
+        "size": {
+          "width": 105,
+          "height": 90
+        },
+        "layer": 6,
+        "props": {
+          "dataPath": "points",
+          "label": "",
+          "fontSize": 60,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "autoContrastText": false
+        }
+      },
+      {
+        "id": "2a8fa218-3125-44a4-a96b-9de1c782dfdb",
+        "displayName": "HPF2",
+        "type": "custom",
+        "position": {
+          "x": 225,
+          "y": 0
+        },
+        "size": {
+          "width": 105,
+          "height": 90
+        },
+        "layer": 5,
+        "props": {
+          "dataPath": "fouls",
+          "label": "",
+          "fontSize": 60,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "autoContrastText": false
+        }
+      },
+      {
+        "id": "9cad2c48-ee9b-4bb7-a710-e3f5ffc14aaa",
+        "displayName": "HPJ2",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 212,
+          "height": 90
+        },
+        "layer": 4,
+        "props": {
+          "dataPath": "jersey",
+          "label": "",
+          "fontSize": 60,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "left",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingLeft": 30,
+          "paddingRight": 0,
+          "autoContrastText": false
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 450,
+      "height": 90
+    },
+    "createdAt": 1771361787811,
+    "updatedAt": 1771531341234
+  },
+  {
+    "id": "3917eeb3-0903-4d9e-ab1f-382d2d900a70",
+    "name": "Stats-Row-Left-Bg",
+    "components": [
+      {
+        "id": "dd0172f5-59d6-4641-8a7c-ed8fac949362",
+        "displayName": "Stats-Row-Left-Bg",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 447,
+          "height": 75
+        },
+        "layer": 10,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingTop": 0,
+          "paddingRight": 0,
+          "paddingBottom": 0,
+          "paddingLeft": 0,
+          "objectFit": "none",
+          "imagePath": "/images/Leaderboard/volleyball/volleyball-leaderboard-left-stat-row.png"
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 447,
+      "height": 75
+    },
+    "originalSlotSize": {
+      "width": 448,
+      "height": 75
+    },
+    "createdAt": 1773763618765,
+    "updatedAt": 1773764158548
+  },
+  {
+    "id": "7976f1a5-f905-44d0-bdba-efb421b150cc",
+    "name": "Stats-Row-Right-Bg",
+    "components": [
+      {
+        "id": "58d3aa0d-ab03-409c-a3ea-42c00874169c",
+        "displayName": "Stats-Row-Right-Bg",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 447,
+          "height": 75
+        },
+        "layer": 10,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "transparent",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "paddingTop": 0,
+          "paddingRight": 0,
+          "paddingBottom": 0,
+          "paddingLeft": 0,
+          "objectFit": "none",
+          "imagePath": "/images/Leaderboard/volleyball/volleyball-leaderboard-right-stat-row.png"
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 447,
+      "height": 75
+    },
+    "originalSlotSize": {
+      "width": 448,
+      "height": 75
+    },
+    "createdAt": 1773763657845,
+    "updatedAt": 1773765072241
+  },
+  {
+    "id": "6821d941-6843-47f1-a3fa-875821580030",
+    "name": "VB-Stats-Text-Left",
+    "components": [
+      {
+        "id": "19db84fe-2b75-40a0-aaca-dc9ac10fc724",
+        "displayName": "number",
+        "type": "custom",
+        "position": {
+          "x": 317,
+          "y": 14
+        },
+        "size": {
+          "width": 120,
+          "height": 57
+        },
+        "layer": 1,
+        "props": {
+          "dataPath": "jersey",
+          "label": "",
+          "fontSize": 52,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "none",
+          "textColor": "#ffffff",
+          "textAlign": "left",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "customText": "",
+          "fontFamily": "Anton",
+          "autoFitText": false
+        }
+      },
+      {
+        "id": "50e49450-76d8-48d4-b754-e57fb8462909",
+        "displayName": "ace",
+        "type": "custom",
+        "position": {
+          "x": 9,
+          "y": 9
+        },
+        "size": {
+          "width": 77,
+          "height": 58
+        },
+        "layer": 4,
+        "props": {
+          "dataPath": "aces",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": false,
+          "state1Props": {
+            "backgroundColor": "none",
+            "textColor": "#ffffff",
+            "fontSize": 46,
+            "customText": ""
+          },
+          "state2Props": {
+            "backgroundColor": "#ccdb2a",
+            "textColor": "#333333",
+            "customText": "",
+            "fontSize": 46
+          }
+        }
+      },
+      {
+        "id": "5c2d3585-2708-4686-a010-9e8ba078c6a2",
+        "displayName": "kill",
+        "type": "custom",
+        "position": {
+          "x": 105,
+          "y": 9
+        },
+        "size": {
+          "width": 78,
+          "height": 58
+        },
+        "layer": 3,
+        "props": {
+          "dataPath": "kills",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": false,
+          "state1Props": {
+            "backgroundColor": "none",
+            "textColor": "#ffffff",
+            "fontSize": 46,
+            "customText": ""
+          },
+          "state2Props": {
+            "backgroundColor": "#ccdb2a",
+            "textColor": "#333333",
+            "customText": "",
+            "fontSize": 46
+          }
+        }
+      },
+      {
+        "id": "efe01d54-3c49-43a1-adb6-f760a5c1ac38",
+        "displayName": "block",
+        "type": "custom",
+        "position": {
+          "x": 200,
+          "y": 9
+        },
+        "size": {
+          "width": 79,
+          "height": 58
+        },
+        "layer": 2,
+        "props": {
+          "dataPath": "blocks",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": false,
+          "state1Props": {
+            "backgroundColor": "none",
+            "textColor": "#ffffff",
+            "fontSize": 46,
+            "customText": ""
+          },
+          "state2Props": {
+            "backgroundColor": "#ccdb2a",
+            "textColor": "#333333",
+            "customText": "",
+            "fontSize": 46
+          }
+        }
+      },
+      {
+        "id": "33215008-1098-4780-9c22-d222f71c016e",
+        "displayName": "measurement",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 447,
+          "height": 75
+        },
+        "layer": 0,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "none",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 447,
+      "height": 75
+    },
+    "originalSlotSize": {
+      "width": 447,
+      "height": 75
+    },
+    "createdAt": 1773764517846,
+    "updatedAt": 1773774595725
+  },
+  {
+    "id": "acc41578-2faf-457e-8ab7-3f7446ba74cc",
+    "name": "VB-Stats-Text-Right",
+    "components": [
+      {
+        "id": "7474695f-41c7-4a2d-b28b-71730b1d0ab7",
+        "displayName": "number2",
+        "type": "custom",
+        "position": {
+          "x": 9,
+          "y": 13
+        },
+        "size": {
+          "width": 120,
+          "height": 57
+        },
+        "layer": 1,
+        "props": {
+          "dataPath": "jersey",
+          "label": "",
+          "fontSize": 52,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "none",
+          "textColor": "#ffffff",
+          "textAlign": "right",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "customText": "",
+          "fontFamily": "Anton",
+          "autoFitText": false
+        }
+      },
+      {
+        "id": "5a8c1fa5-64fb-4b47-8850-36d2e5371efe",
+        "displayName": "ace2",
+        "type": "custom",
+        "position": {
+          "x": 360,
+          "y": 8
+        },
+        "size": {
+          "width": 78,
+          "height": 58
+        },
+        "layer": 4,
+        "props": {
+          "dataPath": "aces",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": false,
+          "state1Props": {
+            "backgroundColor": "none",
+            "textColor": "#ffffff",
+            "fontSize": 46,
+            "customText": ""
+          },
+          "state2Props": {
+            "backgroundColor": "#ccdb2a",
+            "textColor": "#333333",
+            "customText": "",
+            "fontSize": 46
+          }
+        }
+      },
+      {
+        "id": "fa19408e-c13f-4f46-b387-2379bb89f36a",
+        "displayName": "kill2",
+        "type": "custom",
+        "position": {
+          "x": 264,
+          "y": 9
+        },
+        "size": {
+          "width": 78,
+          "height": 58
+        },
+        "layer": 3,
+        "props": {
+          "dataPath": "kills",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": false,
+          "state1Props": {
+            "backgroundColor": "none",
+            "textColor": "#ffffff",
+            "fontSize": 46,
+            "customText": ""
+          },
+          "state2Props": {
+            "backgroundColor": "#ccdb2a",
+            "textColor": "#333333",
+            "customText": "",
+            "fontSize": 46
+          }
+        },
+        "visible": true
+      },
+      {
+        "id": "e0506928-7cc7-45c6-9ad1-4dc92ab37140",
+        "displayName": "block2",
+        "type": "custom",
+        "position": {
+          "x": 169,
+          "y": 8
+        },
+        "size": {
+          "width": 77,
+          "height": 58
+        },
+        "layer": 2,
+        "props": {
+          "dataPath": "blocks",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "#E74C3C",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0,
+          "canToggle": true,
+          "toggleState": false,
+          "state1Props": {
+            "backgroundColor": "none",
+            "textColor": "#ffffff",
+            "fontSize": 46,
+            "customText": ""
+          },
+          "state2Props": {
+            "backgroundColor": "#ccdb2a",
+            "textColor": "#333333",
+            "customText": "",
+            "fontSize": 46
+          }
+        },
+        "visible": true
+      },
+      {
+        "id": "c39163ec-aa56-4761-8727-66ad37ea3003",
+        "displayName": "measurement2",
+        "type": "custom",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "width": 447,
+          "height": 75
+        },
+        "layer": 0,
+        "props": {
+          "dataPath": "none",
+          "label": "",
+          "fontSize": 24,
+          "format": "text",
+          "prefix": "",
+          "suffix": "",
+          "backgroundColor": "none",
+          "textColor": "#ffffff",
+          "textAlign": "center",
+          "imageSource": "local",
+          "borderWidth": 0,
+          "borderColor": "#ffffff",
+          "borderStyle": "solid",
+          "borderTopLeftRadius": 0,
+          "borderTopRightRadius": 0,
+          "borderBottomLeftRadius": 0,
+          "borderBottomRightRadius": 0
+        }
+      }
+    ],
+    "slotSize": {
+      "width": 447,
+      "height": 75
+    },
+    "originalSlotSize": {
+      "width": 447,
+      "height": 75
+    },
+    "createdAt": 1773765385242,
+    "updatedAt": 1773774564603
+  }
+]
