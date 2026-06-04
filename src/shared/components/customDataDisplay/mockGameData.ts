@@ -4,6 +4,10 @@
  */
 
 export const mockGameData = {
+  gameSettings: {
+    display_clock: '1',
+    clock_type: 'scoreboard',
+  },
   homeTeam: {
     name: 'HOME',
     score: 1,

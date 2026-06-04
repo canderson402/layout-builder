@@ -111,6 +111,19 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     }, obj);
   };
 
+  const resolveToggleValue = (rawValue: unknown): boolean | null => {
+    if (typeof rawValue === 'boolean') return rawValue;
+    if (typeof rawValue === 'number') return rawValue !== 0;
+    if (typeof rawValue === 'string' && rawValue.length > 0) {
+      const lower = rawValue.toLowerCase();
+      if (lower === 'true') return true;
+      if (lower === 'false') return false;
+      const n = Number(rawValue);
+      if (!Number.isNaN(n)) return n !== 0;
+    }
+    return null;
+  };
+
   // Visibility check
   const isVisible = isVisibleProp !== undefined ? isVisibleProp : (() => {
     if (visibilityPath && effectiveGameData) {
@@ -127,15 +140,13 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     if (!canToggle) return false;
 
     if (toggleDataPath) {
-      const rawValue = getNestedData(effectiveGameData, toggleDataPath);
-      if (typeof rawValue === 'boolean') return rawValue;
-      if (typeof rawValue === 'number') return rawValue !== 0; // 0 = false, 1+ = true
+      const resolved = resolveToggleValue(getNestedData(effectiveGameData, toggleDataPath));
+      if (resolved !== null) return resolved;
     }
 
     if (dataPath) {
-      const rawValue = getNestedData(effectiveGameData, dataPath);
-      if (typeof rawValue === 'boolean') return rawValue;
-      if (typeof rawValue === 'number') return rawValue !== 0; // 0 = false, 1+ = true
+      const resolved = resolveToggleValue(getNestedData(effectiveGameData, dataPath));
+      if (resolved !== null) return resolved;
     }
 
     return toggleState;

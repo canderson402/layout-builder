@@ -15,6 +15,10 @@ interface WebPreviewProps {
 
 // Mock game data for preview
 const mockGameData = {
+  gameSettings: {
+    display_clock: '1',
+    clock_type: 'scoreboard',
+  },
   homeTeam: {
     name: 'HOME TEAM',
     score: 1,

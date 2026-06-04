@@ -1930,6 +1930,9 @@ function PropertyPanel({
               }}
             >
               <option value="">Use Display Data Path</option>
+              <optgroup label="Game Settings">
+                <option value="gameSettings.display_clock">Display Clock</option>
+              </optgroup>
               <optgroup label="Game State">
                 <option value="isOvertimeActive">Overtime Active</option>
               </optgroup>
