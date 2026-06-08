@@ -113,6 +113,10 @@ export default function Canvas({
   const [isCreating, setIsCreating] = useState(false);
   const [createStart, setCreateStart] = useState({ x: 0, y: 0 });
   const [createEnd, setCreateEnd] = useState({ x: 0, y: 0 });
+  // Marquee selection — default click+drag on empty canvas
+  const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
+  const [marqueeStart, setMarqueeStart] = useState({ x: 0, y: 0 });
+  const [marqueeEnd, setMarqueeEnd] = useState({ x: 0, y: 0 });
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [hasDraggedFarEnough, setHasDraggedFarEnough] = useState(false);
   const [initialComponentPositions, setInitialComponentPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
@@ -1282,6 +1286,12 @@ export default function Canvas({
       }
     }
     
+    // Handle marquee selection dragging — track end point on every move
+    if (isMarqueeSelecting) {
+      setMarqueeEnd({ x: canvasX, y: canvasY });
+      return;
+    }
+
     if (!isDragging && !isResizing && !isCreating) return;
 
     // Handle creation dragging
@@ -1385,12 +1395,47 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides, dragAxisConstraint]);
+  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, isMarqueeSelecting, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides, dragAxisConstraint]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
     if (isPanning) {
       setIsPanning(false);
+      return;
+    }
+
+    // Handle marquee selection completion: pick components whose bounding box
+    // intersects the marquee rectangle, then clear marquee state.
+    if (isMarqueeSelecting) {
+      const left = Math.min(marqueeStart.x, marqueeEnd.x);
+      const right = Math.max(marqueeStart.x, marqueeEnd.x);
+      const top = Math.min(marqueeStart.y, marqueeEnd.y);
+      const bottom = Math.max(marqueeStart.y, marqueeEnd.y);
+      const hasArea = right - left >= 2 && bottom - top >= 2;
+
+      if (hasArea) {
+        const hit = (layout.components || [])
+          .filter(c => c.visible !== false && c.type !== 'group')
+          .filter(c => {
+            const cLeft = c.position.x;
+            const cRight = c.position.x + c.size.width;
+            const cTop = c.position.y;
+            const cBottom = c.position.y + c.size.height;
+            // Intersection — partial overlap counts. Switch to full
+            // containment by requiring cLeft >= left && cRight <= right etc.
+            return cLeft < right && cRight > left && cTop < bottom && cBottom > top;
+          })
+          .map(c => c.id)
+          .filter((id): id is string => !!id);
+
+        if (hit.length > 0) {
+          onSelectComponents(hit);
+        }
+      }
+
+      setIsMarqueeSelecting(false);
+      setMarqueeStart({ x: 0, y: 0 });
+      setMarqueeEnd({ x: 0, y: 0 });
       return;
     }
     
@@ -1488,7 +1533,7 @@ export default function Canvas({
     setActiveGuides({ guides: [] }); // Clear smart guides
     setDragAxisConstraint(null); // Clear axis constraint
     isCopyDragRef.current = false; // Clear copy-drag flag
-  }, [setDraggedComponent, isCreating, createStart, createEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
+  }, [setDraggedComponent, isCreating, createStart, createEnd, isMarqueeSelecting, marqueeStart, marqueeEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
 
   // Calculate bounding box for multiple selected components
   const getMultiSelectBounds = useCallback(() => {
@@ -2242,20 +2287,40 @@ export default function Canvas({
       const rect = canvasRef.current!.getBoundingClientRect();
       const canvasX = (e.clientX - rect.left) / scale;
       const canvasY = (e.clientY - rect.top) / scale;
-      
+
+      // Component creation is now opt-in: hold Cmd (Mac) / Ctrl (Win/Linux)
+      // and drag to create. Without the modifier, click+drag on empty canvas
+      // just clears selection; on an unselected component the per-component
+      // handleMouseDown selects + sets up drag, so we leave that path alone.
+      const isCreateModifier = e.metaKey || e.ctrlKey;
+
       // Reset last selected ID when clicking on empty canvas
       setLastSelectedId(null);
-      
+
       // Check if we're clicking inside an unselected component
       const componentAtPoint = getComponentAtPoint(canvasX, canvasY);
-      
+
+      if (!isCreateModifier) {
+        // Default selection mode: empty canvas starts a marquee, unselected
+        // component falls through to its own mousedown (already selects + drags).
+        if (!componentAtPoint) {
+          setIsMarqueeSelecting(true);
+          setMarqueeStart({ x: canvasX, y: canvasY });
+          setMarqueeEnd({ x: canvasX, y: canvasY });
+          onSelectComponents([]);
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
+
       if (componentAtPoint && !selectedComponents.includes(componentAtPoint.id)) {
-        // Clicking inside an unselected component - start creating a new component
+        // Cmd+drag inside an unselected component - create a new component
         setIsCreating(true);
         setCreateStart({ x: canvasX, y: canvasY });
         setCreateEnd({ x: canvasX, y: canvasY });
         // Don't change selection - keep the current component unselected
-        
+
         // Prevent synthetic touch events from interfering
         if (e.type === 'touchstart') {
           e.preventDefault();
@@ -2264,12 +2329,12 @@ export default function Canvas({
         }
         e.stopPropagation();
       } else if (!componentAtPoint) {
-        // Clicking on empty canvas - start creating a new component
+        // Cmd+drag on empty canvas - create a new component
         setIsCreating(true);
         setCreateStart({ x: canvasX, y: canvasY });
         setCreateEnd({ x: canvasX, y: canvasY });
         onSelectComponents([]);
-        
+
         // Prevent synthetic touch events from interfering
         if (e.type === 'touchstart') {
           e.preventDefault();
@@ -2597,7 +2662,7 @@ export default function Canvas({
 
   // Document-level mouse event handling for drag operations outside canvas
   React.useEffect(() => {
-    const isOperationActive = isDragging || isScaling || isResizing || isPanning || isCreating;
+    const isOperationActive = isDragging || isScaling || isResizing || isPanning || isCreating || isMarqueeSelecting;
 
     if (!isOperationActive) return;
 
@@ -2617,7 +2682,7 @@ export default function Canvas({
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isDragging, isScaling, isResizing, isPanning, isCreating, handleMouseMove, handleMouseUp]);
+  }, [isDragging, isScaling, isResizing, isPanning, isCreating, isMarqueeSelecting, handleMouseMove, handleMouseUp]);
 
   // Alt key listener to temporarily disable snapping
   React.useEffect(() => {
@@ -3445,7 +3510,7 @@ export default function Canvas({
             onSelectComponents={onSelectComponents}
             gameData={gameData}
           />
-          {/* Creation rectangle overlay */}
+          {/* Creation rectangle overlay (Cmd+drag) */}
           {isCreating && (
             <div
               style={{
@@ -3456,6 +3521,22 @@ export default function Canvas({
                 height: Math.abs(createEnd.y - createStart.y),
                 border: '2px dashed #4CAF50',
                 backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                pointerEvents: 'none',
+                zIndex: 1000
+              }}
+            />
+          )}
+          {/* Marquee selection rectangle (plain drag on empty canvas) */}
+          {isMarqueeSelecting && (
+            <div
+              style={{
+                position: 'absolute',
+                left: Math.min(marqueeStart.x, marqueeEnd.x),
+                top: Math.min(marqueeStart.y, marqueeEnd.y),
+                width: Math.abs(marqueeEnd.x - marqueeStart.x),
+                height: Math.abs(marqueeEnd.y - marqueeStart.y),
+                border: '1.5px dashed #4FC3F7',
+                backgroundColor: 'rgba(79, 195, 247, 0.12)',
                 pointerEvents: 'none',
                 zIndex: 1000
               }}

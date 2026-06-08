@@ -209,18 +209,24 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     autoFitText = false
   } = activeProps;
 
+  // State-aware team color: prefer values merged from state1Props/state2Props
+  // so toggle states can independently enable/disable team color. Falls back
+  // to the component-level prop for legacy layouts.
+  const effectiveUseTeamColor = (activeProps as any).useTeamColor ?? useTeamColor;
+  const effectiveTeamColorSide = (activeProps as any).teamColorSide ?? teamColorSide;
+
   // Determine colors
   const hasRealGameData = effectiveGameData && effectiveGameData !== mockGameData &&
     (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
   const hasAnyTeamColorData = effectiveGameData &&
     (effectiveGameData.home_team_color || effectiveGameData.away_team_color);
 
-  const teamColorForBackground = useTeamColor && teamColorSide && hasRealGameData && !effectiveUseImageTint
-    ? getTeamColor(effectiveGameData, teamColorSide)
+  const teamColorForBackground = effectiveUseTeamColor && effectiveTeamColorSide && hasRealGameData && !effectiveUseImageTint
+    ? getTeamColor(effectiveGameData, effectiveTeamColorSide)
     : undefined;
 
-  const teamColorForTint = useTeamColor && teamColorSide && hasAnyTeamColorData && effectiveUseImageTint
-    ? getTeamColor(effectiveGameData, teamColorSide)
+  const teamColorForTint = effectiveUseTeamColor && effectiveTeamColorSide && hasAnyTeamColorData && effectiveUseImageTint
+    ? getTeamColor(effectiveGameData, effectiveTeamColorSide)
     : undefined;
 
   const isBannerOrSequence = dataPath === 'user_sequences.banner' || dataPath === 'user_sequences.timeout';

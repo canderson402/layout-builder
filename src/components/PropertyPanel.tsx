@@ -1982,6 +1982,14 @@ function PropertyPanel({
                 <option value="isTopBlocks">Top Blocks</option>
                 <option value="active">Slot Active</option>
               </optgroup>
+              <optgroup label="Tennis LE - Set Slot (auto-prefixed)">
+                <option value="active">Set Active (current set)</option>
+                <option value="exists">Set Exists (within best-of)</option>
+                <option value="won">Set Won (historical winner)</option>
+              </optgroup>
+              <optgroup label="Tennis LE - Standalone">
+                <option value="setSlots.pointsEnabled">Points Tracking Enabled</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -2717,6 +2725,21 @@ function PropertyPanel({
                     <option value="blocks">Player Blocks</option>
                     <option value="imageUrl">Player Image</option>
                   </optgroup>
+                  <optgroup label="Tennis LE - Set Slot Template (for Slot Templates)">
+                    <option value="setNumber">Set Number (1, 2, 3, ...)</option>
+                    <option value="score">Set Score</option>
+                    <option value="active">Set Active (boolean)</option>
+                    <option value="exists">Set Exists (boolean - use for visibility)</option>
+                    <option value="won">Set Won (boolean - use to highlight winner)</option>
+                  </optgroup>
+                  <optgroup label="Tennis LE - Standalone Bindings">
+                    <option value="setSlots.homePoints">Home Current Point (0/15/30/40)</option>
+                    <option value="setSlots.awayPoints">Away Current Point (0/15/30/40)</option>
+                    <option value="setSlots.setsWon.home">Home Sets Won (Total)</option>
+                    <option value="setSlots.setsWon.away">Away Sets Won (Total)</option>
+                    <option value="setSlots.totalSets">Total Sets (Best Of)</option>
+                    <option value="setSlots.pointsEnabled">Points Tracking Enabled (boolean - for visibility)</option>
+                  </optgroup>
                   <optgroup label="Active Player (Current Slot 0)">
                     <option value="currentPlayer.home.name">Home Active Player Name</option>
                     <option value="currentPlayer.home.jersey">Home Active Player Jersey</option>
@@ -2758,7 +2781,36 @@ function PropertyPanel({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                       <label>Background Color</label>
                       <button
-                        onClick={() => updateStateProps('backgroundColor', 'none')}
+                        onClick={() => {
+                          // Clear BG also resets team color for the active
+                          // state — otherwise the team color override would
+                          // immediately re-paint the background.
+                          // Single update so both fields land in the same
+                          // dispatch (separate calls would race on stale state).
+                          if (!component || !componentId) return;
+                          if (component.props?.canToggle) {
+                            const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+                            const currentStateProps = component.props[stateKey] || {};
+                            updateComponentWithScrollPreservation(componentId, {
+                              props: {
+                                ...component.props,
+                                [stateKey]: {
+                                  ...currentStateProps,
+                                  backgroundColor: 'none',
+                                  useTeamColor: false,
+                                },
+                              },
+                            });
+                          } else {
+                            updateComponentWithScrollPreservation(componentId, {
+                              props: {
+                                ...component.props,
+                                backgroundColor: 'none',
+                                useTeamColor: false,
+                              },
+                            });
+                          }
+                        }}
                         style={{
                           fontSize: '11px',
                           padding: '2px 8px',
@@ -2787,29 +2839,63 @@ function PropertyPanel({
                 </>
               )}
 
-              {/* Team Color Controls */}
+              {/* Team Color Controls — state-aware so a toggleable component
+                  can have team color in one state and off in the other.
+                  Reads/writes to state1Props/state2Props via the state helpers;
+                  for non-toggleable components these fall through to the
+                  component's regular props. */}
               <div className="property-field">
                 <label>
                   <input
                     type="checkbox"
-                    checked={component?.useTeamColor || false}
-                    onChange={(e) => component && updateComponentWithScrollPreservation(component.id, {
-                      useTeamColor: e.target.checked,
-                      teamColorSide: component.teamColorSide || 'home'
-                    })}
+                    checked={!!getStateValue('useTeamColor', component?.useTeamColor || false)}
+                    onChange={(e) => {
+                      // Single dispatch — two updateStateProps in a row would
+                      // race on the same stale component.props snapshot and
+                      // the second would clobber the first inside state1Props.
+                      if (!component || !componentId) return;
+                      const checked = e.target.checked;
+                      const defaultSide = (component.teamColorSide || 'home') as 'home' | 'away';
+                      if (component.props?.canToggle) {
+                        const stateKey = editingState === 1 ? 'state1Props' : 'state2Props';
+                        const currentStateProps = component.props[stateKey] || {};
+                        const teamColorSideValue = checked
+                          ? (currentStateProps.teamColorSide || component.props.teamColorSide || defaultSide)
+                          : currentStateProps.teamColorSide;
+                        updateComponentWithScrollPreservation(componentId, {
+                          props: {
+                            ...component.props,
+                            [stateKey]: {
+                              ...currentStateProps,
+                              useTeamColor: checked,
+                              teamColorSide: teamColorSideValue,
+                            },
+                          },
+                        });
+                      } else {
+                        const teamColorSideValue = checked
+                          ? (component.props?.teamColorSide || defaultSide)
+                          : component.props?.teamColorSide;
+                        updateComponentWithScrollPreservation(componentId, {
+                          props: {
+                            ...component.props,
+                            useTeamColor: checked,
+                            teamColorSide: teamColorSideValue,
+                          },
+                        });
+                      }
+                    }}
                   />
                   Use Team Color
                 </label>
               </div>
 
-              {component?.useTeamColor && (
+              {!!getStateValue('useTeamColor', component?.useTeamColor || false) && (
                 <div className="property-field">
                   <label>Team Color Side</label>
                   <select
-                    value={component?.teamColorSide || 'home'}
-                    onChange={(e) => component && updateComponentWithScrollPreservation(component.id, {
-                      teamColorSide: e.target.value as 'home' | 'away'
-                    })}
+                    value={getStateValue('teamColorSide', component?.teamColorSide || 'home')}
+                    onChange={(e) => updateStateProps('teamColorSide', e.target.value as 'home' | 'away')}
                   >
                     <option value="home">Home</option>
                     <option value="away">Away</option>
@@ -2860,6 +2946,14 @@ function PropertyPanel({
                   <optgroup label="Leaderboard Slot Template">
                     <option value="isTopScorer">Is Top Scorer</option>
                     <option value="active">Slot Active</option>
+                  </optgroup>
+                  <optgroup label="Tennis LE - Set Slot Template">
+                    <option value="active">Set Active (current set)</option>
+                    <option value="exists">Set Exists (within best-of)</option>
+                    <option value="won">Set Won (historical winner)</option>
+                  </optgroup>
+                  <optgroup label="Tennis LE - Standalone">
+                    <option value="setSlots.pointsEnabled">Points Tracking Enabled</option>
                   </optgroup>
                   <optgroup label="Team State">
                     <option value="homeTeam.possession">Home Has Possession</option>
@@ -3985,6 +4079,7 @@ function PropertyPanel({
                   <option value="leaderboardSlots">Leaderboard Slots (Basketball)</option>
                   <option value="volleyballLeaderboardSlots">Leaderboard Slots (Volleyball)</option>
                   <option value="penaltySlots">Penalty Slots</option>
+                  <option value="setSlots">Tennis Set Slots</option>
                 </select>
                 <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
                   Template data paths will be prefixed with this + team + slot number
@@ -4012,6 +4107,27 @@ function PropertyPanel({
                     );
                   }}
                 />
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Used when Dynamic Count is "None". Otherwise this is the max buffer.
+                </small>
+              </div>
+
+              <div className="property-field">
+                <label>Dynamic Slot Count (overrides Number of Slots)</label>
+                <select
+                  value={component.props?.slotCountPath || ''}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, slotCountPath: e.target.value || undefined }
+                  })}
+                >
+                  <option value="">None (use static Number of Slots)</option>
+                  <optgroup label="Tennis LE">
+                    <option value="setSlots.totalSets">Tennis Total Sets (Best-Of)</option>
+                  </optgroup>
+                </select>
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  When set, the slot list renders this many rows from gameData instead of the static count.
+                </small>
               </div>
 
               <div className="property-field">
@@ -4339,6 +4455,14 @@ function PropertyPanel({
                   <optgroup label="Leaderboard Slot Template">
                     <option value="isTopScorer">Is Top Scorer</option>
                     <option value="active">Slot Active</option>
+                  </optgroup>
+                  <optgroup label="Tennis LE - Set Slot Template">
+                    <option value="active">Set Active (current set)</option>
+                    <option value="exists">Set Exists (within best-of)</option>
+                    <option value="won">Set Won (historical winner)</option>
+                  </optgroup>
+                  <optgroup label="Tennis LE - Standalone">
+                    <option value="setSlots.pointsEnabled">Points Tracking Enabled</option>
                   </optgroup>
                   <optgroup label="Team State">
                     <option value="homeTeam.possession">Home Has Possession</option>

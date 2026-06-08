@@ -299,6 +299,13 @@
   background: #2a2a2a;
   padding: 16px;
   margin-top: auto;
+  /* Cap height so an unbounded number of slot/component templates can't push
+     the rest of the panel off-screen — once we hit the cap, the menu scrolls
+     internally instead of overflowing the panel. */
+  max-height: 60vh;
+  overflow-y: auto;
+  min-height: 0;
+  flex-shrink: 0;
 }
 
 .component-menu-header {

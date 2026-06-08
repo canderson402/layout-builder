@@ -1450,7 +1450,10 @@ export default function LayerPanel({
             justifyContent: 'center',
             zIndex: 9999
           }}
-          onClick={() => setShowTemplateModal(false)}
+          // Dismiss on backdrop MOUSEDOWN (not click) so a drag that started
+          // inside the dialog and released outside doesn't accidentally close
+          // the modal — common when text-selecting inside the input.
+          onMouseDown={() => setShowTemplateModal(false)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="slot-template-modal-title"
@@ -1462,7 +1465,7 @@ export default function LayerPanel({
               borderRadius: '8px',
               minWidth: '300px'
             }}
-            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
           >
             <h3 id="slot-template-modal-title" style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Slot Template</h3>
             <p id="slot-template-desc" style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>
@@ -1538,7 +1541,8 @@ export default function LayerPanel({
             justifyContent: 'center',
             zIndex: 9999
           }}
-          onClick={() => setShowComponentTemplateModal(false)}
+          // Dismiss on backdrop MOUSEDOWN — see note on slot template modal above.
+          onMouseDown={() => setShowComponentTemplateModal(false)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="component-template-modal-title"
@@ -1550,7 +1554,7 @@ export default function LayerPanel({
               borderRadius: '8px',
               minWidth: '300px'
             }}
-            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
           >
             <h3 id="component-template-modal-title" style={{ margin: '0 0 16px 0', color: '#fff' }}>Save as Component Template</h3>
             <p id="component-template-desc" style={{ color: '#aaa', fontSize: '12px', marginBottom: '12px' }}>

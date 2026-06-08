@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutConfig, ComponentConfig } from '../types';
-import { expandLayoutForExport } from '../utils/slotTemplates';
+import { expandLayoutForRuntime } from '../utils/slotTemplates';
 import { measureTextBearings, getSampleTextForBearing } from '../utils/textBearings';
 import './ExportModal.css';
 
@@ -179,26 +179,15 @@ function normalizeLayerValues(components: ComponentConfig[]): ComponentConfig[] 
   });
 }
 
-// Clean the entire layout for TV export (expands slotLists)
+// Clean the layout for export. Single unified mode: slotList containers are
+// preserved (so the TV runtime can dynamically size the row count from
+// gameData), and ONE copy of each template is inlined as a slot:0 component
+// with short paths. The TV-side slot expansion auto-prefixes paths and clones
+// per row. Same export works for re-importing into the builder because
+// templates are inlined rather than referenced by id.
 function cleanLayoutForExport(layout: LayoutConfig): LayoutConfig {
-  // First expand any slotList components into concrete components
-  const expandedComponents = expandLayoutForExport(layout.components);
-
-  // Normalize layer values to ensure siblings have unique z-index values
-  const normalizedComponents = normalizeLayerValues(expandedComponents);
-
-  return {
-    ...layout,
-    components: normalizedComponents.map(cleanComponentProps)
-  };
-}
-
-// Clean the layout for preview export (preserves slotLists and templates)
-function cleanLayoutForPreview(layout: LayoutConfig): LayoutConfig {
-  // Don't expand slotLists - keep them as-is for template editing
-  // But still normalize layers to ensure siblings have unique values
-  const normalizedComponents = normalizeLayerValues(layout.components);
-
+  const inlinedComponents = expandLayoutForRuntime(layout.components);
+  const normalizedComponents = normalizeLayerValues(inlinedComponents);
   return {
     ...layout,
     components: normalizedComponents.map(cleanComponentProps)
@@ -210,18 +199,12 @@ interface ExportModalProps {
   onClose: () => void;
 }
 
-type ExportMode = 'tv' | 'preview';
-
 export default function ExportModal({ layout, onClose }: ExportModalProps) {
   const [copied, setCopied] = useState(false);
-  const [exportMode, setExportMode] = useState<ExportMode>('tv');
 
   const exportedCode = useMemo(() => {
-    const cleanedLayout = exportMode === 'tv'
-      ? cleanLayoutForExport(layout)
-      : cleanLayoutForPreview(layout);
-    return JSON.stringify(cleanedLayout, null, 2);
-  }, [layout, exportMode]);
+    return JSON.stringify(cleanLayoutForExport(layout), null, 2);
+  }, [layout]);
 
   const copyToClipboard = async () => {
     try {
@@ -234,9 +217,7 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
   };
 
   const downloadFile = () => {
-    const suffix = exportMode === 'preview' ? '-preview' : '';
-    const filename = `${layout.name.toLowerCase().replace(/\s+/g, '-')}${suffix}.json`;
-
+    const filename = `${layout.name.toLowerCase().replace(/\s+/g, '-')}.json`;
     const blob = new Blob([exportedCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -254,27 +235,10 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
           <button className="close-button" onClick={onClose}>×</button>
         </div>
 
-        <div className="export-tabs">
-          <button
-            className={`export-tab ${exportMode === 'tv' ? 'active' : ''}`}
-            onClick={() => setExportMode('tv')}
-          >
-            Export for TV
-          </button>
-          <button
-            className={`export-tab ${exportMode === 'preview' ? 'active' : ''}`}
-            onClick={() => setExportMode('preview')}
-          >
-            Export Preview
-          </button>
-        </div>
-
         <div className="modal-content">
           <div className="code-container">
             <div className="code-header">
-              <span className="code-title">
-                {exportMode === 'tv' ? 'TV Layout (slotLists expanded)' : 'Preview Layout (templates preserved)'}
-              </span>
+              <span className="code-title">Layout JSON (slotLists preserved, templates inlined)</span>
               <div className="code-actions">
                 <button
                   onClick={copyToClipboard}
@@ -293,25 +257,12 @@ export default function ExportModal({ layout, onClose }: ExportModalProps) {
           </div>
 
           <div className="export-instructions">
-            {exportMode === 'tv' ? (
-              <>
-                <h3>Export for TV:</h3>
-                <ol>
-                  <li>SlotList components are expanded into individual components</li>
-                  <li>Ready to send to TV or use in production</li>
-                  <li>Cannot be edited with templates after import</li>
-                </ol>
-              </>
-            ) : (
-              <>
-                <h3>Export Preview:</h3>
-                <ol>
-                  <li>SlotList components and template references are preserved</li>
-                  <li>Import into Layout Builder to continue editing with templates</li>
-                  <li>Share with others who have the same templates</li>
-                </ol>
-              </>
-            )}
+            <h3>Layout export</h3>
+            <ol>
+              <li>SlotList containers and their slot:0 templates are preserved together — runtime sizes the row count dynamically and auto-prefixes paths per row.</li>
+              <li>Static (non-slotList) components export as-is.</li>
+              <li>Same JSON can be re-imported into the Layout Builder for further editing.</li>
+            </ol>
           </div>
         </div>
       </div>

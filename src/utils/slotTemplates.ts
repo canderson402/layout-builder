@@ -238,6 +238,78 @@ export function expandLayoutForExport(components: ComponentConfig[]): ComponentC
   return expandedComponents;
 }
 
+// Inline ONE copy (slot 0) of a slotList's template into the layout, preserving
+// the slotList container itself. Short paths (e.g. `score`, `won`) stay short —
+// the TV's runtime slot expansion auto-prefixes them per row. This is what the
+// "Export for TV" mode now uses so RNDisplay can dynamically size the slot list
+// against gameData.setSlots.home.count instead of getting a flattened layout.
+export function expandLayoutForRuntime(components: ComponentConfig[]): ComponentConfig[] {
+  const result: ComponentConfig[] = [];
+
+  components.forEach(comp => {
+    if (comp.type !== 'slotList') {
+      result.push(comp);
+      return;
+    }
+
+    // Always emit the slotList container itself — runtime expansion reads its
+    // size, team, dataPathPrefix, slotCountPath, etc.
+    result.push(comp);
+
+    const template = getTemplate(comp.props?.templateId, comp.props?.templateName);
+    if (!template) return;
+
+    const props = comp.props || {};
+    const slotCount = props.slotCount || 5;
+    const slotSpacing = props.slotSpacing ?? 5;
+    const direction = props.direction || 'vertical';
+
+    const boundingWidth = comp.size.width;
+    const boundingHeight = comp.size.height;
+
+    const naturalWidth = direction === 'horizontal'
+      ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
+      : template.slotSize.width;
+    const naturalHeight = direction === 'vertical'
+      ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
+      : template.slotSize.height;
+
+    const scaleX = boundingWidth / naturalWidth;
+    const scaleY = boundingHeight / naturalHeight;
+
+    // Slot 0 only — runtime expansion clones this for slot1..slotN.
+    template.components.forEach(templateComp => {
+      const cloned: ComponentConfig = {
+        ...templateComp,
+        id: crypto.randomUUID(),
+        slot: 0,
+        // parentId is preserved from the original template component so
+        // the existing layer hierarchy doesn't shift. Template-to-slotList
+        // association is carried in props.slotListId instead, which the
+        // runtime expansion reads without affecting layer ordering.
+        position: {
+          x: comp.position.x + templateComp.position.x * scaleX,
+          y: comp.position.y + templateComp.position.y * scaleY,
+        },
+        size: {
+          width: templateComp.size.width * scaleX,
+          height: templateComp.size.height * scaleY,
+        },
+        props: {
+          ...(templateComp.props || {}),
+          // Bind this template to the slotList container by id. Used by the
+          // runtime to disambiguate when multiple slotLists exist (e.g.
+          // stacked home/away strips in a tennis layout).
+          slotListId: comp.id,
+        },
+      };
+      result.push(cloned);
+    });
+  });
+
+  return result;
+}
+
 // Repair template references in a layout by matching by name when ID not found
 // This helps when templates were imported separately with different UUIDs
 export function repairTemplateReferences(components: ComponentConfig[]): {
