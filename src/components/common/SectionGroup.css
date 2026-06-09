@@ -1,0 +1,25 @@
+/* Non-interactive band header above a cluster of CollapsibleSections. */
+
+.section-group {
+  margin-bottom: 4px;
+  border-top: 2px solid #3a3a3a;
+}
+
+.section-group:first-child {
+  border-top: none;
+}
+
+.section-group__title {
+  padding: 14px 12px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: #bbb;
+  background: #1f1f1f;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.section-group__body {
+  display: block;
+}

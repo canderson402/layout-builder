@@ -60,6 +60,14 @@
   min-height: 0;
 }
 
+/* Hint text shown at the top of the no-selection (Preview Data) view. */
+.property-panel-hint {
+  padding: 10px 12px;
+  color: #888;
+  font-size: 12px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
 .property-section {
   display: flex;
   flex-direction: column;
@@ -131,11 +139,10 @@
 }
 
 .property-field label {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--color-text-muted, #aaaaaa);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
   margin-bottom: 6px;
 }
 

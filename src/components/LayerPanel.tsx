@@ -8,7 +8,18 @@ import {
   instantiateTemplate
 } from '../utils/componentTemplates';
 import { useToast } from './Toast';
+import CollapsibleSection from './common/CollapsibleSection';
+import Button from './common/Button';
+import InfoTooltip from './common/InfoTooltip';
 import './LayerPanel.css';
+
+// Delete glyph used in the template rows. Row click loads the template;
+// only the trailing × is a separate action button.
+const deleteIcon = (
+  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+    <path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
 
 // Helper to resolve image paths with BASE_URL for loading
 const resolveImagePath = (path: string): string => {
@@ -77,13 +88,13 @@ export default function LayerPanel({
   const [newTemplateName, setNewTemplateName] = useState('');
   const [templateSlotWidth, setTemplateSlotWidth] = useState(0);
   const [templateSlotHeight, setTemplateSlotHeight] = useState(0);
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  // showTemplateManager / showComponentTemplateManager removed — collapse state
+  // now lives inside CollapsibleSection (localStorage-backed).
 
   // Component group template state
   const [componentTemplates, setComponentTemplates] = useState<ComponentGroupTemplate[]>(() => loadComponentTemplates());
   const [showComponentTemplateModal, setShowComponentTemplateModal] = useState(false);
   const [newComponentTemplateName, setNewComponentTemplateName] = useState('');
-  const [showComponentTemplateManager, setShowComponentTemplateManager] = useState(false);
 
   // Refresh templates from storage
   const refreshTemplates = () => {
@@ -948,57 +959,34 @@ export default function LayerPanel({
     }
   };
 
+  const componentCountForHeader = (layout.components || []).filter(c => c.type !== 'group').length;
+
   return (
     <div className="layer-panel" tabIndex={-1} onKeyDown={handleKeyDown} role="region" aria-label="Layers and components">
-      <div className="layer-header">
-        <div className="layer-header-title">
-          <h2 id="layers-heading">Layers</h2>
-          <div className="layer-info" aria-live="polite">
-            {(() => {
-              const componentCount = (layout.components || []).filter(c => c.type !== 'group').length;
-              const layerCount = (layout.components || []).filter(c => c.type === 'group').length;
-              return `${componentCount}${layerCount > 0 ? ` / ${layerCount}L` : ''}`;
-            })()}
-          </div>
-        </div>
-        <div className="layer-header-actions" role="toolbar" aria-label="Layer actions">
-          {selectedComponents.length > 0 && (
-            <button
-              className="copy-btn"
-              onClick={onCopyComponents}
-              aria-label="Copy selected components"
-              aria-keyshortcuts="Control+C"
-              title="Copy"
-            >
-              Copy
-            </button>
-          )}
-          {hasClipboard && (
-            <button
-              className="paste-btn"
-              onClick={onPasteComponents}
-              aria-label="Paste components from clipboard"
-              aria-keyshortcuts="Control+V"
-              title="Paste"
-            >
-              Paste
-            </button>
-          )}
-          <button
-            className="new-layer-btn"
-            onClick={createNewLayer}
-            aria-label="Create new layer"
-            title="Add Layer"
-          >
-            +
-          </button>
-        </div>
-      </div>
-
-      <div className="layer-content" aria-labelledby="layers-heading">
+      <CollapsibleSection
+        id="layer-panel-layers"
+        title="Layers"
+        count={componentCountForHeader}
+        defaultOpen={true}
+        actions={
+          <>
+            {selectedComponents.length > 0 && (
+              <Button size="xs" variant="ghost" onClick={onCopyComponents} title="Copy" aria-label="Copy selected components">
+                Copy
+              </Button>
+            )}
+            {hasClipboard && (
+              <Button size="xs" variant="ghost" onClick={onPasteComponents} title="Paste" aria-label="Paste components from clipboard">
+                Paste
+              </Button>
+            )}
+            <Button size="xs" variant="success" onClick={createNewLayer} title="Add Layer" aria-label="Create new layer" iconOnly icon="+" />
+          </>
+        }
+      >
         {rootComponents.length === 0 ? (
           <div className="no-components" role="status">
-            No components in layout. Add components from the menu below.
+            No components in layout. Add components from Quick Add below.
           </div>
         ) : (
           <ul className="layer-list" role="tree" aria-label="Component hierarchy">
@@ -1006,7 +994,6 @@ export default function LayerPanel({
           </ul>
         )}
 
-        {/* Root drop zone - drop here to unlink from parent and place at top of root level */}
         <div
           className={`root-drop-zone ${dragState.draggedId && !dragState.dragOverId ? 'active' : ''}`}
           onDragOver={(e) => {
@@ -1018,8 +1005,6 @@ export default function LayerPanel({
           onDrop={(e) => {
             e.preventDefault();
             const draggedData = e.dataTransfer.getData('text/plain');
-
-            // Parse dragged IDs - could be JSON array or single ID
             let draggedIds: string[];
             try {
               draggedIds = JSON.parse(draggedData);
@@ -1027,28 +1012,20 @@ export default function LayerPanel({
             } catch {
               draggedIds = [draggedData];
             }
-
             if (draggedIds.length > 0) {
               const draggedComponents = draggedIds
                 .map(id => layout.components.find(c => c.id === id))
                 .filter((c): c is ComponentConfig => c !== undefined);
-
               if (draggedComponents.length > 0) {
-                // Calculate the new layer value: place at top of root level (highest layer)
                 const currentRootComponents = (layout.components || []).filter(c => !c.parentId && !draggedIds.includes(c.id));
                 const maxRootLayer = currentRootComponents.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
-
-                // Sort dragged components by their current layer (descending) to maintain relative order
                 const sortedDragged = [...draggedComponents].sort((a, b) => (b.layer || 0) - (a.layer || 0));
-
-                // Update each dragged component: remove parent and set layers
                 sortedDragged.forEach((comp, index) => {
                   onUpdateComponent(comp.id, {
                     parentId: undefined,
                     layer: maxRootLayer + sortedDragged.length - index
                   });
                 });
-
                 onEndDragOperation?.(`Move ${draggedComponents.length} component(s) to root level`);
               }
             }
@@ -1063,22 +1040,19 @@ export default function LayerPanel({
         <div className="layer-help">
           <small>Drag components to reorder. Drop on another to parent.</small>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      {/* Component Menu */}
-      <nav className="component-menu" aria-label="Add components">
-        <div className="component-menu-header">
-          <h3 id="quick-add-heading">Quick Add Components</h3>
-        </div>
-        <div className="component-menu-grid" role="toolbar" aria-labelledby="quick-add-heading">
-          <button
-            className="component-menu-item"
+      <CollapsibleSection id="layer-panel-quick-add" title="Quick Add" defaultOpen={true}>
+        <div className="quick-add-grid" role="toolbar" aria-label="Quick Add">
+          <Button
+            block
+            variant="default"
+            draggable
             onClick={() => {
               const id = onAddComponent('custom', undefined, { width: 500, height: 500 });
               onSelectComponents([id]);
             }}
-            draggable
-            onDragStart={(e) => {
+            onDragStart={(e: React.DragEvent<HTMLButtonElement>) => {
               e.dataTransfer.setData('text/plain', JSON.stringify({
                 type: 'preset-component',
                 componentType: 'custom',
@@ -1103,21 +1077,21 @@ export default function LayerPanel({
                 }
               }));
             }}
-            aria-label="Add basic component (500x500px)"
+            aria-label="Add basic component"
           >
-            <div className="component-menu-icon" aria-hidden="true"></div>
-            <div className="component-menu-label">Basic</div>
-          </button>
+            Basic
+          </Button>
 
-          <button
-            className="component-menu-item"
+          <Button
+            block
+            variant="default"
+            draggable
             onClick={() => {
               setPendingToggleComponent(true);
               const id = onAddComponent('custom', undefined, { width: 500, height: 500 });
               onSelectComponents([id]);
             }}
-            draggable
-            onDragStart={(e) => {
+            onDragStart={(e: React.DragEvent<HTMLButtonElement>) => {
               e.dataTransfer.setData('text/plain', JSON.stringify({
                 type: 'preset-component',
                 componentType: 'custom',
@@ -1141,53 +1115,48 @@ export default function LayerPanel({
                   borderBottomRightRadius: 0,
                   canToggle: true,
                   toggleState: false,
-                  state1Props: {
-                    backgroundColor: '#E74C3C',
-                    textColor: '#ffffff'
-                  },
-                  state2Props: {
-                    backgroundColor: '#4CAF50',
-                    textColor: '#ffffff'
-                  }
+                  state1Props: { backgroundColor: '#E74C3C', textColor: '#ffffff' },
+                  state2Props: { backgroundColor: '#4CAF50', textColor: '#ffffff' }
                 }
               }));
             }}
-            aria-label="Add toggle component with two states"
+            aria-label="Add toggle component"
           >
-            <div className="component-menu-icon" aria-hidden="true"></div>
-            <div className="component-menu-label">Toggle</div>
-          </button>
+            Toggle
+          </Button>
 
-          <button
-            className="component-menu-item"
+          <Button
+            block
+            variant="default"
+            draggable
             onClick={() => {
               const id = onAddComponent('dynamicList');
               onSelectComponents([id]);
             }}
-            draggable
-            onDragStart={(e) => {
+            onDragStart={(e: React.DragEvent<HTMLButtonElement>) => {
               e.dataTransfer.setData('text/plain', JSON.stringify({
                 type: 'preset-component',
                 componentType: 'dynamicList'
               }));
             }}
-            aria-label="Add dynamic list for timeouts or fouls"
+            aria-label="Add dynamic list"
           >
-            <div className="component-menu-icon" aria-hidden="true"></div>
-            <div className="component-menu-label">Dynamic List</div>
-          </button>
+            Dynamic List
+          </Button>
 
-          <button
-            className="component-menu-item"
+          <Button
+            block
+            variant="default"
             onClick={addImageComponent}
             aria-label="Add image component"
           >
-            <div className="component-menu-icon" aria-hidden="true"></div>
-            <div className="component-menu-label">Image</div>
-          </button>
+            Image
+          </Button>
 
-          <button
-            className="component-menu-item"
+          <Button
+            block
+            variant="default"
+            draggable
             onClick={() => {
               const id = onAddComponent('slotList', undefined, { width: 400, height: 400 }, {
                 templateId: templates[0]?.id || '',
@@ -1199,8 +1168,7 @@ export default function LayerPanel({
               });
               onSelectComponents([id]);
             }}
-            draggable
-            onDragStart={(e) => {
+            onDragStart={(e: React.DragEvent<HTMLButtonElement>) => {
               e.dataTransfer.setData('text/plain', JSON.stringify({
                 type: 'preset-component',
                 componentType: 'slotList',
@@ -1215,225 +1183,149 @@ export default function LayerPanel({
                 }
               }));
             }}
-            aria-label="Add slot list with repeated template items"
+            aria-label="Add slot list"
           >
-            <div className="component-menu-icon" aria-hidden="true"></div>
-            <div className="component-menu-label">Slot List</div>
-          </button>
+            Slot List
+          </Button>
         </div>
 
-        {/* Save as Template buttons */}
-        {selectedComponents.length > 0 && (
-          <div style={{ padding: '8px', borderTop: '1px solid #444', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <button
-              onClick={handleSaveAsTemplate}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                backgroundColor: '#2196F3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}
-            >
-              Save as Slot Template
-            </button>
-            <button
-              onClick={handleSaveAsComponentTemplate}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                backgroundColor: '#9C27B0',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}
-            >
-              Save as Component Template
-            </button>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="layer-panel-slot-templates"
+        title="Slot Templates"
+        count={templates.length}
+        defaultOpen={false}
+      >
+        <Button
+          block
+          variant="primary"
+          onClick={handleSaveAsTemplate}
+          disabled={selectedComponents.length === 0}
+          title={selectedComponents.length === 0 ? 'Select components first' : 'Save current selection as a slot template'}
+        >
+          + Save as Slot Template
+        </Button>
+
+        {templates.length === 0 ? (
+          <div className="tpl-empty">
+            No templates saved. Select components and click "+ Save as Slot Template" above.
           </div>
+        ) : (
+          <ul className="tpl-list">
+            {templates.map(template => (
+              <li key={template.id} className="tpl-row-wrap">
+                <button
+                  type="button"
+                  className="tpl-row"
+                  onClick={() => handleLoadTemplate(template)}
+                  title="Click to load template"
+                  aria-label={`Load template ${template.name}`}
+                >
+                  <span className="tpl-name">{template.name}</span>
+                  <span
+                    className="tpl-info-slot"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <InfoTooltip
+                      label={`${template.name} details`}
+                      content={
+                        <>
+                          {template.components.length} component{template.components.length !== 1 ? 's' : ''}
+                          <br />
+                          {template.slotSize.width} × {template.slotSize.height} px
+                        </>
+                      }
+                    />
+                  </span>
+                </button>
+                <Button
+                  className="tpl-delete"
+                  size="xs"
+                  variant="ghost"
+                  iconOnly
+                  icon={deleteIcon}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteTemplate(template.id);
+                  }}
+                  title="Delete template"
+                  aria-label={`Delete template ${template.name}`}
+                />
+              </li>
+            ))}
+          </ul>
         )}
+      </CollapsibleSection>
 
-        {/* Template Manager */}
-        <div style={{ padding: '8px', borderTop: '1px solid #444' }}>
-          <button
-            onClick={() => setShowTemplateManager(!showTemplateManager)}
-            style={{
-              width: '100%',
-              padding: '6px 12px',
-              backgroundColor: '#333',
-              color: '#aaa',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '11px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
-            <span>Slot Templates ({templates.length})</span>
-            <span>{showTemplateManager ? '-' : '+'}</span>
-          </button>
+      <CollapsibleSection
+        id="layer-panel-component-templates"
+        title="Component Templates"
+        count={componentTemplates.length}
+        defaultOpen={false}
+      >
+        <Button
+          block
+          variant="secondary"
+          onClick={handleSaveAsComponentTemplate}
+          disabled={selectedComponents.length === 0}
+          title={selectedComponents.length === 0 ? 'Select components first' : 'Save current selection as a component template'}
+        >
+          + Save as Component Template
+        </Button>
 
-          {showTemplateManager && (
-            <div style={{ marginTop: '8px' }}>
-              {templates.length === 0 ? (
-                <div style={{ color: '#666', fontSize: '11px', textAlign: 'center', padding: '8px' }}>
-                  No templates saved. Select components and click "Save as Slot Template".
-                </div>
-              ) : (
-                templates.map(template => (
-                  <div
-                    key={template.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '6px 8px',
-                      backgroundColor: '#2a2a2a',
-                      borderRadius: '4px',
-                      marginBottom: '4px',
-                      fontSize: '11px'
-                    }}
+        {componentTemplates.length === 0 ? (
+          <div className="tpl-empty">
+            No component templates saved. Select components and click "+ Save as Component Template" above.
+          </div>
+        ) : (
+          <ul className="tpl-list">
+            {componentTemplates.map(template => (
+              <li key={template.id} className="tpl-row-wrap">
+                <button
+                  type="button"
+                  className="tpl-row"
+                  onClick={() => handleLoadComponentTemplate(template)}
+                  title="Click to load template"
+                  aria-label={`Load template ${template.name}`}
+                >
+                  <span className="tpl-name">{template.name}</span>
+                  <span
+                    className="tpl-info-slot"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
                   >
-                    <div>
-                      <div style={{ color: '#fff', fontWeight: 'bold' }}>{template.name}</div>
-                      <div style={{ color: '#888' }}>
-                        {template.components.length} component{template.components.length !== 1 ? 's' : ''} |
-                        {template.slotSize.width}x{template.slotSize.height}px
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button
-                        onClick={() => handleLoadTemplate(template)}
-                        style={{
-                          padding: '2px 6px',
-                          backgroundColor: '#27ae60',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '2px',
-                          cursor: 'pointer',
-                          fontSize: '10px'
-                        }}
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTemplate(template.id)}
-                        style={{
-                          padding: '2px 6px',
-                          backgroundColor: '#c0392b',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '2px',
-                          cursor: 'pointer',
-                          fontSize: '10px'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Component Template Manager */}
-        <div style={{ padding: '8px', borderTop: '1px solid #444' }}>
-          <button
-            onClick={() => setShowComponentTemplateManager(!showComponentTemplateManager)}
-            style={{
-              width: '100%',
-              padding: '6px 12px',
-              backgroundColor: '#333',
-              color: '#aaa',
-              border: '1px solid #555',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '11px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
-            <span>Component Templates ({componentTemplates.length})</span>
-            <span>{showComponentTemplateManager ? '-' : '+'}</span>
-          </button>
-
-          {showComponentTemplateManager && (
-            <div style={{ marginTop: '8px' }}>
-              {componentTemplates.length === 0 ? (
-                <div style={{ color: '#666', fontSize: '11px', textAlign: 'center', padding: '8px' }}>
-                  No component templates saved. Select components and click "Save as Component Template".
-                </div>
-              ) : (
-                componentTemplates.map(template => (
-                  <div
-                    key={template.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '6px 8px',
-                      backgroundColor: '#2a2a2a',
-                      borderRadius: '4px',
-                      marginBottom: '4px',
-                      fontSize: '11px'
-                    }}
-                  >
-                    <div>
-                      <div style={{ color: '#fff', fontWeight: 'bold' }}>{template.name}</div>
-                      <div style={{ color: '#888' }}>
-                        {template.components.length} component{template.components.length !== 1 ? 's' : ''} |
-                        {template.boundingBox.width}x{template.boundingBox.height}px
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button
-                        onClick={() => handleLoadComponentTemplate(template)}
-                        style={{
-                          padding: '2px 6px',
-                          backgroundColor: '#27ae60',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '2px',
-                          cursor: 'pointer',
-                          fontSize: '10px'
-                        }}
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={() => handleDeleteComponentTemplate(template.id)}
-                        style={{
-                          padding: '2px 6px',
-                          backgroundColor: '#c0392b',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '2px',
-                          cursor: 'pointer',
-                          fontSize: '10px'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      </nav>
+                    <InfoTooltip
+                      label={`${template.name} details`}
+                      content={
+                        <>
+                          {template.components.length} component{template.components.length !== 1 ? 's' : ''}
+                          <br />
+                          {template.boundingBox.width} × {template.boundingBox.height} px
+                        </>
+                      }
+                    />
+                  </span>
+                </button>
+                <Button
+                  className="tpl-delete"
+                  size="xs"
+                  variant="ghost"
+                  iconOnly
+                  icon={deleteIcon}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteComponentTemplate(template.id);
+                  }}
+                  title="Delete template"
+                  aria-label={`Delete template ${template.name}`}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </CollapsibleSection>
 
       {/* Save Template Modal */}
       {showTemplateModal && (

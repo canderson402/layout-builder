@@ -260,7 +260,23 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     : undefined;
 
   // Get the data value
-  const rawValue = getNestedData(effectiveGameData, dataPath);
+  let rawValue = getNestedData(effectiveGameData, dataPath);
+
+  // Period auto-overtime substitution: when a layout component is bound to
+  // `period` and the current period exceeds totalPeriods, swap the raw number
+  // for the user-defined overtime label (overtimeLabels[i]). Falls back to
+  // "OT{N}" if no custom label is set. Mirrors what the TV renderer does at
+  // runtime so the layout-builder preview shows the same text.
+  if (dataPath === 'period') {
+    const periodNum = Number(rawValue);
+    const total = Number((effectiveGameData as any)?.totalPeriods);
+    if (Number.isFinite(periodNum) && Number.isFinite(total) && periodNum > total) {
+      const otIdx = periodNum - total - 1; // 0-based
+      const labels: string[] = (effectiveGameData as any)?.overtimeLabels ?? [];
+      rawValue = labels[otIdx] && labels[otIdx].length > 0 ? labels[otIdx] : `OT${otIdx + 1}`;
+    }
+  }
+
   const isBooleanToggle = canToggle && typeof rawValue === 'boolean';
 
   // Handle currentPlayer name paths
@@ -268,10 +284,19 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   const defaultName = dataPath === 'currentPlayer.home.name' ? 'Home' :
                       dataPath === 'currentPlayer.away.name' ? 'Away' : '--';
 
+  // Slot-score paths should default to 0 (not --) when unset — fresh matches
+  // and unplayed-future slots both have legitimate 0 scores; rendering -- there
+  // makes empty cells look broken.
+  const isNumericSlotPath = /(?:setSlots|leaderboardSlots|inningSlots)\.[^.]+\.(slot\d+\.)?(score|points|setNumber|home_score|away_score)$/.test(dataPath || '')
+    || dataPath === 'setSlots.setsWon.home'
+    || dataPath === 'setSlots.setsWon.away'
+    || dataPath === 'setSlots.totalSets';
+
   // Format value
   const formatValue = (value: any) => {
     if (value === null || value === undefined || value === '') {
       if (isCurrentPlayerName) return defaultName;
+      if (isNumericSlotPath) return '0';
       return '--';
     }
 

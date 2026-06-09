@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-06-04T14:31:27.675Z
+// Generated: 2026-06-09T15:31:41.030Z
 
 // Available sports (auto-detected from folder structure)
-export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Universal","Utility","Volleyball","Wrestling","scoreTable","shootout"] as const;
+export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Tennis-LE","Universal","Utility","Volleyball","Wrestling","scoreTable","shootout"] as const;
 export type Sport = typeof AVAILABLE_SPORTS[number];
 
 // Sport data structure with subsections
@@ -76,6 +76,11 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     subsections: {},
     hasSubsections: false,
   },
+  "Tennis-LE": {
+    rootImages: ["tennis-basic-base.png","tennis-basic-bottom-set_1-won.png","tennis-basic-bottom-set_2-won.png","tennis-basic-bottom-set_3-won.png","tennis-basic-top-set_1-won.png","tennis-basic-top-set_2-won.png","tennis-basic-top-set_3-won.png"],
+    subsections: {},
+    hasSubsections: false,
+  },
   "Universal": {
     rootImages: ["universal-base.png","universal-clock-bg-paused.png","universal-clock-bg.png","universal-no_clock-bg.png"],
     subsections: {},
@@ -122,6 +127,7 @@ export const KNOWN_IMAGES: Record<Sport, string[]> = {
   "Sequence": ["banner-mockup.png","block-mockup.png","cinema-mockup.png","double-block-mockup.png","panel-mockup.png","scorebug-framed-mockup.png","scorebug-mockup.png","sequence-scorebug-frames.png"],
   "Soccer": ["soccer-base.png","soccer-clock-bg-paused.png","soccer-clock-bg.png","soccer-overtime-overlay.png"],
   "Tennis": ["tennis-base.png"],
+  "Tennis-LE": ["tennis-basic-base.png","tennis-basic-bottom-set_1-won.png","tennis-basic-bottom-set_2-won.png","tennis-basic-bottom-set_3-won.png","tennis-basic-top-set_1-won.png","tennis-basic-top-set_2-won.png","tennis-basic-top-set_3-won.png"],
   "Universal": ["universal-base.png","universal-clock-bg-paused.png","universal-clock-bg.png","universal-no_clock-bg.png"],
   "Utility": ["break-base.png","halftime-base.png","pregame-base.png","timeout-base.png"],
   "Volleyball": ["volleyball-base.png","volleyball-posession-left.png","volleyball-posession-right.png"],

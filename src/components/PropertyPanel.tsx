@@ -1,16 +1,11 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { ComponentConfig, LayoutConfig, SlotTemplate } from '../types';
 import { loadTemplates, saveTemplates } from '../utils/slotTemplates';
-import {
-  loadAvailableImages,
-  getImagePath,
-  AVAILABLE_SPORTS,
-  Sport,
-  getSubsections,
-  hasSubsections,
-  getAvailableImagesForSport,
-} from '../utils/imageUtils';
 import ColorPicker from './ColorPicker';
+import CollapsibleSection from './common/CollapsibleSection';
+import SectionGroup from './common/SectionGroup';
+import DataPathPicker from './common/DataPathPicker';
+import ImagePicker from './common/ImagePicker';
 import './PropertyPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -41,31 +36,16 @@ interface PropertyPanelProps {
 const TWO_COLUMN_THRESHOLD = 450;
 
 // Collapsible section component for game data - defined outside to prevent re-creation on render
+/**
+ * Thin wrapper around the shared CollapsibleSection for Preview Data sections.
+ * Derives a stable id from the title so collapse state persists across reloads.
+ */
 const GameDataSection = ({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) => {
-  const [isOpen, setIsOpen] = React.useState(defaultOpen);
+  const id = `gamedata-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
-    <div style={{ marginBottom: '8px', border: '1px solid #444', borderRadius: '4px' }}>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          padding: '8px 12px',
-          backgroundColor: '#333',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderRadius: isOpen ? '4px 4px 0 0' : '4px'
-        }}
-      >
-        <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{title}</span>
-        <span style={{ fontSize: '10px' }}>{isOpen ? '▼' : '▶'}</span>
-      </div>
-      {isOpen && (
-        <div style={{ padding: '12px', backgroundColor: '#2a2a2a' }}>
-          {children}
-        </div>
-      )}
-    </div>
+    <CollapsibleSection id={id} title={title} defaultOpen={defaultOpen}>
+      {children}
+    </CollapsibleSection>
   );
 };
 
@@ -126,21 +106,6 @@ function PropertyPanel({
   const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
   const [isDragging, setIsDragging] = useState(false);
-  
-  // State for dynamically loaded images
-  const [availableImages, setAvailableImages] = useState<string[]>([]);
-  const [imagesLoading, setImagesLoading] = useState(true);
-  const [selectedSport, setSelectedSport] = useState<Sport>('Basketball');
-  const [selectedSubsection, setSelectedSubsection] = useState<string | undefined>(undefined);
-
-  // Get available subsections for the selected sport
-  const availableSubsections = useMemo(() => {
-    return getSubsections(selectedSport);
-  }, [selectedSport]);
-
-  const sportHasSubsections = useMemo(() => {
-    return hasSubsections(selectedSport);
-  }, [selectedSport]);
   
   // Create a frozen component reference that doesn't change during drag operations
   const [frozenComponent, setFrozenComponent] = useState<ComponentConfig | null>(null);
@@ -219,29 +184,6 @@ function PropertyPanel({
     }
   }, [layout.components, selectedComponents, isDragging]);
 
-  // Load available images on mount and when sport/subsection changes
-  useEffect(() => {
-    const loadImages = async () => {
-      setImagesLoading(true);
-      try {
-        const images = await loadAvailableImages(selectedSport, selectedSubsection);
-        setAvailableImages(images);
-      } catch (error) {
-        console.error('Failed to load images:', error);
-        setAvailableImages([]);
-      } finally {
-        setImagesLoading(false);
-      }
-    };
-
-    loadImages();
-  }, [selectedSport, selectedSubsection]);
-
-  // Reset subsection when sport changes
-  useEffect(() => {
-    setSelectedSubsection(undefined);
-  }, [selectedSport]);
-  
   // Use frozen component during drag, live component otherwise
   const component = isDragging ? frozenComponent : (
     selectedComponents.length === 1 
@@ -283,24 +225,9 @@ function PropertyPanel({
     };
   }, []);
   
-  // State for collapsed sections - all collapsed by default
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set([
-    'position-size',
-    'team',
-    'text',
-    'custom-data',
-    'image',
-    'borders',
-    'effects',
-    'dynamic-list-data',
-    'dynamic-list-active',
-    'dynamic-list-inactive',
-    'dynamic-list-borders',
-    'dynamic-list-layout',
-    'leaderboard-display',
-    'leaderboard-styling',
-    'leaderboard-cycling'
-  ]));
+  // Per-section collapse state now lives in the shared CollapsibleSection
+  // primitive (localStorage-backed). Default for property sections is closed
+  // unless explicitly set otherwise via PropertySection's defaultOpen prop.
 
   // Define updateComponentWithScrollPreservation first since many functions below depend on it
   const updateComponentWithScrollPreservation = useCallback((id: string, updates: Partial<ComponentConfig>) => {
@@ -708,36 +635,13 @@ function PropertyPanel({
     img.src = resolveImagePath(newImagePath);
   }, [component, componentId, editingState, layout.dimensions, updateStateProps, updateComponentWithScrollPreservation]);
 
-  const toggleSection = (section: string) => {
-    const newCollapsed = new Set(collapsedSections);
-    if (newCollapsed.has(section)) {
-      newCollapsed.delete(section);
-    } else {
-      newCollapsed.add(section);
-    }
-    setCollapsedSections(newCollapsed);
-  };
-
-  // Section component for consistent styling
-  const PropertySection = ({ title, sectionKey, children }: { title: string, sectionKey: string, children: React.ReactNode }) => {
-    const isCollapsed = collapsedSections.has(sectionKey);
-    return (
-      <div className="property-section">
-        <button
-          className={`section-header ${isCollapsed ? 'collapsed' : ''}`}
-          onClick={() => toggleSection(sectionKey)}
-        >
-          <span className="section-title">{title}</span>
-          <span className="section-toggle">{isCollapsed ? '▶' : '▼'}</span>
-        </button>
-        {!isCollapsed && (
-          <div className="section-content">
-            {children}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // Thin wrapper for backwards-compat with the existing call sites — maps
+  // `sectionKey` (legacy prop) onto the shared CollapsibleSection's `id`.
+  const PropertySection = ({ title, sectionKey, children }: { title: string, sectionKey: string, children: React.ReactNode }) => (
+    <CollapsibleSection id={`prop-${sectionKey}`} title={title} defaultOpen={false}>
+      {children}
+    </CollapsibleSection>
+  );
 
 
   // Helper to update penalty count for preview
@@ -875,6 +779,32 @@ function PropertyPanel({
       current = current[keys[i]];
     }
     current[keys[keys.length - 1]] = value;
+
+    // Auto-derive isOvertimeActive from period vs totalPeriods so the preview
+    // automatically lights up OT controls when the period crosses regulation.
+    if (path === 'period' || path === 'totalPeriods') {
+      const period = path === 'period' ? Number(value) : Number(newGameData.period ?? 0);
+      const total = path === 'totalPeriods' ? Number(value) : Number(newGameData.totalPeriods ?? 0);
+      (newGameData as any).isOvertimeActive = Number.isFinite(period) && Number.isFinite(total) && period > total;
+      (newGameData as any).isOvertime = (newGameData as any).isOvertimeActive;
+    }
+
+    // Sync `exists` flag on tennis set slots whenever Total Sets changes so
+    // layout authors using visibilityPath=`...slot{N}.exists` get the right
+    // rows hidden when best-of shrinks.
+    if (path === 'setSlots.totalSets') {
+      const total = Number(value);
+      const setSlots: any = { ...(newGameData as any).setSlots };
+      ['home', 'away'].forEach(team => {
+        const slots = { ...(setSlots[team] || {}) };
+        for (let i = 0; i < 5; i++) {
+          const key = `slot${i}`;
+          slots[key] = { ...(slots[key] || { setNumber: i + 1, score: 0, active: false, won: false }), exists: i < total };
+        }
+        setSlots[team] = slots;
+      });
+      (newGameData as any).setSlots = setSlots;
+    }
 
     onUpdateGameData(newGameData);
   };
@@ -1028,10 +958,12 @@ function PropertyPanel({
         <div className="property-header">
           <h3>Preview Data</h3>
         </div>
-        <div className="property-content" style={{ padding: '12px' }}>
-          <div style={{ marginBottom: '12px', color: '#888', fontSize: '11px' }}>
+        <div className="property-content">
+          <div className="property-panel-hint">
             Adjust game data to preview different states
           </div>
+
+          <SectionGroup title="General">
 
           {/* Team Names & Colors */}
           <GameDataSection title="Team Info" defaultOpen={true}>
@@ -1056,29 +988,87 @@ function PropertyPanel({
 
           {/* Clock & Period */}
           <GameDataSection title="Clock & Period" defaultOpen={true}>
-            <GameDataInput label="Game Clock" path="gameClock" />
+            <GameDataInput label="Game Clock" path="gameClock" placeholder="12:00" />
             <div style={{ display: 'flex', gap: '12px' }}>
               <div style={{ flex: 1 }}>
-                <GameDataInput label="Period" path="period" type="text" placeholder="1, 2, OT, SD..." />
+                <GameDataInput label="Period" path="period" type="number" min={1} />
               </div>
               <div style={{ flex: 1 }}>
-                <GameDataInput label="Quarter" path="quarter" type="number" min={1} />
+                <GameDataInput label="Total Periods" path="totalPeriods" type="number" min={1} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <GameDataInput label="Shot Clock" path="shotClock" type="number" min={0} />
-              </div>
-              <div style={{ flex: 0, minWidth: '100px' }}>
-                <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>OT Active</label>
-                <input
-                  type="checkbox"
-                  checked={gameData?.isOvertimeActive ?? false}
-                  onChange={(e) => updateGameDataValue('isOvertimeActive', e.target.checked)}
-                  style={{ width: '18px', height: '18px' }}
-                />
-              </div>
-            </div>
+            <GameDataInput label="Shot Clock" path="shotClock" type="number" min={0} />
+
+            {/* OT auto-derived from period vs totalPeriods — no manual toggle. */}
+            {(() => {
+              const period = Number(gameData?.period ?? 0);
+              const total = Number(gameData?.totalPeriods ?? 0);
+              const otIndex = period > total ? period - total : 0; // 1, 2, 3, ...
+              return (
+                <>
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '4px',
+                      backgroundColor: otIndex > 0 ? '#3d2c0a' : '#262626',
+                      color: otIndex > 0 ? '#FFB74D' : '#888',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {otIndex > 0
+                      ? `Overtime ${otIndex} active (period ${period} of ${total})`
+                      : 'Regulation — overtime will auto-enable when Period > Total Periods.'}
+                  </div>
+
+                  {/* Per-overtime labels: layout components bound to dataPath="period"
+                      will display this string instead of the raw number during that OT. */}
+                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #3a3a3a' }}>
+                    <div style={{ color: '#888', fontSize: '12px', marginBottom: '6px' }}>
+                      Overtime Labels (shown when period is in that OT)
+                    </div>
+                    {[0, 1, 2].map(i => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginBottom: '6px',
+                          padding: '4px 6px',
+                          borderRadius: '3px',
+                          backgroundColor: otIndex === i + 1 ? 'rgba(255, 183, 77, 0.12)' : 'transparent',
+                        }}
+                      >
+                        <span style={{ width: '36px', color: otIndex === i + 1 ? '#FFB74D' : '#aaa', fontSize: '12px', fontWeight: 600 }}>
+                          OT {i + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={(gameData as any)?.overtimeLabels?.[i] ?? ''}
+                          placeholder={i === 0 ? 'OT' : `${i + 1}OT`}
+                          onChange={(e) => {
+                            const labels = [...((gameData as any)?.overtimeLabels ?? ['OT', '2OT', '3OT'])];
+                            labels[i] = e.target.value;
+                            updateGameDataValue('overtimeLabels', labels);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 8px',
+                            backgroundColor: '#1a1a1a',
+                            border: '1px solid #444',
+                            borderRadius: '4px',
+                            color: 'white',
+                            fontSize: '12px',
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </GameDataSection>
 
           {/* Fouls & Timeouts */}
@@ -1109,6 +1099,144 @@ function PropertyPanel({
           <GameDataSection title="Possession">
             <GameDataToggle label="Home Possession" path="homeTeam.possession" />
             <GameDataToggle label="Away Possession" path="awayTeam.possession" />
+          </GameDataSection>
+
+          </SectionGroup>
+
+          <SectionGroup title="Sport-Specific">
+
+          {/* Tennis LE — set history, current game points, points-mode toggle. */}
+          <GameDataSection title="Tennis LE">
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Total Sets (Best-Of)</label>
+                <select
+                  value={Number((gameData?.setSlots as any)?.totalSets ?? 5)}
+                  onChange={(e) => updateGameDataValue('setSlots.totalSets', Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    backgroundColor: '#1a1a1a',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    color: 'white',
+                    fontSize: '12px',
+                  }}
+                >
+                  <option value={1}>Best of 1</option>
+                  <option value={3}>Best of 3</option>
+                  <option value={5}>Best of 5</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '4px' }}>Active Set</label>
+                <select
+                  value={(() => {
+                    const home = gameData?.setSlots?.home || {};
+                    for (let i = 0; i < 5; i++) {
+                      if ((home as any)[`slot${i}`]?.active) return i + 1;
+                    }
+                    return 1;
+                  })()}
+                  onChange={(e) => {
+                    const activeSet = Number(e.target.value);
+                    const newGameData = { ...gameData } as any;
+                    newGameData.setSlots = {
+                      ...newGameData.setSlots,
+                      home: { ...newGameData.setSlots?.home },
+                      away: { ...newGameData.setSlots?.away },
+                    };
+                    for (let i = 0; i < 5; i++) {
+                      const isActive = i + 1 === activeSet;
+                      newGameData.setSlots.home[`slot${i}`] = {
+                        ...newGameData.setSlots.home[`slot${i}`],
+                        active: isActive,
+                      };
+                      newGameData.setSlots.away[`slot${i}`] = {
+                        ...newGameData.setSlots.away[`slot${i}`],
+                        active: isActive,
+                      };
+                    }
+                    if (onUpdateGameData) onUpdateGameData(newGameData);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    backgroundColor: '#1a1a1a',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    color: 'white',
+                    fontSize: '12px'
+                  }}
+                >
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <option key={n} value={n}>Set {n}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Current Point" path="setSlots.homePoints" placeholder="0 / 15 / 30 / 40" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Current Point" path="setSlots.awayPoints" placeholder="0 / 15 / 30 / 40" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Home Sets Won" path="setSlots.setsWon.home" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Away Sets Won" path="setSlots.setsWon.away" type="number" min={0} />
+              </div>
+            </div>
+            <GameDataToggle label="Points Tracking Enabled" path="setSlots.pointsEnabled" />
+            {/* Per-set score editing */}
+            <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+              <div style={{ color: '#888', fontSize: '11px', marginBottom: '8px' }}>Per-Set Scores</div>
+              {[0, 1, 2, 3, 4].map(i => {
+                const exists = (gameData?.setSlots?.home as any)?.[`slot${i}`]?.exists ?? (i < (gameData?.setSlots?.totalSets ?? 3));
+                if (!exists) return null;
+                return (
+                  <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ width: '36px', color: '#aaa', fontSize: '11px' }}>Set {i + 1}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="H"
+                      value={(gameData?.setSlots?.home as any)?.[`slot${i}`]?.score ?? 0}
+                      onChange={(e) => updateGameDataValue(`setSlots.home.slot${i}.score`, Number(e.target.value))}
+                      style={{ flex: 1, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="A"
+                      value={(gameData?.setSlots?.away as any)?.[`slot${i}`]?.score ?? 0}
+                      onChange={(e) => updateGameDataValue(`setSlots.away.slot${i}.score`, Number(e.target.value))}
+                      style={{ flex: 1, padding: '4px', backgroundColor: '#333', border: '1px solid #444', borderRadius: '2px', color: 'white', fontSize: '11px' }}
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#aaa', fontSize: '10px' }}>
+                      <input
+                        type="checkbox"
+                        checked={(gameData?.setSlots?.home as any)?.[`slot${i}`]?.won ?? false}
+                        onChange={(e) => updateGameDataValue(`setSlots.home.slot${i}.won`, e.target.checked)}
+                      />
+                      H won
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#aaa', fontSize: '10px' }}>
+                      <input
+                        type="checkbox"
+                        checked={(gameData?.setSlots?.away as any)?.[`slot${i}`]?.won ?? false}
+                        onChange={(e) => updateGameDataValue(`setSlots.away.slot${i}.won`, e.target.checked)}
+                      />
+                      A won
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
           </GameDataSection>
 
           {/* Penalties (Lacrosse/Hockey) */}
@@ -1301,6 +1429,10 @@ function PropertyPanel({
               </div>
             </div>
           </GameDataSection>
+
+          </SectionGroup>
+
+          <SectionGroup title="Leaderboards">
 
           {/* Leaderboard Slots */}
           <GameDataSection title="Leaderboard Slots">
@@ -1596,6 +1728,10 @@ function PropertyPanel({
             )}
           </GameDataSection>
 
+          </SectionGroup>
+
+          <SectionGroup title="Clocks & Stats">
+
           {/* Other Clocks */}
           <GameDataSection title="Other Clocks">
             <GameDataInput label="Activity Clock" path="activityClock" />
@@ -1657,6 +1793,10 @@ function PropertyPanel({
               </div>
             </div>
           </GameDataSection>
+
+          </SectionGroup>
+
+          <SectionGroup title="More Sports">
 
           {/* Rugby */}
           <GameDataSection title="Rugby">
@@ -1749,6 +1889,8 @@ function PropertyPanel({
               </div>
             </div>
           </GameDataSection>
+
+          </SectionGroup>
         </div>
       </div>
     );
@@ -1912,85 +2054,18 @@ function PropertyPanel({
             <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#aaa' }}>
               Toggle Data Path
             </label>
-            <select
-              value={component.props?.toggleDataPath || ''}
-              onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+            <DataPathPicker
+              purpose="toggle"
+              value={component.props?.toggleDataPath}
+              placeholder="Use Display Data Path"
+              clearLabel="Use Display Data Path"
+              onChange={(newPath) => updateComponentWithScrollPreservation(component.id, {
                 props: {
                   ...component.props,
-                  toggleDataPath: e.target.value || undefined
-                }
+                  toggleDataPath: newPath || undefined,
+                },
               })}
-              style={{
-                width: '100%',
-                padding: '6px',
-                backgroundColor: '#333',
-                color: 'white',
-                border: '1px solid #555',
-                borderRadius: '4px'
-              }}
-            >
-              <option value="">Use Display Data Path</option>
-              <optgroup label="Game Settings">
-                <option value="gameSettings.display_clock">Display Clock</option>
-              </optgroup>
-              <optgroup label="Game State">
-                <option value="isOvertimeActive">Overtime Active</option>
-              </optgroup>
-              <optgroup label="Home Team">
-                <option value="homeTeam.bonus">Home Bonus</option>
-                <option value="homeTeam.doubleBonus">Home Double Bonus</option>
-                <option value="homeTeam.possession">Home Possession</option>
-              </optgroup>
-              <optgroup label="Away Team">
-                <option value="awayTeam.bonus">Away Bonus</option>
-                <option value="awayTeam.doubleBonus">Away Double Bonus</option>
-                <option value="awayTeam.possession">Away Possession</option>
-              </optgroup>
-              <optgroup label="Home Penalty Slots">
-                <option value="penaltySlots.home.slot0.active">Home Penalty 1 Active</option>
-                <option value="penaltySlots.home.slot1.active">Home Penalty 2 Active</option>
-                <option value="penaltySlots.home.slot2.active">Home Penalty 3 Active</option>
-              </optgroup>
-              <optgroup label="Away Penalty Slots">
-                <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
-                <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
-                <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
-              </optgroup>
-              <optgroup label="Baseball Diamond">
-                <option value="firstBase">First Base Occupied</option>
-                <option value="secondBase">Second Base Occupied</option>
-                <option value="thirdBase">Third Base Occupied</option>
-              </optgroup>
-              <optgroup label="Shootout Home State (0=miss, 1=made)">
-                <option value="shootoutSlots.0.homeState">Slot 1 Home State</option>
-                <option value="shootoutSlots.1.homeState">Slot 2 Home State</option>
-                <option value="shootoutSlots.2.homeState">Slot 3 Home State</option>
-                <option value="shootoutSlots.3.homeState">Slot 4 Home State</option>
-                <option value="shootoutSlots.4.homeState">Slot 5 Home State</option>
-              </optgroup>
-              <optgroup label="Shootout Away State (0=miss, 1=made)">
-                <option value="shootoutSlots.0.awayState">Slot 1 Away State</option>
-                <option value="shootoutSlots.1.awayState">Slot 2 Away State</option>
-                <option value="shootoutSlots.2.awayState">Slot 3 Away State</option>
-                <option value="shootoutSlots.3.awayState">Slot 4 Away State</option>
-                <option value="shootoutSlots.4.awayState">Slot 5 Away State</option>
-              </optgroup>
-              <optgroup label="Leaderboard Slot (auto-prefixed)">
-                <option value="isTopScorer">Top Scorer (Points)</option>
-                <option value="isTopAces">Top Aces</option>
-                <option value="isTopKills">Top Kills</option>
-                <option value="isTopBlocks">Top Blocks</option>
-                <option value="active">Slot Active</option>
-              </optgroup>
-              <optgroup label="Tennis LE - Set Slot (auto-prefixed)">
-                <option value="active">Set Active (current set)</option>
-                <option value="exists">Set Exists (within best-of)</option>
-                <option value="won">Set Won (historical winner)</option>
-              </optgroup>
-              <optgroup label="Tennis LE - Standalone">
-                <option value="setSlots.pointsEnabled">Points Tracking Enabled</option>
-              </optgroup>
-            </select>
+            />
           </div>
         </div>
       )}
@@ -2544,224 +2619,24 @@ function PropertyPanel({
             <PropertySection title="CUSTOM DATA" sectionKey="custom-data">
               <div className="property-field">
                 <label>Data Path</label>
-                <select
-                  value={component.props?.dataPath || 'none'}
-                  onChange={(e) => {
-                    const newDataPath = e.target.value;
-                    // Check if this is an image data path
+                <DataPathPicker
+                  purpose="data"
+                  value={component.props?.dataPath}
+                  onChange={(newDataPath) => {
+                    // Image data paths flip imageSource off so the dataPath
+                    // image takes precedence over an unset local image slot.
                     const isImagePath = newDataPath.endsWith('.imageUrl') ||
                                         newDataPath.endsWith('.image') ||
                                         newDataPath === 'imageUrl' ||
                                         newDataPath === 'image';
-                    // If it's an image path and imageSource is 'local' (without a path), set to 'none'
-                    // This allows the dataPath image to be used instead
-                    const updatedProps: any = { ...component.props, dataPath: newDataPath };
+                    const updatedProps: any = { ...component.props, dataPath: newDataPath || 'none' };
                     if (isImagePath && component.props?.imageSource === 'local' && !component.props?.imagePath) {
                       updatedProps.imageSource = 'none';
-                      updatedProps.objectFit = 'cover'; // Default to cover for player images
+                      updatedProps.objectFit = 'cover';
                     }
                     updateComponentWithScrollPreservation(component.id, { props: updatedProps });
                   }}
-                >
-                  <option value="none">No Data (Display Only)</option>
-                  <optgroup label="Game Info">
-                    <option value="gameClock">Game Clock</option>
-                    <option value="timeoutClock">Timeout Clock</option>
-                    <option value="activityClock">Activity Clock</option>
-                    <option value="preGameClock">Pre-Game Clock</option>
-                    <option value="halftimeClock">Halftime Clock</option>
-                    <option value="periodBreakClock">Period Break Clock</option>
-                    <option value="shotClockClock">Shot Clock</option>
-                    <option value="timeOfDay">Time of Day (Local Clock)</option>
-                    <option value="period">Period/Quarter</option>
-                    <option value="isOvertimeActive">Overtime Active (boolean)</option>
-                    <option value="home_sets_won">Home Sets Won</option>
-                    <option value="away_sets_won">Away Sets Won</option>
-                  </optgroup>
-                  <optgroup label="Activity Timer">
-                    <option value="timerName">Timer Name</option>
-                    <option value="sessionName">Session Name</option>
-                    <option value="nextUp">Next Up</option>
-                  </optgroup>
-                  <optgroup label="Home Team">
-                    <option value="homeTeam.name">Home Team Name</option>
-                    <option value="homeTeam.score">Home Score</option>
-                    <option value="homeTeam.fouls">Home Fouls</option>
-                    <option value="homeTeam.timeouts">Home Timeouts</option>
-                    <option value="homeTeam.bonus">Home Bonus</option>
-                    <option value="homeTeam.doubleBonus">Home Double Bonus</option>
-                    <option value="homeTeam.possession">Home Possession</option>
-                    <option value="homeTeam.hits">Home Hits (Baseball)</option>
-                    <option value="homeTeam.errors">Home Errors (Baseball)</option>
-                    <option value="home_corner_kicks">Home Corner Kicks (Soccer)</option>
-                  </optgroup>
-                  <optgroup label="Away Team">
-                    <option value="awayTeam.name">Away Team Name</option>
-                    <option value="awayTeam.score">Away Score</option>
-                    <option value="awayTeam.fouls">Away Fouls</option>
-                    <option value="awayTeam.timeouts">Away Timeouts</option>
-                    <option value="awayTeam.bonus">Away Bonus</option>
-                    <option value="awayTeam.doubleBonus">Away Double Bonus</option>
-                    <option value="awayTeam.possession">Away Possession</option>
-                    <option value="awayTeam.hits">Away Hits (Baseball)</option>
-                    <option value="awayTeam.errors">Away Errors (Baseball)</option>
-                    <option value="away_corner_kicks">Away Corner Kicks (Soccer)</option>
-                  </optgroup>
-                  <optgroup label="Football">
-                    <option value="down">Down</option>
-                    <option value="yardsToGo">Yards to Go</option>
-                    <option value="ballOn">Ball On (Line of Scrimmage)</option>
-                  </optgroup>
-                  <optgroup label="Baseball">
-                    <option value="balls">Balls</option>
-                    <option value="strikes">Strikes</option>
-                    <option value="outs">Outs</option>
-                    <option value="firstBase">First Base</option>
-                    <option value="secondBase">Second Base</option>
-                    <option value="thirdBase">Third Base</option>
-                    <option value="onBase">On Base (String)</option>
-                  </optgroup>
-                  <optgroup label="Inning Slots (Home) - Auto-shifts for extra innings">
-                    <option value="inningSlots.0.homeScore">Slot 1 Home Score</option>
-                    <option value="inningSlots.1.homeScore">Slot 2 Home Score</option>
-                    <option value="inningSlots.2.homeScore">Slot 3 Home Score</option>
-                    <option value="inningSlots.3.homeScore">Slot 4 Home Score</option>
-                    <option value="inningSlots.4.homeScore">Slot 5 Home Score</option>
-                    <option value="inningSlots.5.homeScore">Slot 6 Home Score</option>
-                    <option value="inningSlots.6.homeScore">Slot 7 Home Score</option>
-                    <option value="inningSlots.7.homeScore">Slot 8 Home Score</option>
-                    <option value="inningSlots.8.homeScore">Slot 9 Home Score</option>
-                  </optgroup>
-                  <optgroup label="Inning Slots (Away) - Auto-shifts for extra innings">
-                    <option value="inningSlots.0.awayScore">Slot 1 Away Score</option>
-                    <option value="inningSlots.1.awayScore">Slot 2 Away Score</option>
-                    <option value="inningSlots.2.awayScore">Slot 3 Away Score</option>
-                    <option value="inningSlots.3.awayScore">Slot 4 Away Score</option>
-                    <option value="inningSlots.4.awayScore">Slot 5 Away Score</option>
-                    <option value="inningSlots.5.awayScore">Slot 6 Away Score</option>
-                    <option value="inningSlots.6.awayScore">Slot 7 Away Score</option>
-                    <option value="inningSlots.7.awayScore">Slot 8 Away Score</option>
-                    <option value="inningSlots.8.awayScore">Slot 9 Away Score</option>
-                  </optgroup>
-                  <optgroup label="Inning Slot Numbers - Auto-shifts for extra innings">
-                    <option value="inningSlots.0.period">Slot 1 Inning #</option>
-                    <option value="inningSlots.1.period">Slot 2 Inning #</option>
-                    <option value="inningSlots.2.period">Slot 3 Inning #</option>
-                    <option value="inningSlots.3.period">Slot 4 Inning #</option>
-                    <option value="inningSlots.4.period">Slot 5 Inning #</option>
-                    <option value="inningSlots.5.period">Slot 6 Inning #</option>
-                    <option value="inningSlots.6.period">Slot 7 Inning #</option>
-                    <option value="inningSlots.7.period">Slot 8 Inning #</option>
-                    <option value="inningSlots.8.period">Slot 9 Inning #</option>
-                  </optgroup>
-                  <optgroup label="Wrestling">
-                    <option value="home_player_points">Home Player Score</option>
-                    <option value="away_player_points">Away Player Score</option>
-                    <option value="home_player_name">Home Player Name</option>
-                    <option value="away_player_name">Away Player Name</option>
-                  </optgroup>
-                  <optgroup label="Rugby">
-                    <option value="home_tries">Home Tries</option>
-                    <option value="away_tries">Away Tries</option>
-                    <option value="home_penalty_goals">Home Penalty Goals</option>
-                    <option value="away_penalty_goals">Away Penalty Goals</option>
-                    <option value="home_dropped_goals">Home Dropped Goals</option>
-                    <option value="away_dropped_goals">Away Dropped Goals</option>
-                    <option value="home_conversions">Home Conversions</option>
-                    <option value="away_conversions">Away Conversions</option>
-                  </optgroup>
-                  <optgroup label="Shots & Saves (Lacrosse/Hockey)">
-                    <option value="home_shots">Home Shots</option>
-                    <option value="away_shots">Away Shots</option>
-                    <option value="home_saves">Home Saves</option>
-                    <option value="away_saves">Away Saves</option>
-                  </optgroup>
-                  <optgroup label="Home Penalties (Lacrosse/Hockey)">
-                    <option value="penaltySlots.home.count">Home Penalty Count</option>
-                    <option value="penaltySlots.home.slot0.jersey">Home Penalty 1 - Jersey</option>
-                    <option value="penaltySlots.home.slot0.time">Home Penalty 1 - Time</option>
-                    <option value="penaltySlots.home.slot0.active">Home Penalty 1 - Active</option>
-                    <option value="penaltySlots.home.slot1.jersey">Home Penalty 2 - Jersey</option>
-                    <option value="penaltySlots.home.slot1.time">Home Penalty 2 - Time</option>
-                    <option value="penaltySlots.home.slot1.active">Home Penalty 2 - Active</option>
-                    <option value="penaltySlots.home.slot2.jersey">Home Penalty 3 - Jersey</option>
-                    <option value="penaltySlots.home.slot2.time">Home Penalty 3 - Time</option>
-                    <option value="penaltySlots.home.slot2.active">Home Penalty 3 - Active</option>
-                  </optgroup>
-                  <optgroup label="Away Penalties (Lacrosse/Hockey)">
-                    <option value="penaltySlots.away.count">Away Penalty Count</option>
-                    <option value="penaltySlots.away.slot0.jersey">Away Penalty 1 - Jersey</option>
-                    <option value="penaltySlots.away.slot0.time">Away Penalty 1 - Time</option>
-                    <option value="penaltySlots.away.slot0.active">Away Penalty 1 - Active</option>
-                    <option value="penaltySlots.away.slot1.jersey">Away Penalty 2 - Jersey</option>
-                    <option value="penaltySlots.away.slot1.time">Away Penalty 2 - Time</option>
-                    <option value="penaltySlots.away.slot1.active">Away Penalty 2 - Active</option>
-                    <option value="penaltySlots.away.slot2.jersey">Away Penalty 3 - Jersey</option>
-                    <option value="penaltySlots.away.slot2.time">Away Penalty 3 - Time</option>
-                    <option value="penaltySlots.away.slot2.active">Away Penalty 3 - Active</option>
-                  </optgroup>
-                  <optgroup label="Shootout (Soccer/Hockey/Water Polo)">
-                    <option value="home_shootout_made">Home Shootout Made</option>
-                    <option value="away_shootout_made">Away Shootout Made</option>
-                    <option value="shootoutSlots.0.round">Slot 1 Round #</option>
-                    <option value="shootoutSlots.1.round">Slot 2 Round #</option>
-                    <option value="shootoutSlots.2.round">Slot 3 Round #</option>
-                    <option value="shootoutSlots.3.round">Slot 4 Round #</option>
-                    <option value="shootoutSlots.4.round">Slot 5 Round #</option>
-                  </optgroup>
-                  <optgroup label="Leaderboard - Basketball (for Slot Templates)">
-                    <option value="jersey">Player Jersey</option>
-                    <option value="name">Player Name</option>
-                    <option value="points">Player Points</option>
-                    <option value="fouls">Player Fouls</option>
-                    <option value="isTopScorer">Is Top Scorer (boolean)</option>
-                    <option value="imageUrl">Player Image</option>
-                  </optgroup>
-                  <optgroup label="Leaderboard - Volleyball (for Slot Templates)">
-                    <option value="jersey">Player Jersey</option>
-                    <option value="name">Player Name</option>
-                    <option value="aces">Player Aces</option>
-                    <option value="kills">Player Kills</option>
-                    <option value="blocks">Player Blocks</option>
-                    <option value="imageUrl">Player Image</option>
-                  </optgroup>
-                  <optgroup label="Tennis LE - Set Slot Template (for Slot Templates)">
-                    <option value="setNumber">Set Number (1, 2, 3, ...)</option>
-                    <option value="score">Set Score</option>
-                    <option value="active">Set Active (boolean)</option>
-                    <option value="exists">Set Exists (boolean - use for visibility)</option>
-                    <option value="won">Set Won (boolean - use to highlight winner)</option>
-                  </optgroup>
-                  <optgroup label="Tennis LE - Standalone Bindings">
-                    <option value="setSlots.homePoints">Home Current Point (0/15/30/40)</option>
-                    <option value="setSlots.awayPoints">Away Current Point (0/15/30/40)</option>
-                    <option value="setSlots.setsWon.home">Home Sets Won (Total)</option>
-                    <option value="setSlots.setsWon.away">Away Sets Won (Total)</option>
-                    <option value="setSlots.totalSets">Total Sets (Best Of)</option>
-                    <option value="setSlots.pointsEnabled">Points Tracking Enabled (boolean - for visibility)</option>
-                  </optgroup>
-                  <optgroup label="Active Player (Current Slot 0)">
-                    <option value="currentPlayer.home.name">Home Active Player Name</option>
-                    <option value="currentPlayer.home.jersey">Home Active Player Jersey</option>
-                    <option value="currentPlayer.home.points">Home Active Player Points</option>
-                    <option value="currentPlayer.home.imageUrl">Home Active Player Image</option>
-                    <option value="currentPlayer.away.name">Away Active Player Name</option>
-                    <option value="currentPlayer.away.jersey">Away Active Player Jersey</option>
-                    <option value="currentPlayer.away.points">Away Active Player Points</option>
-                    <option value="currentPlayer.away.imageUrl">Away Active Player Image</option>
-                  </optgroup>
-                  <optgroup label="Sponsorship">
-                    <option value="user_sequences.banner">Banner Ads</option>
-                    <option value="user_sequences.timeout">Timeout Ads</option>
-                    <option value="user_sequences.halftime">Halftime Ads</option>
-                    <option value="user_sequences.period-break">Period Break Ads</option>
-                    <option value="user_sequences.pre-game">Pre-Game Ads</option>
-                    <option value="user_sequences.standby">Standby Ads</option>
-                    <option value="user_sequences.general">General Ads</option>
-                    <option value="user_sequences.wrapper-16x9">Wrapper 16x9</option>
-                    <option value="user_sequences.wrapper-4x3">Wrapper 4x3</option>
-                  </optgroup>
-                </select>
+                />
               </div>
 
               {isDragging ? (
@@ -2911,141 +2786,29 @@ function PropertyPanel({
                 <small style={{ color: '#888', display: 'block', marginBottom: '4px' }}>
                   Control when this component is shown based on game data
                 </small>
-                <select
-                  value={component.props?.visibilityPath || ''}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                <DataPathPicker
+                  purpose="visibility"
+                  value={component.props?.visibilityPath}
+                  placeholder="Always Visible"
+                  clearLabel="Always Visible"
+                  onChange={(newPath) => updateComponentWithScrollPreservation(component.id, {
                     props: {
                       ...component.props,
-                      visibilityPath: e.target.value || undefined
-                    }
+                      visibilityPath: newPath || undefined,
+                    },
                   })}
-                >
-                  <option value="">Always Visible</option>
-                  <optgroup label="Home Penalty State">
-                    <option value="penaltySlots.home.isState0">Home: 0 Penalties</option>
-                    <option value="penaltySlots.home.isState1">Home: 1 Penalty</option>
-                    <option value="penaltySlots.home.isState2">Home: 2 Penalties</option>
-                    <option value="penaltySlots.home.isState3">Home: 3 Penalties</option>
-                  </optgroup>
-                  <optgroup label="Away Penalty State">
-                    <option value="penaltySlots.away.isState0">Away: 0 Penalties</option>
-                    <option value="penaltySlots.away.isState1">Away: 1 Penalty</option>
-                    <option value="penaltySlots.away.isState2">Away: 2 Penalties</option>
-                    <option value="penaltySlots.away.isState3">Away: 3 Penalties</option>
-                  </optgroup>
-                  <optgroup label="Home Penalty Slot Active">
-                    <option value="penaltySlots.home.slot0.active">Home Penalty 1 Active</option>
-                    <option value="penaltySlots.home.slot1.active">Home Penalty 2 Active</option>
-                    <option value="penaltySlots.home.slot2.active">Home Penalty 3 Active</option>
-                  </optgroup>
-                  <optgroup label="Away Penalty Slot Active">
-                    <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
-                    <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
-                    <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
-                  </optgroup>
-                  <optgroup label="Leaderboard Slot Template">
-                    <option value="isTopScorer">Is Top Scorer</option>
-                    <option value="active">Slot Active</option>
-                  </optgroup>
-                  <optgroup label="Tennis LE - Set Slot Template">
-                    <option value="active">Set Active (current set)</option>
-                    <option value="exists">Set Exists (within best-of)</option>
-                    <option value="won">Set Won (historical winner)</option>
-                  </optgroup>
-                  <optgroup label="Tennis LE - Standalone">
-                    <option value="setSlots.pointsEnabled">Points Tracking Enabled</option>
-                  </optgroup>
-                  <optgroup label="Team State">
-                    <option value="homeTeam.possession">Home Has Possession</option>
-                    <option value="awayTeam.possession">Away Has Possession</option>
-                    <option value="homeTeam.bonus">Home In Bonus</option>
-                    <option value="awayTeam.bonus">Away In Bonus</option>
-                  </optgroup>
-                  <optgroup label="Baseball Diamond">
-                    <option value="firstBase">First Base Occupied</option>
-                    <option value="secondBase">Second Base Occupied</option>
-                    <option value="thirdBase">Third Base Occupied</option>
-                  </optgroup>
-                  <optgroup label="Baseball Inning State">
-                    <option value="inningSlots.0.isCurrentInning">Slot 1 Is Current Inning</option>
-                    <option value="inningSlots.1.isCurrentInning">Slot 2 Is Current Inning</option>
-                    <option value="inningSlots.2.isCurrentInning">Slot 3 Is Current Inning</option>
-                    <option value="inningSlots.3.isCurrentInning">Slot 4 Is Current Inning</option>
-                    <option value="inningSlots.4.isCurrentInning">Slot 5 Is Current Inning</option>
-                    <option value="inningSlots.5.isCurrentInning">Slot 6 Is Current Inning</option>
-                    <option value="inningSlots.6.isCurrentInning">Slot 7 Is Current Inning</option>
-                    <option value="inningSlots.7.isCurrentInning">Slot 8 Is Current Inning</option>
-                    <option value="inningSlots.8.isCurrentInning">Slot 9 Is Current Inning</option>
-                  </optgroup>
-                  <optgroup label="Shootout Slots - Home Active">
-                    <option value="shootoutSlots.0.homeActive">Slot 1 Home Active</option>
-                    <option value="shootoutSlots.1.homeActive">Slot 2 Home Active</option>
-                    <option value="shootoutSlots.2.homeActive">Slot 3 Home Active</option>
-                    <option value="shootoutSlots.3.homeActive">Slot 4 Home Active</option>
-                    <option value="shootoutSlots.4.homeActive">Slot 5 Home Active</option>
-                  </optgroup>
-                  <optgroup label="Shootout Slots - Away Active">
-                    <option value="shootoutSlots.0.awayActive">Slot 1 Away Active</option>
-                    <option value="shootoutSlots.1.awayActive">Slot 2 Away Active</option>
-                    <option value="shootoutSlots.2.awayActive">Slot 3 Away Active</option>
-                    <option value="shootoutSlots.3.awayActive">Slot 4 Away Active</option>
-                    <option value="shootoutSlots.4.awayActive">Slot 5 Away Active</option>
-                  </optgroup>
-                </select>
+                />
               </div>
             </PropertySection>
 
             {/* IMAGE SECTION */}
             <PropertySection title="IMAGE" sectionKey="image">
-              {/* Category selector for local images */}
               <div className="property-field">
-                <label>Category</label>
-                <select
-                  value={selectedSport}
-                  onChange={(e) => setSelectedSport(e.target.value as Sport)}
-                >
-                  {AVAILABLE_SPORTS.map((sport) => (
-                    <option key={sport} value={sport}>
-                      {sport}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Subsection selector - only shown if sport has subsections */}
-              {sportHasSubsections && (
-                <div className="property-field">
-                  <label>Subsection</label>
-                  <select
-                    value={selectedSubsection || ''}
-                    onChange={(e) => setSelectedSubsection(e.target.value || undefined)}
-                  >
-                    <option value="">Root Images Only</option>
-                    {availableSubsections.map((subsection) => (
-                      <option key={subsection} value={subsection}>
-                        {subsection}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Local image selector */}
-              <div className="property-field">
-                <label>Local Image ({availableImages.length} available)</label>
-                <select
+                <label>Local Image</label>
+                <ImagePicker
                   value={getStateValue('imagePath', '')}
-                  onChange={(e) => handleImageSelect(e.target.value)}
-                >
-                  <option value="">
-                    {imagesLoading ? 'Loading images...' : 'None'}
-                  </option>
-                  {availableImages.map((filename) => (
-                    <option key={filename} value={getImagePath(filename, selectedSport, selectedSubsection)}>
-                      {filename}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(path) => handleImageSelect(path)}
+                />
               </div>
 
               {/* Image URL - overrides local if set */}
@@ -4423,68 +4186,15 @@ function PropertyPanel({
                 <small style={{ color: '#888', display: 'block', marginBottom: '4px' }}>
                   Show/hide all children based on a data value
                 </small>
-                <select
-                  value={component.props?.visibilityPath || ''}
-                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, visibilityPath: e.target.value || undefined }
+                <DataPathPicker
+                  purpose="visibility"
+                  value={component.props?.visibilityPath}
+                  placeholder="Always Visible"
+                  clearLabel="Always Visible"
+                  onChange={(newPath) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, visibilityPath: newPath || undefined },
                   })}
-                >
-                  <option value="">Always Visible</option>
-                  <optgroup label="Home Penalty State">
-                    <option value="penaltySlots.home.isState0">Home: 0 Penalties</option>
-                    <option value="penaltySlots.home.isState1">Home: 1 Penalty</option>
-                    <option value="penaltySlots.home.isState2">Home: 2 Penalties</option>
-                    <option value="penaltySlots.home.isState3">Home: 3 Penalties</option>
-                  </optgroup>
-                  <optgroup label="Away Penalty State">
-                    <option value="penaltySlots.away.isState0">Away: 0 Penalties</option>
-                    <option value="penaltySlots.away.isState1">Away: 1 Penalty</option>
-                    <option value="penaltySlots.away.isState2">Away: 2 Penalties</option>
-                    <option value="penaltySlots.away.isState3">Away: 3 Penalties</option>
-                  </optgroup>
-                  <optgroup label="Home Penalty Slot Active">
-                    <option value="penaltySlots.home.slot0.active">Home Penalty 1 Active</option>
-                    <option value="penaltySlots.home.slot1.active">Home Penalty 2 Active</option>
-                    <option value="penaltySlots.home.slot2.active">Home Penalty 3 Active</option>
-                  </optgroup>
-                  <optgroup label="Away Penalty Slot Active">
-                    <option value="penaltySlots.away.slot0.active">Away Penalty 1 Active</option>
-                    <option value="penaltySlots.away.slot1.active">Away Penalty 2 Active</option>
-                    <option value="penaltySlots.away.slot2.active">Away Penalty 3 Active</option>
-                  </optgroup>
-                  <optgroup label="Leaderboard Slot Template">
-                    <option value="isTopScorer">Is Top Scorer</option>
-                    <option value="active">Slot Active</option>
-                  </optgroup>
-                  <optgroup label="Tennis LE - Set Slot Template">
-                    <option value="active">Set Active (current set)</option>
-                    <option value="exists">Set Exists (within best-of)</option>
-                    <option value="won">Set Won (historical winner)</option>
-                  </optgroup>
-                  <optgroup label="Tennis LE - Standalone">
-                    <option value="setSlots.pointsEnabled">Points Tracking Enabled</option>
-                  </optgroup>
-                  <optgroup label="Team State">
-                    <option value="homeTeam.possession">Home Has Possession</option>
-                    <option value="awayTeam.possession">Away Has Possession</option>
-                    <option value="homeTeam.bonus">Home In Bonus</option>
-                    <option value="awayTeam.bonus">Away In Bonus</option>
-                  </optgroup>
-                  <optgroup label="Shootout Slots - Home Active">
-                    <option value="shootoutSlots.0.homeActive">Slot 1 Home Active</option>
-                    <option value="shootoutSlots.1.homeActive">Slot 2 Home Active</option>
-                    <option value="shootoutSlots.2.homeActive">Slot 3 Home Active</option>
-                    <option value="shootoutSlots.3.homeActive">Slot 4 Home Active</option>
-                    <option value="shootoutSlots.4.homeActive">Slot 5 Home Active</option>
-                  </optgroup>
-                  <optgroup label="Shootout Slots - Away Active">
-                    <option value="shootoutSlots.0.awayActive">Slot 1 Away Active</option>
-                    <option value="shootoutSlots.1.awayActive">Slot 2 Away Active</option>
-                    <option value="shootoutSlots.2.awayActive">Slot 3 Away Active</option>
-                    <option value="shootoutSlots.3.awayActive">Slot 4 Away Active</option>
-                    <option value="shootoutSlots.4.awayActive">Slot 5 Away Active</option>
-                  </optgroup>
-                </select>
+                />
               </div>
             </PropertySection>
           </>

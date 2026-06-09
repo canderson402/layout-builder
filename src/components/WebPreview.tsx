@@ -728,12 +728,24 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         // Render the actual template components for preview
         // Try to get template by ID first, then fallback to name for imported layouts
         const template = props.templateId ? getTemplate(props.templateId, props.templateName) : null;
-        const slotCount = props.slotCount || 5;
+        const staticSlotCount = props.slotCount || 5;
         const slotSpacing = props.slotSpacing ?? 5;
         const direction = props.direction || 'vertical';
         const teamLabel = props.team || 'home';
         const prefix = props.dataPathPrefix || 'leaderboardSlots';
         const hideInactiveSlots = props.hideInactiveSlots || false;
+
+        // Dynamic slot count from gameData (mirrors RNDisplay's runtime
+        // slotExpansion). When slotCountPath is set on the slotList, the
+        // preview reads the value live so changing Tennis Total Sets in
+        // Preview Data shrinks/expands the visible row count.
+        let slotCount = staticSlotCount;
+        if (props.slotCountPath) {
+          const dyn = getNestedData(effectiveGameData, props.slotCountPath);
+          if (typeof dyn === 'number' && Number.isFinite(dyn)) {
+            slotCount = Math.max(1, Math.min(staticSlotCount, Math.floor(dyn)));
+          }
+        }
 
         // If no template selected, show placeholder
         if (!template) {

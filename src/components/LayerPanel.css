@@ -6,6 +6,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .layer-header {
@@ -293,19 +294,98 @@
   opacity: 0.5;
 }
 
-/* Component Menu Styles */
+/* Quick Add — stacked inline Buttons inside a CollapsibleSection. */
+.quick-add-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Compact template-row list (Slot Templates / Component Templates).
+   The row itself is a button — click anywhere to load the template.
+   The trailing × is a separate icon button. */
+.tpl-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.tpl-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.tpl-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #ddd;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.tpl-row:hover {
+  background: #2f2f2f;
+  border-color: #444;
+  color: #fff;
+}
+
+.tpl-row:active {
+  background: #383838;
+}
+
+.tpl-row:focus-visible {
+  outline: none;
+  border-color: #4FC3F7;
+  background: #2f2f2f;
+}
+
+.tpl-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tpl-info-slot {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tpl-delete {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.tpl-empty {
+  color: #888;
+  font-size: 12px;
+  text-align: center;
+  padding: 14px 10px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* Legacy: kept so any stragglers still render reasonably. The Quick Add UI
+   now uses the shared Button primitive. */
 .component-menu {
   border-top: 1px solid #444;
   background: #2a2a2a;
   padding: 16px;
-  margin-top: auto;
-  /* Cap height so an unbounded number of slot/component templates can't push
-     the rest of the panel off-screen — once we hit the cap, the menu scrolls
-     internally instead of overflowing the panel. */
-  max-height: 60vh;
-  overflow-y: auto;
-  min-height: 0;
-  flex-shrink: 0;
 }
 
 .component-menu-header {

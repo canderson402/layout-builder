@@ -755,37 +755,52 @@ function App() {
     toast.success(`Preset "${nameToUse}" ${action} successfully!`);
   }, [layout, toast]);
 
-  // LocalStorage keys to export/import
-  const LOCAL_STORAGE_KEYS = [
-    'sv-slot-templates',
-    'sv-component-templates',
-    'canvas-background-image',
-    'canvas-background-visible',
-    'scoreboard-layout-presets'
-  ];
+  /**
+   * Unified bundle format — one file holds presets + both template types
+   * + canvas bg. Parsed JSON arrays (not stringified) so the file is
+   * human-inspectable.
+   */
+  const BUNDLE_VERSION = 1;
 
-  // Export all localStorage data
   const exportLocalStorage = useCallback(() => {
-    const exportData: Record<string, string | null> = {};
-    LOCAL_STORAGE_KEYS.forEach(key => {
-      const value = localStorage.getItem(key);
-      if (value !== null) {
-        exportData[key] = value;
+    const readArray = (key: string): unknown[] => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
       }
-    });
+    };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const bundle = {
+      version: BUNDLE_VERSION,
+      exportedAt: new Date().toISOString(),
+      presets: readArray('scoreboard-layout-presets'),
+      slotTemplates: readArray('sv-slot-templates'),
+      componentTemplates: readArray('sv-component-templates'),
+      canvasBackgroundImage: localStorage.getItem('canvas-background-image') || null,
+      canvasBackgroundVisible: localStorage.getItem('canvas-background-visible') || null,
+    };
+
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `layout-builder-data-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `layout-builder-bundle-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, []);
 
-  // Import localStorage data from file
+    const total =
+      bundle.presets.length +
+      bundle.slotTemplates.length +
+      bundle.componentTemplates.length;
+    toast.success(`Exported bundle (${bundle.presets.length} presets, ${bundle.slotTemplates.length} slot templates, ${bundle.componentTemplates.length} component templates — ${total} items total)`);
+  }, [toast]);
+
   const importLocalStorage = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -798,25 +813,38 @@ function App() {
       reader.onload = (event) => {
         try {
           const data = JSON.parse(event.target?.result as string);
-          let importedCount = 0;
+          if (!data || typeof data !== 'object' || data.version !== BUNDLE_VERSION) {
+            toast.error('Unrecognized bundle file — expected a v1 layout-builder bundle.');
+            return;
+          }
 
-          Object.entries(data).forEach(([key, value]) => {
-            if (LOCAL_STORAGE_KEYS.includes(key) && typeof value === 'string') {
-              localStorage.setItem(key, value);
-              importedCount++;
-            }
-          });
+          const writeArray = (key: string, arr: unknown) => {
+            if (Array.isArray(arr)) localStorage.setItem(key, JSON.stringify(arr));
+          };
 
-          toast.success(`Imported ${importedCount} settings. Refreshing page...`);
+          writeArray('scoreboard-layout-presets', data.presets);
+          writeArray('sv-slot-templates', data.slotTemplates);
+          writeArray('sv-component-templates', data.componentTemplates);
+          if (typeof data.canvasBackgroundImage === 'string') {
+            localStorage.setItem('canvas-background-image', data.canvasBackgroundImage);
+          }
+          if (typeof data.canvasBackgroundVisible === 'string') {
+            localStorage.setItem('canvas-background-visible', data.canvasBackgroundVisible);
+          }
+
+          const presets = Array.isArray(data.presets) ? data.presets.length : 0;
+          const slots = Array.isArray(data.slotTemplates) ? data.slotTemplates.length : 0;
+          const comps = Array.isArray(data.componentTemplates) ? data.componentTemplates.length : 0;
+          toast.success(`Imported bundle (${presets} presets, ${slots} slot templates, ${comps} component templates). Refreshing…`);
           setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
-          toast.error('Failed to import data: Invalid JSON file');
+          toast.error('Failed to import bundle: invalid JSON file');
         }
       };
       reader.readAsText(file);
     };
     input.click();
-  }, []);
+  }, [toast]);
 
   // Listen for canvas undo/redo events
   React.useEffect(() => {
@@ -1646,22 +1674,6 @@ function App() {
           onLoadPreset={loadCustomPreset}
           onBackup={exportLocalStorage}
           onRestore={importLocalStorage}
-          onTemplatesImported={() => {
-            setTemplateRefreshKey(k => k + 1);
-            // Auto-repair template references in current layout when templates are imported
-            const { components: repairedComponents, repaired, brokenRefs } = repairTemplateReferences(layout.components || []);
-            if (repaired > 0 || brokenRefs.length > 0) {
-              setLayout(prev => ({ ...prev, components: repairedComponents }));
-            }
-            if (repaired > 0) {
-              console.log(`Auto-repaired ${repaired} template reference(s) after template import`);
-              toast.success(`Auto-repaired ${repaired} template reference(s)`);
-            }
-            if (brokenRefs.length > 0) {
-              console.warn(`${brokenRefs.length} slotList component(s) still have missing templates`);
-              toast.warning(`${brokenRefs.length} slot list(s) still missing templates. Re-select templates in property panel.`, 6000);
-            }
-          }}
         />
       )}
 

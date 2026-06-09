@@ -38,6 +38,12 @@
   font-size: 24px;
 }
 
+.preset-modal-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .close-button {
   background: none;
   border: none;

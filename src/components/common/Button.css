@@ -1,0 +1,125 @@
+/* Shared compact button used across the layout-builder panels. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+  background: transparent;
+  color: #ddd;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid #4FC3F7;
+  outline-offset: 1px;
+}
+
+/* Sizes */
+.btn--xs {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.btn--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.btn--md {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+/* Icon-only -> square */
+.btn--icon-only.btn--xs { width: 24px; padding: 0; }
+.btn--icon-only.btn--sm { width: 28px; padding: 0; }
+.btn--icon-only.btn--md { width: 36px; padding: 0; }
+
+/* Block (full width) */
+.btn--block { width: 100%; }
+
+/* Variants */
+.btn--default {
+  background: #353535;
+  color: #ddd;
+  border-color: #444;
+}
+.btn--default:hover:not(:disabled) {
+  background: #404040;
+  border-color: #555;
+}
+
+.btn--primary {
+  background: #2196F3;
+  color: #fff;
+  border-color: #1e88e5;
+}
+.btn--primary:hover:not(:disabled) {
+  background: #1e88e5;
+}
+
+.btn--secondary {
+  background: #9C27B0;
+  color: #fff;
+  border-color: #8e24aa;
+}
+.btn--secondary:hover:not(:disabled) {
+  background: #8e24aa;
+}
+
+.btn--success {
+  background: #27ae60;
+  color: #fff;
+  border-color: #229954;
+}
+.btn--success:hover:not(:disabled) {
+  background: #229954;
+}
+
+.btn--danger {
+  background: #c0392b;
+  color: #fff;
+  border-color: #a93226;
+}
+.btn--danger:hover:not(:disabled) {
+  background: #a93226;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: #bbb;
+  border-color: transparent;
+}
+.btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+/* Icon slot */
+.btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btn__label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { LayoutConfig, SlotTemplate, ComponentGroupTemplate } from '../types';
 import { useToast } from './Toast';
-import { loadTemplates, saveTemplates } from '../utils/slotTemplates';
-import { loadComponentTemplates, saveComponentTemplates } from '../utils/componentTemplates';
+import { loadTemplates } from '../utils/slotTemplates';
+import { loadComponentTemplates } from '../utils/componentTemplates';
 import './PresetModal.css';
 
 interface PresetModalProps {
@@ -11,7 +11,6 @@ interface PresetModalProps {
   onLoadPreset: (layout: LayoutConfig) => void;
   onBackup: () => void;
   onRestore: () => void;
-  onTemplatesImported?: () => void;
 }
 
 interface SavedPreset {
@@ -24,7 +23,7 @@ interface SavedPreset {
 
 const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
 
-function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTemplatesImported }: PresetModalProps) {
+function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: PresetModalProps) {
   const toast = useToast();
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const [presetName, setPresetName] = useState(layout.name || 'My Layout');
@@ -32,8 +31,6 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTem
   const [jsonInput, setJsonInput] = useState('');
   const [slotTemplates, setSlotTemplates] = useState<SlotTemplate[]>([]);
   const [componentTemplates, setComponentTemplates] = useState<ComponentGroupTemplate[]>([]);
-  const slotFileInputRef = useRef<HTMLInputElement>(null);
-  const componentFileInputRef = useRef<HTMLInputElement>(null);
 
   // Load saved presets from localStorage on component mount
   useEffect(() => {
@@ -111,202 +108,6 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTem
     }
   };
 
-  const exportPresets = () => {
-    const dataStr = JSON.stringify(savedPresets, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = 'scoreboard-presets.json';
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-  };
-
-  const importPresets = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedPresets = JSON.parse(e.target?.result as string);
-        if (Array.isArray(importedPresets)) {
-          const confirmed = window.confirm('Import presets? This will add to your existing presets.');
-          if (confirmed) {
-            const updatedPresets = [...savedPresets, ...importedPresets];
-            setSavedPresets(updatedPresets);
-            localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
-            toast.success('Presets imported successfully!');
-          }
-        }
-      } catch (error) {
-        toast.error('Failed to import presets. Please check the file format.');
-      }
-    };
-    reader.readAsText(file);
-    
-    // Reset the input
-    event.target.value = '';
-  };
-
-  // Export slot templates
-  const exportSlotTemplates = () => {
-    const templates = loadTemplates();
-    if (templates.length === 0) {
-      toast.warning('No slot templates to export');
-      return;
-    }
-    const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `slot-templates-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${templates.length} slot template(s)`);
-  };
-
-  // Export component templates
-  const exportComponentTemplates = () => {
-    const templates = loadComponentTemplates();
-    if (templates.length === 0) {
-      toast.warning('No component templates to export');
-      return;
-    }
-    const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `component-templates-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${templates.length} component template(s)`);
-  };
-
-  // Import slot templates
-  const importSlotTemplates = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedTemplates: SlotTemplate[] = JSON.parse(e.target?.result as string);
-        if (!Array.isArray(importedTemplates)) {
-          throw new Error('Invalid format');
-        }
-        // Validate basic structure
-        const isValid = importedTemplates.every(t => t.id && t.name && Array.isArray(t.components));
-        if (!isValid) {
-          throw new Error('Invalid slot template format');
-        }
-
-        const existingTemplates = loadTemplates();
-        const existingNames = new Set(existingTemplates.map(t => t.name));
-
-        // Check for duplicates
-        const newTemplates = importedTemplates.filter(t => !existingNames.has(t.name));
-        const duplicates = importedTemplates.filter(t => existingNames.has(t.name));
-
-        if (duplicates.length > 0 && newTemplates.length === 0) {
-          const replace = window.confirm(
-            `All ${duplicates.length} template(s) already exist. Replace them?`
-          );
-          if (replace) {
-            // Replace existing with imported versions
-            const updatedTemplates = existingTemplates.map(existing => {
-              const replacement = importedTemplates.find(t => t.name === existing.name);
-              return replacement ? { ...replacement, id: existing.id } : existing;
-            });
-            saveTemplates(updatedTemplates);
-            setSlotTemplates(updatedTemplates);
-            toast.success(`Replaced ${duplicates.length} slot template(s)`);
-            onTemplatesImported?.();
-          }
-        } else {
-          // Add new templates (skip duplicates)
-          const merged = [...existingTemplates, ...newTemplates];
-          saveTemplates(merged);
-          setSlotTemplates(merged);
-          if (duplicates.length > 0) {
-            toast.success(`Imported ${newTemplates.length} new slot template(s), skipped ${duplicates.length} duplicate(s)`);
-          } else {
-            toast.success(`Imported ${newTemplates.length} slot template(s)`);
-          }
-          onTemplatesImported?.();
-        }
-      } catch (error) {
-        toast.error(`Failed to import slot templates: ${error instanceof Error ? error.message : 'Invalid format'}`);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  };
-
-  // Import component templates
-  const importComponentTemplates = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedTemplates: ComponentGroupTemplate[] = JSON.parse(e.target?.result as string);
-        if (!Array.isArray(importedTemplates)) {
-          throw new Error('Invalid format');
-        }
-        // Validate basic structure
-        const isValid = importedTemplates.every(t => t.id && t.name && Array.isArray(t.components));
-        if (!isValid) {
-          throw new Error('Invalid component template format');
-        }
-
-        const existingTemplates = loadComponentTemplates();
-        const existingNames = new Set(existingTemplates.map(t => t.name));
-
-        // Check for duplicates
-        const newTemplates = importedTemplates.filter(t => !existingNames.has(t.name));
-        const duplicates = importedTemplates.filter(t => existingNames.has(t.name));
-
-        if (duplicates.length > 0 && newTemplates.length === 0) {
-          const replace = window.confirm(
-            `All ${duplicates.length} template(s) already exist. Replace them?`
-          );
-          if (replace) {
-            // Replace existing with imported versions
-            const updatedTemplates = existingTemplates.map(existing => {
-              const replacement = importedTemplates.find(t => t.name === existing.name);
-              return replacement ? { ...replacement, id: existing.id } : existing;
-            });
-            saveComponentTemplates(updatedTemplates);
-            setComponentTemplates(updatedTemplates);
-            toast.success(`Replaced ${duplicates.length} component template(s)`);
-            onTemplatesImported?.();
-          }
-        } else {
-          // Add new templates (skip duplicates)
-          const merged = [...existingTemplates, ...newTemplates];
-          saveComponentTemplates(merged);
-          setComponentTemplates(merged);
-          if (duplicates.length > 0) {
-            toast.success(`Imported ${newTemplates.length} new component template(s), skipped ${duplicates.length} duplicate(s)`);
-          } else {
-            toast.success(`Imported ${newTemplates.length} component template(s)`);
-          }
-          onTemplatesImported?.();
-        }
-      } catch (error) {
-        toast.error(`Failed to import component templates: ${error instanceof Error ? error.message : 'Invalid format'}`);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  };
 
   const loadFromJson = () => {
     if (!jsonInput.trim()) {
@@ -345,7 +146,15 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTem
       <div className="preset-modal">
         <div className="preset-modal-header">
           <h2>Preset Manager</h2>
-          <button className="close-button" onClick={onClose}>×</button>
+          <div className="preset-modal-header__actions">
+            <button onClick={onBackup} className="action-btn action-btn-blue">
+              Export All
+            </button>
+            <button onClick={onRestore} className="action-btn action-btn-green">
+              Import All
+            </button>
+            <button className="close-button" onClick={onClose}>×</button>
+          </div>
         </div>
 
         <div className="preset-tabs">
@@ -372,15 +181,6 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTem
         <div className="preset-modal-content">
           {activeTab === 'load' && (
             <div className="load-preset-section">
-              <div className="preset-actions">
-                <button onClick={onBackup} className="action-btn action-btn-gray">
-                  Backup
-                </button>
-                <button onClick={onRestore} className="action-btn action-btn-green">
-                  Restore
-                </button>
-              </div>
-
               {savedPresets.length === 0 ? (
                 <div className="no-presets">
                   <p>No saved presets found.</p>
@@ -425,34 +225,12 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTem
           {activeTab === 'templates' && (
             <div className="templates-section">
               <p className="templates-description">
-                Export and import templates to share with others or backup your work.
+                Templates are bundled into the Export All / Import All file at the top of this modal.
               </p>
 
               <div className="template-category">
                 <h3>Slot Templates ({slotTemplates.length})</h3>
                 <p className="template-hint">Used for leaderboard stat rows and repeating elements</p>
-                <div className="template-actions">
-                  <button
-                    onClick={exportSlotTemplates}
-                    className="action-btn action-btn-blue"
-                    disabled={slotTemplates.length === 0}
-                  >
-                    Export Slot Templates
-                  </button>
-                  <button
-                    onClick={() => slotFileInputRef.current?.click()}
-                    className="action-btn action-btn-green"
-                  >
-                    Import Slot Templates
-                  </button>
-                  <input
-                    ref={slotFileInputRef}
-                    type="file"
-                    accept=".json"
-                    onChange={importSlotTemplates}
-                    style={{ display: 'none' }}
-                  />
-                </div>
                 {slotTemplates.length > 0 && (
                   <ul className="template-list">
                     {slotTemplates.map(t => (
@@ -465,28 +243,6 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore, onTem
               <div className="template-category">
                 <h3>Component Templates ({componentTemplates.length})</h3>
                 <p className="template-hint">Reusable component groups (clocks, score displays, etc.)</p>
-                <div className="template-actions">
-                  <button
-                    onClick={exportComponentTemplates}
-                    className="action-btn action-btn-blue"
-                    disabled={componentTemplates.length === 0}
-                  >
-                    Export Component Templates
-                  </button>
-                  <button
-                    onClick={() => componentFileInputRef.current?.click()}
-                    className="action-btn action-btn-green"
-                  >
-                    Import Component Templates
-                  </button>
-                  <input
-                    ref={componentFileInputRef}
-                    type="file"
-                    accept=".json"
-                    onChange={importComponentTemplates}
-                    style={{ display: 'none' }}
-                  />
-                </div>
                 {componentTemplates.length > 0 && (
                   <ul className="template-list">
                     {componentTemplates.map(t => (
