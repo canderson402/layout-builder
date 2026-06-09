@@ -9,6 +9,7 @@ import {
 } from '../utils/componentTemplates';
 import { useToast } from './Toast';
 import CollapsibleSection from './common/CollapsibleSection';
+import { SHAPE_PRESET_LIST } from '../utils/shapePresets';
 import Button from './common/Button';
 import InfoTooltip from './common/InfoTooltip';
 import './LayerPanel.css';
@@ -41,6 +42,7 @@ interface LayerPanelProps {
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onDeleteComponent: (id: string) => void;
   onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string, parentId?: string, customId?: string, customLayer?: number, extraProps?: Partial<ComponentConfig>) => string;
+  onAddShape: (presetKey: string) => void;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
   onCopyComponents?: () => void;
@@ -62,6 +64,7 @@ export default function LayerPanel({
   onUpdateComponent,
   onDeleteComponent,
   onAddComponent,
+  onAddShape,
   onStartDragOperation,
   onEndDragOperation,
   onCopyComponents,
@@ -1189,6 +1192,22 @@ export default function LayerPanel({
           </Button>
         </div>
 
+      </CollapsibleSection>
+
+      <CollapsibleSection id="layer-panel-shapes" title="Shapes" defaultOpen={true}>
+        <div className="quick-add-grid" role="toolbar" aria-label="Add shapes">
+          {SHAPE_PRESET_LIST.map(({ key, label, icon }) => (
+            <Button
+              key={key}
+              block
+              variant="default"
+              onClick={() => onAddShape(key)}
+              aria-label={`Add ${label} shape`}
+            >
+              {icon} {label}
+            </Button>
+          ))}
+        </div>
       </CollapsibleSection>
 
       <CollapsibleSection

@@ -6,6 +6,8 @@ import CollapsibleSection from './common/CollapsibleSection';
 import SectionGroup from './common/SectionGroup';
 import DataPathPicker from './common/DataPathPicker';
 import ImagePicker from './common/ImagePicker';
+import ShapeProperties, { VertexInspector } from './ShapeProperties';
+import type { Vertex } from '../shared/utils/shapePath';
 import './PropertyPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -30,6 +32,8 @@ interface PropertyPanelProps {
   onUpdateGameData?: (gameData: any) => void;
   panelWidth?: number;
   templateRefreshKey?: number;
+  editingShapeId: string | null;
+  selectedVertices: number[];
 }
 
 // Width threshold for two-column layout
@@ -101,7 +105,9 @@ function PropertyPanel({
   gameData,
   onUpdateGameData,
   panelWidth = 320,
-  templateRefreshKey
+  templateRefreshKey,
+  editingShapeId,
+  selectedVertices
 }: PropertyPanelProps) {
   const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
@@ -4174,6 +4180,72 @@ function PropertyPanel({
                 );
               })()}
             </PropertySection>
+          </>
+        )}
+
+        {/* SHAPE SETTINGS */}
+        {component.type === 'shape' && (
+          <>
+            <ShapeProperties
+              props={component.props || {}}
+              onUpdateProps={(updates) => {
+                if (!componentId) return;
+                updateComponentWithScrollPreservation(componentId, {
+                  props: { ...component.props, ...updates },
+                });
+              }}
+            />
+            {editingShapeId === component.id &&
+              selectedVertices.length === 1 &&
+              component.props?.shape?.vertices?.[selectedVertices[0]] && (
+                <VertexInspector
+                  vertex={component.props.shape.vertices[selectedVertices[0]]}
+                  index={selectedVertices[0]}
+                  size={component.size}
+                  onUpdateVertex={(index, vertex) => {
+                    if (!componentId) return;
+                    const vertices = component.props.shape.vertices.map((v: Vertex, i: number) =>
+                      i === index ? vertex : v
+                    );
+                    updateComponentWithScrollPreservation(componentId, {
+                      props: { ...component.props, shape: { ...component.props.shape, vertices } },
+                    });
+                  }}
+                />
+              )}
+            {/* Team Color for shape fill */}
+            <div className="property-section">
+              <div className="property-field">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={component?.useTeamColor || false}
+                    onChange={(e) => {
+                      if (!component || !componentId) return;
+                      updateComponentWithScrollPreservation(componentId, {
+                        useTeamColor: e.target.checked,
+                        teamColorSide: (component.teamColorSide || 'home') as 'home' | 'away',
+                      });
+                    }}
+                  />
+                  Use Team Color
+                </label>
+              </div>
+              {component?.useTeamColor && (
+                <div className="property-field">
+                  <label>Team Color Side</label>
+                  <select
+                    value={component.teamColorSide || 'home'}
+                    onChange={(e) => componentId && updateComponentWithScrollPreservation(componentId, {
+                      teamColorSide: e.target.value as 'home' | 'away',
+                    })}
+                  >
+                    <option value="home">Home</option>
+                    <option value="away">Away</option>
+                  </select>
+                </div>
+              )}
+            </div>
           </>
         )}
 

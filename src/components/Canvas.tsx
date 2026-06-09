@@ -1,6 +1,8 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import WebPreview from './WebPreview';
+import VertexEditOverlay from './VertexEditOverlay';
+import { refitShapeGeometry } from '../shared/utils/shapePath';
 import './Canvas.css';
 
 interface CanvasProps {
@@ -18,6 +20,10 @@ interface CanvasProps {
   onEndDragOperation: (description: string) => void;
   onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
   gameData?: any;
+  editingShapeId: string | null;
+  onSetEditingShape: (id: string | null) => void;
+  selectedVertices: number[];
+  onSelectVertices: (indices: number[]) => void;
 }
 
 // Pixel-based grid settings
@@ -70,7 +76,11 @@ export default function Canvas({
   onStartDragOperation,
   onEndDragOperation,
   onUpdateLayout,
-  gameData
+  gameData,
+  editingShapeId,
+  onSetEditingShape,
+  selectedVertices,
+  onSelectVertices
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -2530,8 +2540,8 @@ export default function Canvas({
       }
     }
 
-    // Escape key - deselect all components
-    if (!isInputFocused && e.key === 'Escape') {
+    // Escape key - deselect all components (while vertex editing, Escape exits edit mode instead)
+    if (!isInputFocused && e.key === 'Escape' && !editingShapeId) {
       e.preventDefault();
       onSelectComponents([]);
       return;
@@ -2618,6 +2628,7 @@ export default function Canvas({
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (editingShapeId) return; // vertex edit mode handles its own delete
         e.preventDefault();
         selectedComponents.forEach(componentId => {
           onDeleteComponent(componentId);
@@ -2641,12 +2652,52 @@ export default function Canvas({
         }
       }
     }
-  }, [selectedComponents, onDeleteComponent, onDuplicateComponent, onUpdateComponent, onStartDragOperation, onEndDragOperation, isScaling, confirmScaleMode, cancelScaleMode, startScaleMode, onSelectComponents, layout.components, fitCanvasToWrapper]);
+  }, [selectedComponents, onDeleteComponent, onDuplicateComponent, onUpdateComponent, onStartDragOperation, onEndDragOperation, isScaling, confirmScaleMode, cancelScaleMode, startScaleMode, onSelectComponents, layout.components, fitCanvasToWrapper, editingShapeId]);
 
   React.useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  // Exit vertex edit mode, refitting the shape's bounds to its vertices (Task 13)
+  const exitShapeEditMode = useCallback(() => {
+    const comp = layoutRef.current.components?.find(c => c.id === editingShapeId);
+    if (comp && comp.type === 'shape' && comp.props?.shape) {
+      const refit = refitShapeGeometry(comp.props.shape, comp.position, comp.size);
+      if (refit) {
+        onStartDragOperation();
+        onUpdateComponent(comp.id, {
+          position: refit.position,
+          size: refit.size,
+          props: { ...comp.props, shape: { ...comp.props.shape, ...refit.shape } },
+        });
+        onEndDragOperation('Refit shape bounds');
+      }
+    }
+    onSetEditingShape(null);
+    onSelectVertices([]);
+  }, [editingShapeId, onSetEditingShape, onSelectVertices, onStartDragOperation, onEndDragOperation, onUpdateComponent]);
+
+  // Enter or E begins vertex editing on a single selected shape; Escape or E exits
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      const isToggleKey = e.key.toLowerCase() === 'e' && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if ((e.key === 'Enter' || isToggleKey) && !editingShapeId && selectedComponentsRef.current.length === 1) {
+        const comp = layoutRef.current.components?.find(c => c.id === selectedComponentsRef.current[0]);
+        if (comp?.type === 'shape') {
+          e.preventDefault();
+          onSetEditingShape(comp.id);
+        }
+      } else if ((e.key === 'Escape' || isToggleKey) && editingShapeId) {
+        e.preventDefault();
+        exitShapeEditMode();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editingShapeId, onSetEditingShape, exitShapeEditMode]);
 
   // Space key release handler for pan mode
   React.useEffect(() => {
@@ -2813,6 +2864,12 @@ export default function Canvas({
           zIndex: getEffectiveLayer(component) + (isSelected ? 10000000 : 0), // Respect hierarchy layer order, selected on top
         }}
         onMouseDown={(e) => handleMouseDown(e, component)}
+        onDoubleClick={component.type === 'shape' ? (e: React.MouseEvent) => {
+          e.stopPropagation();
+          e.preventDefault(); // block native double-click selection highlight
+          onSelectComponents([component.id]);
+          onSetEditingShape(component.id);
+        } : undefined}
         className="canvas-handle"
       >
         {/* Parent-child relationship indicators */}
@@ -3510,6 +3567,27 @@ export default function Canvas({
             onSelectComponents={onSelectComponents}
             gameData={gameData}
           />
+          {/* Vertex edit overlay for the shape being edited */}
+          {editingShapeId && (() => {
+            const comp = (layout.components || []).find(c => c.id === editingShapeId);
+            if (!comp || comp.type !== 'shape' || !comp.props?.shape) return null;
+            return (
+              <VertexEditOverlay
+                component={comp}
+                scale={zoomLevel / 100}
+                canvasWidth={layout.dimensions.width}
+                canvasHeight={layout.dimensions.height}
+                gridSize={GRID_SIZE_OPTIONS[gridSizeIndex]}
+                snapEnabled={showGrid}
+                selectedVertices={selectedVertices}
+                onSelectVertices={onSelectVertices}
+                onUpdateComponent={onUpdateComponent}
+                onStartDragOperation={onStartDragOperation}
+                onEndDragOperation={onEndDragOperation}
+                onRequestExit={exitShapeEditMode}
+              />
+            );
+          })()}
           {/* Creation rectangle overlay (Cmd+drag) */}
           {isCreating && (
             <div
@@ -3548,8 +3626,9 @@ export default function Canvas({
             .filter(component =>
               component.visible !== false &&
               component.type !== 'group' &&
+              component.id !== editingShapeId &&
               !isAncestorHidden(component, layout.components || [])
-            ) // Exclude groups and components with hidden ancestors
+            ) // Exclude groups, components with hidden ancestors, and the shape being vertex-edited
             .sort((a, b) => getEffectiveLayer(a) - getEffectiveLayer(b))
             .map(component => getComponentHandle(component))}
 

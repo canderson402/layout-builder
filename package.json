@@ -18,7 +18,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist --repo https://github.com/canderson402/layout-builder.git"
+    "deploy": "gh-pages -d dist --repo https://github.com/canderson402/layout-builder.git",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
@@ -34,7 +36,8 @@
     "@vitejs/plugin-react": "^4.0.3",
     "gh-pages": "^6.1.0",
     "typescript": "^5.0.2",
-    "vite": "^4.4.5"
+    "vite": "^4.4.5",
+    "vitest": "^0.34.6"
   },
   "keywords": [
     "scoreboard",

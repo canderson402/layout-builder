@@ -5,6 +5,7 @@ import CustomDataDisplay from '../shared/components/CustomDataDisplay';
 import DynamicList from '../shared/components/DynamicList';
 import LeaderboardList from '../shared/components/LeaderboardList';
 import { getTemplate } from '../utils/slotTemplates';
+import ShapeSvg from './ShapeSvg';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
@@ -586,6 +587,32 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           baseStyle,
           componentKey
         );
+
+      case 'shape': {
+        if (!props?.shape) return null;
+        return wrapContent(
+          <ShapeSvg
+            id={id}
+            shape={props.shape}
+            width={width}
+            height={height}
+            fillType={props.fillType}
+            fillColor={props.fillColor}
+            gradient={props.gradient}
+            fillOpacity={props.fillOpacity}
+            strokeColor={props.strokeColor}
+            strokeWidth={props.strokeWidth}
+            strokeOpacity={props.strokeOpacity}
+            strokeDash={props.strokeDash}
+            strokeCap={props.strokeCap}
+            useTeamColor={config.useTeamColor}
+            teamColorSide={config.teamColorSide}
+            gameData={effectiveGameData}
+          />,
+          baseStyle,
+          componentKey
+        );
+      }
 
       case 'custom': {
         // For toggle components, compute effective toggle state and get state-specific props
