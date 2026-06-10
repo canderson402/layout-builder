@@ -18,7 +18,7 @@
  * picker when the field is inside a slotList template.
  */
 
-export type PathPurpose = 'data' | 'toggle' | 'visibility';
+export type PathPurpose = 'data' | 'toggle' | 'visibility' | 'condition';
 
 export interface PathOption {
   /** Friendly human-readable label shown as the primary line. */
@@ -271,7 +271,9 @@ export function groupedOptionsForPurpose(
   opts: { includeSlotContext?: boolean } = {},
 ): { group: string; items: PathOption[] }[] {
   const filtered = DATA_PATH_OPTIONS.filter(o => {
-    if (!o.purposes.includes(purpose)) return false;
+    // 'condition' pickers can compare ANY game value (homeTeam.score,
+    // setSlots.totalSets, booleans, ...), so the whole catalog qualifies.
+    if (purpose !== 'condition' && !o.purposes.includes(purpose)) return false;
     if (o.slotContext && !opts.includeSlotContext) return false;
     return true;
   });

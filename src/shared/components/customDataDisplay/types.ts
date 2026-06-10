@@ -51,7 +51,11 @@ export interface CustomDataDisplayProps {
   state2Props?: any;
   autoToggle?: boolean;
   toggleDataPath?: string;
+  /** Conditional toggle (overrides toggleDataPath when set). */
+  toggleCondition?: import('../../conditions').ConditionGroup;
   visibilityPath?: string;
+  /** Conditional visibility (overrides visibilityPath when set). */
+  visibilityCondition?: import('../../conditions').ConditionGroup;
   isVisible?: boolean;
   fontFamily?: string;
   // Multi-state support (for penalty boxes with 0-3 states)

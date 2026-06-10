@@ -1,6 +1,8 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import WebPreview from './WebPreview';
+import { isMultiStateGroup, resolveActiveStateId } from '../shared/conditions';
+import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 import './Canvas.css';
 
 interface CanvasProps {
@@ -235,15 +237,31 @@ export default function Canvas({
 
   // Helper function to check if any ancestor of a component is hidden
   const isAncestorHidden = useCallback((component: ComponentConfig, components: ComponentConfig[]): boolean => {
+    let child = component;
     let currentParentId = component.parentId;
     while (currentParentId) {
       const parent = components.find(c => c.id === currentParentId);
       if (!parent) break;
       if (parent.visible === false) return true;
+      // Components in an INACTIVE multi-state container are hidden from the
+      // preview, so their handles must not be hit-testable either. Pin a
+      // state via Preview State to make its contents editable.
+      if (isMultiStateGroup(parent.props)) {
+        const states = parent.props.states as { id: string; childId?: string }[];
+        const stateEntry = states.find(s => s.childId === child.id);
+        if (stateEntry) {
+          const pinned = parent.props.previewStateId;
+          const activeId = pinned && pinned !== 'auto' && states.some(s => s.id === pinned)
+            ? pinned
+            : resolveActiveStateId(states as any, gameData);
+          if (activeId && stateEntry.id !== activeId) return true;
+        }
+      }
+      child = parent;
       currentParentId = parent.parentId;
     }
     return false;
-  }, []);
+  }, [gameData]);
 
   // Simple pixel-based grid
   const gridSize = GRID_SIZE_OPTIONS[gridSizeIndex] || DEFAULT_GRID_SIZE;
@@ -2241,12 +2259,20 @@ export default function Canvas({
         component.type !== 'group' &&
         !isAncestorHidden(component, layout.components || [])
       ) // Only check visible, non-group components with visible ancestors
+      // Multi-state containers match last so the components inside win the hit
+      .sort((a, b) => (a.type === 'multiState' ? 1 : 0) - (b.type === 'multiState' ? 1 : 0))
       .find(component => {
-        // Positions and sizes are already in pixels
-        const left = component.position.x;
-        const top = component.position.y;
-        const width = component.size.width;
-        const height = component.size.height;
+        // Positions and sizes are already in pixels; multi-state parents use
+        // their children's bounding box (placeholder box while empty)
+        const msBounds = component.type === 'multiState'
+          ? getMultiStateBounds(component, layout.components || [])
+          : null;
+        const left = msBounds ? msBounds.x : component.position.x;
+        const top = msBounds ? msBounds.y : component.position.y;
+        const width = msBounds ? msBounds.width
+          : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.width : component.size.width;
+        const height = msBounds ? msBounds.height
+          : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.height : component.size.height;
 
         return x >= left && x <= left + width && y >= top && y <= top + height;
       });
@@ -2757,11 +2783,18 @@ export default function Canvas({
   };
 
   const getComponentHandle = (component: ComponentConfig) => {
-    // Positions and sizes are already in pixels
-    const left = component.position.x;
-    const top = component.position.y;
-    const width = component.size.width;
-    const height = component.size.height;
+    // Positions and sizes are already in pixels.
+    // Multi-state parents have no size of their own — their footprint is the
+    // bounding box of their children (placeholder box while still empty).
+    const msBounds = component.type === 'multiState'
+      ? getMultiStateBounds(component, layout.components || [])
+      : null;
+    const left = msBounds ? msBounds.x : component.position.x;
+    const top = msBounds ? msBounds.y : component.position.y;
+    const width = msBounds ? msBounds.width
+      : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.width : component.size.width;
+    const height = msBounds ? msBounds.height
+      : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.height : component.size.height;
 
     // Calculate border widths
     // Note: dynamicList uses borderWidth for items inside, not the wrapper
@@ -2810,7 +2843,11 @@ export default function Canvas({
           ...baseStyle,
           backgroundColor: 'transparent',
           pointerEvents: 'auto', // Always capture events for component interaction
-          zIndex: getEffectiveLayer(component) + (isSelected ? 10000000 : 0), // Respect hierarchy layer order, selected on top
+          // Multi-state containers stay UNDER their children's handles so the
+          // children remain clickable — empty container area selects the parent.
+          zIndex: component.type === 'multiState'
+            ? 1
+            : getEffectiveLayer(component) + (isSelected ? 10000000 : 0), // Respect hierarchy layer order, selected on top
         }}
         onMouseDown={(e) => handleMouseDown(e, component)}
         className="canvas-handle"
@@ -2840,9 +2877,9 @@ export default function Canvas({
             P
           </div>
         )}
-        {selectedComponents.includes(component.id) && selectedComponents.length === 1 && component.type !== 'slotList' && (
+        {selectedComponents.includes(component.id) && selectedComponents.length === 1 && component.type !== 'slotList' && component.type !== 'multiState' && (
           <>
-            {/* Resize handles - only show for single selection, not for slotList (size is auto-calculated) */}
+            {/* Resize handles - only show for single selection, not for slotList/multiState (size is auto-calculated) */}
             <div
               className="resize-handle resize-handle-nw"
               onMouseDown={(e) => handleResizeMouseDown(e, 'nw', component)}
@@ -3782,7 +3819,8 @@ function getComponentColor(component: ComponentConfig): string {
     bonus: '#FFEB3B',
     custom: '#795548',
     dynamicList: '#009688',
-    group: '#666666'
+    group: '#666666',
+    multiState: '#BA68C8'
   };
   return colors[component.type] || '#666';
 }

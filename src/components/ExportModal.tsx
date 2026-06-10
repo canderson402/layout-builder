@@ -126,9 +126,20 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
   if (!props.canToggle) {
     delete props.toggleState;
     delete props.autoToggle;
+    delete props.toggleCondition;
     if (!props.state1Props || Object.keys(props.state1Props).length === 0) delete props.state1Props;
     if (!props.state2Props || Object.keys(props.state2Props).length === 0) delete props.state2Props;
   }
+
+  // Clean up conditional logic props
+  const isEmptyConditionGroup = (group: any) =>
+    !group || !Array.isArray(group.conditions) || group.conditions.length === 0;
+  if (isEmptyConditionGroup(props.visibilityCondition)) delete props.visibilityCondition;
+  if (isEmptyConditionGroup(props.toggleCondition)) delete props.toggleCondition;
+  if (!Array.isArray(props.states) || props.states.length === 0) delete props.states;
+  if (!Array.isArray(props.visibleInStates) || props.visibleInStates.length === 0) delete props.visibleInStates;
+  // previewStateId is editor-only — the runtime always resolves states live
+  delete props.previewStateId;
 
   return { ...roundedComponent, props };
 }

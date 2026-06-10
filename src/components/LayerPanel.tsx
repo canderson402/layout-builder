@@ -943,7 +943,7 @@ export default function LayerPanel({
         if (!component) continue;
 
         const descendants = getDescendantIds(id);
-        if (component.type === 'group' && descendants.length > 0) {
+        if ((component.type === 'group' || component.type === 'multiState') && descendants.length > 0) {
           const confirmed = window.confirm(
             `"${getComponentDisplayName(component)}" contains ${descendants.length} component${descendants.length !== 1 ? 's' : ''}. Delete the layer and all its contents?`
           );
@@ -1123,6 +1123,36 @@ export default function LayerPanel({
             aria-label="Add toggle component"
           >
             Toggle
+          </Button>
+
+          <Button
+            block
+            variant="default"
+            onClick={() => {
+              // A multi-state component is a real canvas container — its
+              // states each own one child group; the parent's conditions
+              // decide which group's components render (first match wins; a
+              // state with no condition is the fallback). The child id is
+              // generated up front so the parent is created WITH its state
+              // list in one step, and extraProps.displayName bypasses the
+              // global rename dedupe (state names are scoped to the parent).
+              // No size — the parent's footprint is its children's bounds.
+              const childId = `group-${Math.random().toString(36).slice(2, 10)}`;
+              const stateId = `state-${Math.random().toString(36).slice(2, 8)}`;
+              const parentId = onAddComponent(
+                'multiState', undefined, { width: 0, height: 0 },
+                { states: [{ id: stateId, name: 'State 1', childId }] },
+                'Multi-State'
+              );
+              onAddComponent(
+                'group', { x: 0, y: 0 }, { width: 0, height: 0 }, {}, 'State 1',
+                parentId, childId, undefined, { displayName: 'State 1' }
+              );
+              onSelectComponents([parentId]);
+            }}
+            aria-label="Add multi-state group"
+          >
+            Multi-State
           </Button>
 
           <Button

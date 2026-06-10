@@ -70,6 +70,97 @@
   pointer-events: none;
 }
 
+/* Trigger reflecting an active condition binding */
+.dpp-trigger--condition {
+  border-color: rgba(79, 195, 247, 0.45);
+}
+
+.dpp-trigger--condition .dpp-trigger__title {
+  color: #4FC3F7;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * Tab bar — Simple Path vs Condition.
+ * ────────────────────────────────────────────────────────────── */
+
+.dpp-tabs {
+  flex-shrink: 0;
+  display: flex;
+  background: #1f1f1f;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.dpp-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #999;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.dpp-tab:hover {
+  color: #e2e2e2;
+  background: #242424;
+}
+
+.dpp-tab--active {
+  color: #4FC3F7;
+  border-bottom-color: #4FC3F7;
+  background: #1a1a1a;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * Back bar — shown while picking an operand for a condition row.
+ * ────────────────────────────────────────────────────────────── */
+
+.dpp-backbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(79, 195, 247, 0.08);
+  border-bottom: 1px solid rgba(79, 195, 247, 0.25);
+}
+
+.dpp-backbar__btn {
+  padding: 5px 12px;
+  background: #2a2a2a;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  color: #4FC3F7;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dpp-backbar__btn:hover {
+  background: #323232;
+}
+
+.dpp-backbar__hint {
+  font-size: 12px;
+  color: #999;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * Condition pane — fills the modal body in place of the two-pane
+ * browser when the Condition tab is active.
+ * ────────────────────────────────────────────────────────────── */
+
+.dpp-condition-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px;
+  background: #1a1a1a;
+}
+
 /* ──────────────────────────────────────────────────────────────
  * Modal shell — backdrop + fixed-size dialog.
  * Size is locked so collapsing/scrolling never changes the

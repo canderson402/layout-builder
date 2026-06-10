@@ -312,9 +312,47 @@ function App() {
     for (const id of ids) {
       const component = components.find(c => c.id === id);
       if (component?.type === 'group') {
+        // State containers of a multi-state parent select as a single unit so
+        // the panel shows the state's own properties, not multi-select UI
+        const parent = component.parentId ? components.find(c => c.id === component.parentId) : undefined;
+        const isStateContainer = parent?.type === 'multiState' &&
+          Array.isArray(parent.props?.states) &&
+          parent.props.states.some((s: any) => s.childId === component.id);
+        if (isStateContainer) continue;
         const descendants = getAllDescendants(id, components);
         descendants.forEach(d => expandedIds.add(d));
       }
+    }
+
+    // Selecting a state (or anything inside one) activates it: pin the
+    // multi-state parent's preview to that state so designers flip between
+    // states just by clicking them in the layer panel. Preview-only prop —
+    // stripped on export, so no undo entry needed.
+    const pinUpdates = new Map<string, string>(); // parentId -> stateId
+    for (const id of ids) {
+      let node = components.find(c => c.id === id);
+      while (node?.parentId) {
+        const parent = components.find(c => c.id === node!.parentId);
+        if (!parent) break;
+        if (parent.type === 'multiState' && Array.isArray(parent.props?.states)) {
+          const entry = parent.props.states.find((s: any) => s.childId === node!.id);
+          if (entry && parent.props.previewStateId !== entry.id) {
+            pinUpdates.set(parent.id, entry.id);
+          }
+          break;
+        }
+        node = parent;
+      }
+    }
+    if (pinUpdates.size > 0) {
+      setLayout(prev => ({
+        ...prev,
+        components: (prev.components || []).map(c =>
+          pinUpdates.has(c.id)
+            ? { ...c, props: { ...c.props, previewStateId: pinUpdates.get(c.id) } }
+            : c
+        ),
+      }));
     }
 
     setSelectedComponents(Array.from(expandedIds));
@@ -1118,10 +1156,16 @@ function App() {
         idMapping.set(comp.id, generateComponentId(comp.type));
       }
 
-      // Create new components with updated IDs and parent references
+      // Create new components with updated IDs and parent references.
+      // A parent inside the copied set remaps to its copy; a parent outside
+      // it (e.g. copying a component inside a group/state container) is kept
+      // so the copy lands at the same place in the hierarchy.
       const newComponents: ComponentConfig[] = componentsToCopy.map(comp => {
         const newId = idMapping.get(comp.id)!;
-        const newParentId = comp.parentId ? idMapping.get(comp.parentId) : undefined;
+        const newParentId = comp.parentId
+          ? (idMapping.get(comp.parentId)
+              ?? (components.some(c => c.id === comp.parentId) ? comp.parentId : undefined))
+          : undefined;
 
         // Generate unique display name
         const baseName = comp.displayName || comp.type;
@@ -1240,10 +1284,17 @@ function App() {
       const clipboardIds = new Set(clipboard.map(c => c.id));
       const rootComponents = clipboard.filter(c => !c.parentId || !clipboardIds.has(c.parentId));
 
-      // Create new components with updated IDs and positions
+      // Create new components with updated IDs and positions.
+      // A parent inside the clipboard remaps to its copy; a parent outside it
+      // (e.g. copying a component inside a group/state container) is kept —
+      // if it still exists — so the paste lands at the same place in the
+      // hierarchy instead of the root level.
       const newComponents: ComponentConfig[] = clipboard.map(comp => {
         const newId = idMapping.get(comp.id)!;
-        const newParentId = comp.parentId ? idMapping.get(comp.parentId) : undefined;
+        const newParentId = comp.parentId
+          ? (idMapping.get(comp.parentId)
+              ?? ((prev.components || []).some(c => c.id === comp.parentId) ? comp.parentId : undefined))
+          : undefined;
 
         // Generate unique display name
         const baseName = comp.displayName || comp.type;
@@ -1697,7 +1748,8 @@ function getDefaultSize(type: ComponentConfig['type']) {
     bonus: { width: 154, height: 130 },     // 154px width, 130px height
     custom: { width: 192, height: 108 },    // 192px width, 108px height
     dynamicList: { width: 300, height: 60 }, // 300px width, 60px height
-    leaderboardList: { width: 300, height: 340 } // 300px width, 340px height
+    leaderboardList: { width: 300, height: 340 }, // 300px width, 340px height
+    multiState: { width: 0, height: 0 } // no own size — footprint is the children's bounding box
   };
   return sizes[type] || { width: 192, height: 108 };
 }
@@ -1775,6 +1827,7 @@ function getDefaultProps(type: ComponentConfig['type']) {
 function getDefaultDisplayName(type: ComponentConfig['type']) {
   // Return "Layer" for group type, otherwise return the type
   if (type === 'group') return 'Layer';
+  if (type === 'multiState') return 'Multi-State';
   return type;
 }
 

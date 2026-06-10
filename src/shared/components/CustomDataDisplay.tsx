@@ -12,6 +12,7 @@ import {
   getAnchorAlignment,
 } from './customDataDisplay/imageUtils';
 import type { CustomDataDisplayProps } from './customDataDisplay/types';
+import { evaluateConditionGroup } from '../conditions';
 
 export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   const {
@@ -24,7 +25,9 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     state1Props = {},
     state2Props = {},
     toggleDataPath,
+    toggleCondition,
     visibilityPath,
+    visibilityCondition,
     isVisible: isVisibleProp,
     useTeamColor = false,
     teamColorSide = 'home',
@@ -124,8 +127,10 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return null;
   };
 
-  // Visibility check
+  // Visibility check — condition takes precedence over the simple path
   const isVisible = isVisibleProp !== undefined ? isVisibleProp : (() => {
+    const conditionResult = evaluateConditionGroup(visibilityCondition, effectiveGameData);
+    if (conditionResult !== null) return conditionResult;
     if (visibilityPath && effectiveGameData) {
       const visibilityValue = getNestedData(effectiveGameData, visibilityPath);
       if (typeof visibilityValue === 'boolean') {
@@ -135,9 +140,12 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
     return true;
   })();
 
-  // Compute effective toggle state
+  // Compute effective toggle state — condition takes precedence
   const effectiveToggleState = (() => {
     if (!canToggle) return false;
+
+    const conditionResult = evaluateConditionGroup(toggleCondition, effectiveGameData);
+    if (conditionResult !== null) return conditionResult;
 
     if (toggleDataPath) {
       const resolved = resolveToggleValue(getNestedData(effectiveGameData, toggleDataPath));

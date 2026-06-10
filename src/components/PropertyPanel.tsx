@@ -6,6 +6,9 @@ import CollapsibleSection from './common/CollapsibleSection';
 import SectionGroup from './common/SectionGroup';
 import DataPathPicker from './common/DataPathPicker';
 import ImagePicker from './common/ImagePicker';
+import { MultiStateDef } from '../shared/conditions';
+import Button from './common/Button';
+import { getMultiStateBounds, collectDescendantIds } from '../utils/multiState';
 import './PropertyPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -1983,6 +1986,18 @@ function PropertyPanel({
     );
   }
 
+  // State containers of a multi-state parent are pure parents: their panel
+  // is just the state's condition + an add-component menu — no position,
+  // size, or styling sections.
+  const stateContainerParent = component.type === 'group' && component.parentId
+    ? (layout.components || []).find(c =>
+        c.id === component.parentId &&
+        c.type === 'multiState' &&
+        Array.isArray(c.props?.states) &&
+        c.props.states.some((s: any) => s.childId === component.id))
+    : undefined;
+  const isStateContainer = !!stateContainerParent;
+
   return (
     <div className={`property-panel ${useTwoColumns ? 'two-columns' : ''}`}>
       <div className="property-header">
@@ -1991,7 +2006,7 @@ function PropertyPanel({
           <span className="team-badge">{component.team}</span>
         )}
       </div>
-      
+
       {/* State Selector for toggleable components */}
       {component.props?.canToggle && (
         <div style={{
@@ -2001,7 +2016,13 @@ function PropertyPanel({
         }}>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <button
-              onClick={() => setEditingState(1)}
+              onClick={() => {
+                setEditingState(1);
+                // Show the state being edited in the preview
+                updateComponentWithScrollPreservation(component.id, {
+                  props: { ...component.props, toggleState: false }
+                });
+              }}
               style={{
                 flex: 1,
                 padding: '8px',
@@ -2016,7 +2037,13 @@ function PropertyPanel({
               Edit State 1
             </button>
             <button
-              onClick={() => setEditingState(2)}
+              onClick={() => {
+                setEditingState(2);
+                // Show the state being edited in the preview
+                updateComponentWithScrollPreservation(component.id, {
+                  props: { ...component.props, toggleState: true }
+                });
+              }}
               style={{
                 flex: 1,
                 padding: '8px',
@@ -2059,10 +2086,20 @@ function PropertyPanel({
               value={component.props?.toggleDataPath}
               placeholder="Use Display Data Path"
               clearLabel="Use Display Data Path"
+              conditionValue={component.props?.toggleCondition}
+              conditionHint="No condition — toggle follows the data path"
+              onConditionChange={(next) => updateComponentWithScrollPreservation(component.id, {
+                props: {
+                  ...component.props,
+                  toggleCondition: next,
+                },
+              })}
               onChange={(newPath) => updateComponentWithScrollPreservation(component.id, {
                 props: {
                   ...component.props,
                   toggleDataPath: newPath || undefined,
+                  // Picking a simple path (or clearing) replaces any condition
+                  toggleCondition: undefined,
                 },
               })}
             />
@@ -2070,7 +2107,8 @@ function PropertyPanel({
         </div>
       )}
       
-      {/* Display Name Field */}
+      {/* Display Name Field — state containers rename via the layer panel */}
+      {!isStateContainer && (
       <div className="property-section">
         <div className="property-field">
           <label>Display Name</label>
@@ -2085,64 +2123,171 @@ function PropertyPanel({
           />
         </div>
       </div>
-      
+      )}
+
       <div 
         className="property-content" 
         ref={scrollContainerRef}
         onScroll={handleScroll}
       >
+        {/* POSITION SECTION — multi-state parents only. They have no size or
+            styling of their own: the footprint is the children's bounding
+            box, so X/Y just translates the whole subtree. */}
+        {component.type === 'multiState' && (() => {
+          const comps = layout.components || [];
+          const bounds = getMultiStateBounds(component, comps);
+          const anchorX = bounds ? bounds.x : component.position.x;
+          const anchorY = bounds ? bounds.y : component.position.y;
+
+          const translate = (dx: number, dy: number) => {
+            if (dx === 0 && dy === 0) return;
+            const ids = collectDescendantIds(component.id, comps);
+            ids.add(component.id);
+            const components = comps.map(c => ids.has(c.id)
+              ? { ...c, position: { x: Math.round(c.position.x + dx), y: Math.round(c.position.y + dy) } }
+              : c);
+            onUpdateLayout({ ...layout, components });
+          };
+
+          return (
+            <PropertySection title="POSITION" sectionKey="position-size">
+              <div className="property-grid">
+                <div className="property-field">
+                  <label>X (px)</label>
+                  <DebouncedInput
+                    type="number"
+                    value={Math.round(anchorX)}
+                    onCommit={(val) => translate((parseInt(val) || 0) - anchorX, 0)}
+                  />
+                </div>
+                <div className="property-field">
+                  <label>Y (px)</label>
+                  <DebouncedInput
+                    type="number"
+                    value={Math.round(anchorY)}
+                    onCommit={(val) => translate(0, (parseInt(val) || 0) - anchorY)}
+                  />
+                </div>
+              </div>
+            </PropertySection>
+          );
+        })()}
+
         {/* POSITION & SIZE SECTION */}
+        {component.type !== 'multiState' && !isStateContainer && (
         <PropertySection title="POSITION & SIZE" sectionKey="position-size">
-          <div className="property-grid">
-            <div className="property-field">
-              <label>X (px)</label>
-              <DebouncedInput
-                type="number"
-                value={component ? Math.round(component.position.x) : 0}
-                onCommit={(val) => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    position: { ...component.position, x: parseInt(val) || 0 }
-                  });
-                }}
-              />
-            </div>
-            <div className="property-field">
-              <label>Y (px)</label>
-              <DebouncedInput
-                type="number"
-                value={component ? Math.round(component.position.y) : 0}
-                onCommit={(val) => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    position: { ...component.position, y: parseInt(val) || 0 }
-                  });
-                }}
-              />
-            </div>
-            <div className="property-field">
-              <label>Width (px)</label>
-              <DebouncedInput
-                type="number"
-                value={component ? Math.round(component.size.width) : 0}
-                onCommit={(val) => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    size: { ...component.size, width: parseInt(val) || 0 }
-                  });
-                }}
-              />
-            </div>
-            <div className="property-field">
-              <label>Height (px)</label>
-              <DebouncedInput
-                type="number"
-                value={component ? Math.round(component.size.height) : 0}
-                onCommit={(val) => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    size: { ...component.size, height: parseInt(val) || 0 }
-                  });
-                }}
-              />
-            </div>
-          </div>
+          {(() => {
+            // Toggle components carry per-state geometry: the component's own
+            // position/size is State 1; editing State 2 reads/writes an
+            // override stored in state2Props so the box moves/resizes when
+            // the toggle flips at runtime.
+            const editingToggleState2 = !!component.props?.canToggle && editingState === 2;
+            const s2 = component.props?.state2Props || {};
+            const effPos = editingToggleState2 ? (s2.position ?? component.position) : component.position;
+            const effSize = editingToggleState2 ? (s2.size ?? component.size) : component.size;
+
+            const commitGeometry = (part: { x?: number; y?: number; width?: number; height?: number }) => {
+              if (editingToggleState2) {
+                const nextPos = part.x !== undefined || part.y !== undefined
+                  ? { x: part.x ?? effPos.x, y: part.y ?? effPos.y }
+                  : (s2.position ?? undefined);
+                const nextSize = part.width !== undefined || part.height !== undefined
+                  ? { width: part.width ?? effSize.width, height: part.height ?? effSize.height }
+                  : (s2.size ?? undefined);
+                updateComponentWithScrollPreservation(component.id, {
+                  props: {
+                    ...component.props,
+                    state2Props: {
+                      ...s2,
+                      ...(nextPos ? { position: nextPos } : {}),
+                      ...(nextSize ? { size: nextSize } : {}),
+                    },
+                  },
+                });
+              } else if (part.x !== undefined || part.y !== undefined) {
+                updateComponentWithScrollPreservation(component.id, {
+                  position: { x: part.x ?? component.position.x, y: part.y ?? component.position.y }
+                });
+              } else {
+                updateComponentWithScrollPreservation(component.id, {
+                  size: { width: part.width ?? component.size.width, height: part.height ?? component.size.height }
+                });
+              }
+            };
+
+            return (
+              <>
+                {editingToggleState2 && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    marginBottom: '8px',
+                    padding: '4px 8px',
+                    backgroundColor: 'rgba(255, 152, 0, 0.12)',
+                    border: '1px solid rgba(255, 152, 0, 0.4)',
+                    borderRadius: '4px',
+                  }}>
+                    <small style={{ color: '#FFB74D' }}>
+                      Editing State 2 {s2.position || s2.size ? 'override' : '(same as State 1)'}
+                    </small>
+                    {(s2.position || s2.size) && (
+                      <button
+                        onClick={() => {
+                          const { position: _p, size: _s, ...rest } = s2;
+                          updateComponentWithScrollPreservation(component.id, {
+                            props: { ...component.props, state2Props: rest },
+                          });
+                        }}
+                        style={{
+                          fontSize: '10px', padding: '2px 8px', backgroundColor: '#444',
+                          color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer',
+                        }}
+                        title="Remove the State 2 position/size override"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="property-grid">
+                  <div className="property-field">
+                    <label>X (px)</label>
+                    <DebouncedInput
+                      type="number"
+                      value={Math.round(effPos.x)}
+                      onCommit={(val) => commitGeometry({ x: parseInt(val) || 0 })}
+                    />
+                  </div>
+                  <div className="property-field">
+                    <label>Y (px)</label>
+                    <DebouncedInput
+                      type="number"
+                      value={Math.round(effPos.y)}
+                      onCommit={(val) => commitGeometry({ y: parseInt(val) || 0 })}
+                    />
+                  </div>
+                  <div className="property-field">
+                    <label>Width (px)</label>
+                    <DebouncedInput
+                      type="number"
+                      value={Math.round(effSize.width)}
+                      onCommit={(val) => commitGeometry({ width: parseInt(val) || 0 })}
+                    />
+                  </div>
+                  <div className="property-field">
+                    <label>Height (px)</label>
+                    <DebouncedInput
+                      type="number"
+                      value={Math.round(effSize.height)}
+                      onCommit={(val) => commitGeometry({ height: parseInt(val) || 0 })}
+                    />
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {/* Scale Percentage Section */}
           <div className="property-field" style={{ marginTop: '12px' }}>
@@ -2388,6 +2533,7 @@ function PropertyPanel({
             </div>
           </div>
         </PropertySection>
+        )}
 
         {/* TEAM SECTION (if applicable) */}
         {component.team && (
@@ -2404,7 +2550,9 @@ function PropertyPanel({
           </PropertySection>
         )}
 
-        {/* TEXT SECTION */}
+        {/* TEXT SECTION — not for multi-state parents or state containers
+            (pure logic containers, no styling of their own) */}
+        {component.type !== 'multiState' && !isStateContainer && (
         <PropertySection title="TEXT" sectionKey="text">
           <div className="property-field">
             <label>Font Size</label>
@@ -2612,6 +2760,7 @@ function PropertyPanel({
             </div>
           )}
         </PropertySection>
+        )}
 
         {component.type === 'custom' && (
           <>
@@ -2791,10 +2940,20 @@ function PropertyPanel({
                   value={component.props?.visibilityPath}
                   placeholder="Always Visible"
                   clearLabel="Always Visible"
+                  conditionValue={component.props?.visibilityCondition}
+                  conditionHint="No condition — always visible"
+                  onConditionChange={(next) => updateComponentWithScrollPreservation(component.id, {
+                    props: {
+                      ...component.props,
+                      visibilityCondition: next,
+                    },
+                  })}
                   onChange={(newPath) => updateComponentWithScrollPreservation(component.id, {
                     props: {
                       ...component.props,
                       visibilityPath: newPath || undefined,
+                      // Picking a simple path (or clearing) replaces any condition
+                      visibilityCondition: undefined,
                     },
                   })}
                 />
@@ -4178,8 +4337,119 @@ function PropertyPanel({
         )}
 
         {/* GROUP VISIBILITY SETTINGS */}
-        {component.type === 'group' && (
+        {(component.type === 'group' || component.type === 'multiState') && (
           <>
+            {/* A state container's panel: its condition + an add-component
+                menu. Everything else (position, styling, visibility) lives
+                on the components inside. */}
+            {isStateContainer && stateContainerParent && (() => {
+              const stateParent = stateContainerParent;
+              const parentStates: MultiStateDef[] = stateParent.props.states;
+              const idx = parentStates.findIndex(s => s.childId === component.id);
+              if (idx === -1) return null;
+
+              const comps = layout.components || [];
+              const spawnChild = (
+                type: ComponentConfig['type'],
+                size: { width: number; height: number },
+                props: Record<string, any>,
+                baseName: string,
+              ) => {
+                // Spawn inside the multi-state footprint, cascading so new
+                // components don't stack exactly on top of each other.
+                const bounds = getMultiStateBounds(stateParent, comps);
+                const anchor = bounds ? { x: bounds.x, y: bounds.y } : stateParent.position;
+                const siblings = comps.filter(c => c.parentId === component.id);
+                const offset = (siblings.length % 8) * 24;
+                const newComp: ComponentConfig = {
+                  id: `${type}-${Math.random().toString(36).slice(2, 10)}`,
+                  type,
+                  displayName: siblings.length > 0 ? `${baseName}${siblings.length + 1}` : baseName,
+                  position: { x: Math.round(anchor.x + offset), y: Math.round(anchor.y + offset) },
+                  size,
+                  layer: siblings.reduce((m, c) => Math.max(m, c.layer || 0), -1) + 1,
+                  parentId: component.id,
+                  props,
+                };
+                onUpdateLayout({ ...layout, components: [...comps, newComp] });
+              };
+
+              const childButton = (label: string, onClick: () => void) => (
+                <Button key={label} block variant="default" onClick={onClick}>
+                  {label}
+                </Button>
+              );
+
+              return (
+                <div className="property-section">
+                  <div className="property-field">
+                    <DataPathPicker
+                      conditionOnly
+                      purpose="visibility"
+                      value=""
+                      onChange={() => {}}
+                      allowClear={false}
+                      conditionHint="No condition — fallback state"
+                      conditionValue={parentStates[idx].condition}
+                      onConditionChange={(next) => updateComponentWithScrollPreservation(stateParent.id, {
+                        props: {
+                          ...stateParent.props,
+                          states: parentStates.map((s, i) => i === idx ? { ...s, condition: next } : s),
+                        },
+                      })}
+                    />
+                  </div>
+                  <div className="property-field" style={{ marginTop: '8px' }}>
+                    <div className="quick-add-grid">
+                      {childButton('Basic', () => spawnChild('custom', { width: 500, height: 500 }, {
+                        dataPath: 'none',
+                        label: 'Basic Component',
+                        fontSize: 24,
+                        format: 'text',
+                        backgroundColor: '#9B59B6',
+                        textColor: '#ffffff',
+                        textAlign: 'center',
+                      }, 'Basic'))}
+                      {childButton('Toggle', () => spawnChild('custom', { width: 500, height: 500 }, {
+                        dataPath: 'none',
+                        fontSize: 24,
+                        format: 'text',
+                        backgroundColor: '#E74C3C',
+                        textColor: '#ffffff',
+                        textAlign: 'center',
+                        canToggle: true,
+                        toggleState: false,
+                        state1Props: { backgroundColor: '#E74C3C', textColor: '#ffffff' },
+                        state2Props: { backgroundColor: '#4CAF50', textColor: '#ffffff' },
+                      }, 'Toggle'))}
+                      {childButton('Image', () => spawnChild('custom', { width: 400, height: 300 }, {
+                        dataPath: 'none',
+                        imageSource: 'local',
+                        imagePath: '/images/face.png',
+                        objectFit: 'fill',
+                        backgroundColor: 'transparent',
+                      }, 'Image'))}
+                      {childButton('Dynamic List', () => spawnChild('dynamicList', { width: 300, height: 60 }, {
+                        totalCount: 5,
+                        activeCount: 2,
+                        activeBackgroundColor: '#4CAF50',
+                        activeTextColor: '#ffffff',
+                        inactiveBackgroundColor: '#666666',
+                        inactiveTextColor: '#ffffff',
+                        direction: 'horizontal',
+                        itemSpacing: 4,
+                        borderRadius: 4,
+                      }, 'Dynamic List'))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Group visibility is for plain groups only — state containers
+                and multi-state parents keep visibility on child components */}
+            {component.type === 'group' &&
+              layout.components.find(c => c.id === component.parentId)?.type !== 'multiState' && (
             <PropertySection title="GROUP VISIBILITY" sectionKey="group-visibility">
               <div className="property-field">
                 <label>Visibility Path</label>
@@ -4191,18 +4461,161 @@ function PropertyPanel({
                   value={component.props?.visibilityPath}
                   placeholder="Always Visible"
                   clearLabel="Always Visible"
+                  conditionValue={component.props?.visibilityCondition}
+                  conditionHint="No condition — always visible"
+                  onConditionChange={(next) => updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, visibilityCondition: next },
+                  })}
                   onChange={(newPath) => updateComponentWithScrollPreservation(component.id, {
-                    props: { ...component.props, visibilityPath: newPath || undefined },
+                    // Picking a simple path (or clearing) replaces any condition
+                    props: { ...component.props, visibilityPath: newPath || undefined, visibilityCondition: undefined },
                   })}
                 />
               </div>
             </PropertySection>
+            )}
+
+            {/* MULTI-STATE: states are child containers — exactly one shows
+                at a time (first matching condition wins; a state with no
+                condition is the fallback). Rename states by double-clicking
+                them in the layer panel; conditions edit in a modal. */}
+            {component.type === 'multiState' && (
+            <div className="property-section">
+              {(() => {
+                const allComponents = layout.components || [];
+                const makeStateChild = (name: string): ComponentConfig => ({
+                  id: `group-${Math.random().toString(36).slice(2, 10)}`,
+                  type: 'group',
+                  displayName: name,
+                  position: { x: 0, y: 0 },
+                  size: { width: 0, height: 0 },
+                  parentId: component.id,
+                  props: {},
+                });
+
+                const states: MultiStateDef[] = component.props?.states || [];
+                const pinnedId = component.props?.previewStateId;
+                // The container's layer-panel name IS the state name
+                const stateName = (s: MultiStateDef, i: number) =>
+                  allComponents.find(c => c.id === s.childId)?.displayName || s.name || `State ${i + 1}`;
+                const updateStates = (next: MultiStateDef[]) =>
+                  updateComponentWithScrollPreservation(component.id, {
+                    props: { ...component.props, states: next.length > 0 ? next : undefined },
+                  });
+
+                const addState = () => {
+                  const name = `State ${states.length + 1}`;
+                  const child = makeStateChild(name);
+                  const entry: MultiStateDef = { id: generateStateId(), name, childId: child.id };
+                  const components = allComponents.map(c => c.id === component.id
+                    ? { ...c, props: { ...c.props, states: [...states, entry] } }
+                    : c);
+                  onUpdateLayout({ ...layout, components: [...components, child] });
+                };
+
+                const removeState = (index: number) => {
+                  const entry = states[index];
+                  const doomed = entry.childId
+                    ? [entry.childId, ...Array.from(collectDescendantIds(entry.childId, allComponents))]
+                    : [];
+                  if (doomed.length > 1) {
+                    const ok = window.confirm(
+                      `Remove "${stateName(entry, index)}" and the ${doomed.length - 1} component${doomed.length - 1 !== 1 ? 's' : ''} inside it?`
+                    );
+                    if (!ok) return;
+                  }
+                  const nextStates = states.filter((_, i) => i !== index);
+                  const components = allComponents
+                    .filter(c => !doomed.includes(c.id))
+                    .map(c => c.id === component.id
+                      ? { ...c, props: { ...c.props, states: nextStates.length > 0 ? nextStates : undefined } }
+                      : c);
+                  onUpdateLayout({ ...layout, components });
+                };
+
+                return (
+                  <>
+                    {states.length > 0 && (
+                      <div className="property-field">
+                        <label>Preview State</label>
+                        <select
+                          value={pinnedId || 'auto'}
+                          onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                            props: {
+                              ...component.props,
+                              previewStateId: e.target.value === 'auto' ? undefined : e.target.value,
+                            },
+                          })}
+                        >
+                          <option value="auto">Auto (conditions decide)</option>
+                          {states.map((s, i) => (
+                            <option key={s.id} value={s.id}>{stateName(s, i)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {states.map((state, index) => (
+                      <div
+                        key={state.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}
+                      >
+                        <span style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: '12px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {stateName(state, index)}
+                        </span>
+                        <div style={{ flex: 1.4, minWidth: 0 }}>
+                          <DataPathPicker
+                            conditionOnly
+                            purpose="visibility"
+                            value=""
+                            onChange={() => {}}
+                            allowClear={false}
+                            conditionHint="No condition — fallback state"
+                            conditionValue={state.condition}
+                            onConditionChange={(next) => updateStates(states.map((s, i) =>
+                              i === index ? { ...s, condition: next } : s
+                            ))}
+                          />
+                        </div>
+                        <button
+                          onClick={() => removeState(index)}
+                          title="Remove this state"
+                          style={{
+                            background: 'none', border: 'none', color: '#888',
+                            cursor: 'pointer', fontSize: '12px', padding: '2px 6px',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+
+                    <button className="action-button" onClick={addState}>
+                      + Add State
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
+            )}
           </>
         )}
 
       </div>
     </div>
   );
+}
+
+// Short unique id for multi-state states — must stay stable across renames.
+function generateStateId(): string {
+  return `state-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export default PropertyPanel;

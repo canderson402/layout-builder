@@ -5,6 +5,12 @@ import CustomDataDisplay from '../shared/components/CustomDataDisplay';
 import DynamicList from '../shared/components/DynamicList';
 import LeaderboardList from '../shared/components/LeaderboardList';
 import { getTemplate } from '../utils/slotTemplates';
+import {
+  evaluateConditionGroup,
+  resolveActiveStateId,
+  isMultiStateGroup,
+} from '../shared/conditions';
+import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
@@ -160,6 +166,17 @@ const getEffectiveLayer = (component: ComponentConfig, allComponents: ComponentC
   return (flatOrder.length - position) * 10;
 };
 
+// Resolve the active state of a multi-state group. The editor can pin a
+// state for previewing via props.previewStateId; otherwise conditions decide.
+const getActiveStateId = (group: ComponentConfig, gameData: any): string | null => {
+  if (!isMultiStateGroup(group.props)) return null;
+  const pinned = group.props.previewStateId;
+  if (pinned && pinned !== 'auto' && group.props.states.some((s: any) => s.id === pinned)) {
+    return pinned;
+  }
+  return resolveActiveStateId(group.props.states, gameData);
+};
+
 // Check if a component's ancestors are visible (for hard visibility cutoff)
 const areAncestorsVisible = (
   component: ComponentConfig,
@@ -167,19 +184,39 @@ const areAncestorsVisible = (
   gameData: any
 ): boolean => {
   // Check all ancestors' visibilityPaths (for groups that control child visibility)
+  let child: ComponentConfig = component;
   let parentId = component.parentId;
   while (parentId) {
     const parent = allComponents.find(c => c.id === parentId);
     if (!parent) break;
 
+    // Conditional visibility overrides the simple path when present
+    const conditionResult = evaluateConditionGroup(parent.props?.visibilityCondition, gameData);
+    if (conditionResult === false) {
+      return false;
+    }
     // If parent has visibilityPath set, check if it evaluates to true
-    if (parent.props?.visibilityPath) {
+    if (conditionResult === null && parent.props?.visibilityPath) {
       const visibilityValue = getNestedData(gameData, parent.props.visibilityPath);
       if (typeof visibilityValue === 'boolean' && !visibilityValue) {
         return false;
       }
     }
 
+    // Multi-state group: each state owns one child container. A child that
+    // belongs to a state is only visible while that state is active. Direct
+    // children not linked to any state show in every state.
+    if (isMultiStateGroup(parent.props)) {
+      const stateEntry = (parent.props.states as any[]).find(s => s.childId === child.id);
+      if (stateEntry) {
+        const activeState = getActiveStateId(parent, gameData);
+        if (activeState && stateEntry.id !== activeState) {
+          return false;
+        }
+      }
+    }
+
+    child = parent;
     parentId = parent.parentId;
   }
 
@@ -191,6 +228,10 @@ const getComponentVisibility = (
   component: ComponentConfig,
   gameData: any
 ): boolean => {
+  const conditionResult = evaluateConditionGroup(component.props?.visibilityCondition, gameData);
+  if (conditionResult !== null) {
+    return conditionResult;
+  }
   if (component.props?.visibilityPath) {
     const visibilityValue = getNestedData(gameData, component.props.visibilityPath);
     if (typeof visibilityValue === 'boolean') {
@@ -593,7 +634,10 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         if (props.canToggle) {
           // Compute effective toggle state (same logic as CustomDataDisplay)
           let effectiveToggleState = false;
-          if (props.toggleDataPath) {
+          const toggleConditionResult = evaluateConditionGroup(props.toggleCondition, effectiveGameData);
+          if (toggleConditionResult !== null) {
+            effectiveToggleState = toggleConditionResult;
+          } else if (props.toggleDataPath) {
             const rawValue = getNestedData(effectiveGameData, props.toggleDataPath);
             if (typeof rawValue === 'boolean') {
               effectiveToggleState = rawValue;
@@ -608,7 +652,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
               effectiveToggleState = rawValue !== 0;
             }
           }
-          if (!effectiveToggleState && props.toggleState) {
+          // Manual editor override only applies when no condition decides
+          if (toggleConditionResult === null && !effectiveToggleState && props.toggleState) {
             effectiveToggleState = props.toggleState;
           }
           // Merge state-specific props
@@ -618,9 +663,20 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           }
         }
 
+        // Per-state geometry: stateNProps may override position/size so the
+        // whole box moves/resizes when the toggle flips. Root = State 1 base.
+        const statePosition = effectiveProps.position as { x: number; y: number } | undefined;
+        const stateSize = effectiveProps.size as { width: number; height: number } | undefined;
+        const customWidth = stateSize?.width ?? width;
+        const customHeight = stateSize?.height ?? height;
+
         // Apply border to wrapper div to prevent z-index separation issues with react-native-web
         const customBaseStyle: React.CSSProperties = {
           ...baseStyle,
+          left: statePosition?.x ?? left,
+          top: statePosition?.y ?? top,
+          width: customWidth,
+          height: customHeight,
           boxSizing: 'border-box',
           borderWidth: effectiveProps.borderWidth || 0,
           borderColor: effectiveProps.borderColor || 'transparent',
@@ -642,8 +698,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={width}
-            height={height}
+            width={customWidth}
+            height={customHeight}
             fontSize={props.fontSize || 24}
             format={props.format || 'text'}
             prefix={props.prefix || ''}
@@ -671,7 +727,9 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             state2Props={props.state2Props}
             autoToggle={props.autoToggle}
             toggleDataPath={props.toggleDataPath}
+            toggleCondition={props.toggleCondition}
             visibilityPath={props.visibilityPath}
+            visibilityCondition={props.visibilityCondition}
             multiStateEnabled={props.multiStateEnabled}
             statePath={props.statePath}
             stateImages={props.stateImages}
@@ -694,6 +752,57 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           customBaseStyle,
+          componentKey
+        );
+      }
+
+      case 'multiState': {
+        // Builder-only visual: a faint dashed region marking the container,
+        // labeled with the currently active state. The actual content is the
+        // active state's child subtree, rendered like any other components.
+        // The parent has no size of its own — the region is the children's
+        // bounding box (placeholder box while still empty).
+        const msStates: any[] = Array.isArray(props?.states) ? props.states : [];
+        const activeId = getActiveStateId(config, effectiveGameData);
+        const activeEntry = msStates.find(s => s.id === activeId);
+        // State name = the container's layer-panel name
+        const activeName = (layout.components || []).find(c => c.id === activeEntry?.childId)?.displayName
+          || activeEntry?.name;
+        const msBounds = getMultiStateBounds(config, layout.components || []);
+        const msStyle: React.CSSProperties = {
+          ...baseStyle,
+          left: msBounds ? msBounds.x : position.x,
+          top: msBounds ? msBounds.y : position.y,
+          width: msBounds ? msBounds.width : EMPTY_MULTISTATE_SIZE.width,
+          height: msBounds ? msBounds.height : EMPTY_MULTISTATE_SIZE.height,
+          pointerEvents: 'none' as const,
+        };
+        return wrapContent(
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              border: '1px dashed rgba(186, 104, 200, 0.45)',
+              boxSizing: 'border-box',
+              position: 'relative',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: 5,
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'rgba(186, 104, 200, 0.75)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {activeName || 'Multi-State'}
+            </div>
+          </div>,
+          msStyle,
           componentKey
         );
       }
