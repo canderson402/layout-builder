@@ -50,10 +50,21 @@ export interface Condition {
   rightValue?: string;
   /** Path right side (e.g. 'awayTeam.score'). */
   rightPath?: string;
+  /**
+   * How this condition chains onto the result so far (2nd row onward):
+   * `a AND b OR c` evaluates LEFT TO RIGHT — ((a AND b) OR c).
+   * Missing join falls back to the group's legacy `logic` setting.
+   */
+  join?: 'and' | 'or';
+  /** Negate this comparison (NOT). */
+  negate?: boolean;
 }
 
 export interface ConditionGroup {
-  /** How multiple conditions combine. Defaults to 'and'. */
+  /**
+   * Legacy combine mode — used as the default join for conditions that
+   * don't carry their own `join`. New rows always write `join` explicitly.
+   */
   logic: 'and' | 'or';
   conditions: Condition[];
 }
@@ -158,14 +169,31 @@ export const hasConditions = (group: ConditionGroup | undefined | null): group i
 /**
  * Evaluate a condition group. Returns null when there are no conditions so
  * callers can fall back to legacy behavior (visibilityPath / toggleDataPath).
+ *
+ * Conditions CHAIN left to right: each row's `join` (AND/OR) combines it
+ * with the result so far, and `negate` inverts the row first. So
+ * `a AND b OR c` is ((a AND b) OR c). Rows without a `join` use the
+ * group's legacy `logic` (old layouts keep their ALL/ANY behavior).
  */
 export const evaluateConditionGroup = (
   group: ConditionGroup | undefined | null,
   gameData: any
 ): boolean | null => {
   if (!hasConditions(group)) return null;
-  const results = group.conditions.map(c => evaluateCondition(c, gameData));
-  return group.logic === 'or' ? results.some(Boolean) : results.every(Boolean);
+
+  let result: boolean | null = null;
+  for (const cond of group.conditions) {
+    let value = evaluateCondition(cond, gameData);
+    if (cond.negate) value = !value;
+
+    if (result === null) {
+      result = value;
+      continue;
+    }
+    const join = cond.join || group.logic || 'and';
+    result = join === 'or' ? (result || value) : (result && value);
+  }
+  return result;
 };
 
 /**
@@ -195,11 +223,24 @@ export const isMultiStateGroup = (props: any): boolean => {
 
 /**
  * Human-readable summary of a condition (for chips / state cards),
- * e.g. "homeTeam.score > awayTeam.score".
+ * e.g. "NOT homeTeam.score > awayTeam.score".
  */
 export const describeCondition = (cond: Condition): string => {
   const right = cond.rightType === 'path' ? (cond.rightPath || '?') : (cond.rightValue ?? '?');
-  return `${cond.leftPath || '?'} ${cond.op} ${right}`;
+  return `${cond.negate ? 'NOT ' : ''}${cond.leftPath || '?'} ${cond.op} ${right}`;
+};
+
+/**
+ * Human-readable summary of a whole chained group,
+ * e.g. "a > b AND NOT c == 3 OR d >= 5".
+ */
+export const describeConditionGroup = (group: ConditionGroup): string => {
+  return group.conditions
+    .map((c, i) => {
+      const join = i === 0 ? '' : ` ${(c.join || group.logic || 'and').toUpperCase()} `;
+      return `${join}${describeCondition(c)}`;
+    })
+    .join('');
 };
 
 // ────────────────────────────────────────────────────────────────────────

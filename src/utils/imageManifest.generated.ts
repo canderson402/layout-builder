@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-06-09T15:31:41.030Z
+// Generated: 2026-06-11T18:34:37.464Z
 
 // Available sports (auto-detected from folder structure)
 export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Tennis-LE","Universal","Utility","Volleyball","Wrestling","scoreTable","shootout"] as const;

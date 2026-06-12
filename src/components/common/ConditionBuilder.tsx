@@ -140,7 +140,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
   };
 
   const addCondition = () => {
-    commit([...conditions, emptyCondition()]);
+    commit([...conditions, { ...emptyCondition(), join: 'and' }]);
   };
 
   return (
@@ -149,29 +149,31 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
         <div className="condition-builder__empty">{emptyHint}</div>
       )}
 
-      {conditions.length > 1 && (
-        <div className="condition-builder__logic">
-          <span className="condition-builder__logic-label">Match</span>
-          <button
-            type="button"
-            className={`condition-builder__logic-btn ${logic === 'and' ? 'is-active' : ''}`}
-            onClick={() => commit(conditions, 'and')}
-          >
-            ALL (and)
-          </button>
-          <button
-            type="button"
-            className={`condition-builder__logic-btn ${logic === 'or' ? 'is-active' : ''}`}
-            onClick={() => commit(conditions, 'or')}
-          >
-            ANY (or)
-          </button>
-        </div>
-      )}
-
       {conditions.map((cond, index) => {
         return (
           <div key={index} className="condition-builder__row">
+            {/* Chain operator — how this row combines with the result so far.
+                Evaluation is left to right: a AND b OR c = ((a AND b) OR c) */}
+            {index > 0 && (
+              <select
+                className="condition-builder__join"
+                value={cond.join || logic || 'and'}
+                onChange={(e) => updateCondition(index, { join: e.target.value as 'and' | 'or' })}
+              >
+                <option value="and">AND</option>
+                <option value="or">OR</option>
+              </select>
+            )}
+
+            <button
+              type="button"
+              className={`condition-builder__not ${cond.negate ? 'is-on' : ''}`}
+              onClick={() => updateCondition(index, { negate: cond.negate ? undefined : true })}
+              title={cond.negate ? 'Negated (NOT) — click to remove' : 'Click to negate (NOT)'}
+            >
+              NOT
+            </button>
+
             {renderPathControl(cond.leftPath, (path) => updateCondition(index, { leftPath: path }))}
 
             <select

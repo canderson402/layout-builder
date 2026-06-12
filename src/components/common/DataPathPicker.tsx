@@ -7,7 +7,7 @@ import {
 } from './dataPathOptions';
 import {
   ConditionGroup,
-  describeCondition,
+  describeConditionGroup,
   hasConditions,
 } from '../../shared/conditions';
 import ConditionBuilder from './ConditionBuilder';
@@ -247,7 +247,7 @@ const DataPathPicker: React.FC<DataPathPickerProps> = ({
 
   // Display values for the trigger button. A set condition wins over the path.
   const conditionSummary = conditionIsSet
-    ? conditionValue!.conditions.map(describeCondition).join(conditionValue!.logic === 'or' ? ' OR ' : ' AND ')
+    ? describeConditionGroup(conditionValue!)
     : null;
   const triggerTitle = conditionOnly
     ? 'Edit Conditions'

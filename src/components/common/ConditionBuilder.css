@@ -10,32 +10,43 @@
   font-style: italic;
 }
 
-.condition-builder__logic {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.condition-builder__logic-label {
-  font-size: 11px;
-  color: #aaa;
-}
-
-.condition-builder__logic-btn {
-  padding: 3px 10px;
-  font-size: 11px;
+/* Per-row chain operator (AND/OR) — combines the row with the result so far */
+.condition-builder__row select.condition-builder__join {
+  flex: 0 0 58px;
+  width: 58px;
+  min-width: 58px;
+  text-align: center;
+  text-align-last: center;
   background-color: #333;
-  color: #ccc;
+  color: #4FC3F7;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 5px 2px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* Per-row negation toggle */
+.condition-builder__not {
+  flex-shrink: 0;
+  padding: 5px 6px;
+  font-size: 9px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  background-color: #333;
+  color: #555;
   border: 1px solid #555;
   border-radius: 3px;
   cursor: pointer;
 }
 
-.condition-builder__logic-btn.is-active {
-  background-color: #1565c0;
-  color: #fff;
-  border-color: #1e88e5;
-  font-weight: bold;
+.condition-builder__not:hover {
+  color: #999;
+}
+
+.condition-builder__not.is-on {
+  color: #e57373;
+  border-color: #e57373;
 }
 
 /* One strict inline line per condition: [✓] [left] [op] [right] [mode] [✕].

@@ -328,8 +328,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             flipVertical={props.flipVertical}
             imageTintColor={props.imageTintColor}
             useImageTint={props.useImageTint}
-            useTeamColor={config.useTeamColor}
-            teamColorSide={config.teamColorSide}
+            useTeamColor={config.useTeamColor || props.useTeamColor}
+            teamColorSide={config.teamColorSide || props.teamColorSide}
             borderWidth={0}
             borderColor={'transparent'}
             borderStyle={'solid'}
@@ -391,8 +391,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             paddingRight={props.paddingRight}
             paddingBottom={props.paddingBottom}
             paddingLeft={props.paddingLeft}
-            useTeamColor={config.useTeamColor}
-            teamColorSide={config.teamColorSide}
+            useTeamColor={config.useTeamColor || props.useTeamColor}
+            teamColorSide={config.teamColorSide || props.teamColorSide}
             borderWidth={0}
             borderColor={'transparent'}
             borderStyle={'solid'}
@@ -573,8 +573,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             paddingRight={props.paddingRight}
             paddingBottom={props.paddingBottom}
             paddingLeft={props.paddingLeft}
-            useTeamColor={config.useTeamColor}
-            teamColorSide={config.teamColorSide}
+            useTeamColor={config.useTeamColor || props.useTeamColor}
+            teamColorSide={config.teamColorSide || props.teamColorSide}
             borderWidth={0}
             borderColor={'transparent'}
             borderStyle={'solid'}
@@ -719,8 +719,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             flipVertical={props.flipVertical}
             imageTintColor={props.imageTintColor}
             useImageTint={props.useImageTint}
-            useTeamColor={config.useTeamColor}
-            teamColorSide={config.teamColorSide}
+            useTeamColor={config.useTeamColor || props.useTeamColor}
+            teamColorSide={config.teamColorSide || props.teamColorSide}
             canToggle={props.canToggle}
             toggleState={props.toggleState}
             state1Props={props.state1Props}
