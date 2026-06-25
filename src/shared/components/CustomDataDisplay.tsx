@@ -356,6 +356,12 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
   const effectiveObjectFit = isBannerOrSequence ? 'fill' : objectFit;
   const containerWidth = width;
   const containerHeight = height;
+  const effBorderTop = borderTopWidth !== undefined ? borderTopWidth : borderWidth;
+  const effBorderBottom = borderBottomWidth !== undefined ? borderBottomWidth : borderWidth;
+  const effBorderLeft = borderLeftWidth !== undefined ? borderLeftWidth : borderWidth;
+  const effBorderRight = borderRightWidth !== undefined ? borderRightWidth : borderWidth;
+  const contentWidth = imageSourceObj ? containerWidth : containerWidth - effBorderLeft - effBorderRight;
+  const contentHeight = imageSourceObj ? containerHeight : containerHeight - effBorderTop - effBorderBottom;
   const anchorAlignment = getAnchorAlignment(imageAnchor);
 
   // Calculate final font size
@@ -495,16 +501,16 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
         </>
       ) : (
         <svg
-          width={containerWidth}
-          height={containerHeight}
-          viewBox={`0 0 ${containerWidth} ${containerHeight}`}
+          width={contentWidth}
+          height={contentHeight}
+          viewBox={`0 0 ${contentWidth} ${contentHeight}`}
           style={{ position: 'absolute', top: 0, left: 0 }}
         >
           <text
             x={(() => {
               if (textAlign === 'left') return paddingLeft;
-              if (textAlign === 'right') return containerWidth - paddingRight;
-              return containerWidth / 2;
+              if (textAlign === 'right') return contentWidth - paddingRight;
+              return contentWidth / 2;
             })()}
             y="50%"
             dy={getFontConfig(fontFamily).dyOffset}

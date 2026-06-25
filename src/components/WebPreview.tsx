@@ -267,6 +267,13 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
     const width = size.width;
     const height = size.height;
 
+    const wrapBorderTop = props?.borderTopWidth ?? props?.borderWidth ?? 0;
+    const wrapBorderRight = props?.borderRightWidth ?? props?.borderWidth ?? 0;
+    const wrapBorderBottom = props?.borderBottomWidth ?? props?.borderWidth ?? 0;
+    const wrapBorderLeft = props?.borderLeftWidth ?? props?.borderWidth ?? 0;
+    const contentWidth = width - wrapBorderLeft - wrapBorderRight;
+    const contentHeight = height - wrapBorderTop - wrapBorderBottom;
+
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
       left,
@@ -288,7 +295,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           ...baseStyle,
           boxSizing: 'border-box',
           borderWidth: props.borderWidth || 0,
-          borderColor: props.borderColor || 'transparent',
+          borderColor: props.borderColor || '#ffffff',
           borderStyle: props.borderStyle || 'solid',
           borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
           borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
@@ -307,8 +314,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={width}
-            height={height}
+            width={contentWidth}
+            height={contentHeight}
             fontSize={props.fontSize || 24}
             format={props.format || 'text'}
             prefix={props.prefix || ''}
@@ -360,7 +367,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           ...baseStyle,
           boxSizing: 'border-box',
           borderWidth: props.borderWidth || 0,
-          borderColor: props.borderColor || 'transparent',
+          borderColor: props.borderColor || '#ffffff',
           borderStyle: props.borderStyle || 'solid',
           borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
           borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
@@ -379,8 +386,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={width}
-            height={height}
+            width={contentWidth}
+            height={contentHeight}
             fontSize={props.fontSize || 48}
             format={props.format || 'number'}
             prefix={props.prefix || ''}
@@ -422,7 +429,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           ...baseStyle,
           boxSizing: 'border-box',
           borderWidth: props.borderWidth || 0,
-          borderColor: props.borderColor || 'transparent',
+          borderColor: props.borderColor || '#ffffff',
           borderStyle: props.borderStyle || 'solid',
           borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
           borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
@@ -441,8 +448,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={width}
-            height={height}
+            width={contentWidth}
+            height={contentHeight}
             fontSize={props.fontSize || 32}
             format={props.format || 'text'}
             prefix={props.prefix || ''}
@@ -481,7 +488,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           ...baseStyle,
           boxSizing: 'border-box',
           borderWidth: props.borderWidth || 0,
-          borderColor: props.borderColor || 'transparent',
+          borderColor: props.borderColor || '#ffffff',
           borderStyle: props.borderStyle || 'solid',
           borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
           borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
@@ -500,8 +507,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={width}
-            height={height}
+            width={contentWidth}
+            height={contentHeight}
             fontSize={props.fontSize || 20}
             format={props.format || 'number'}
             prefix={props.prefix || ''}
@@ -542,7 +549,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           ...baseStyle,
           boxSizing: 'border-box',
           borderWidth: props.borderWidth || 0,
-          borderColor: props.borderColor || 'transparent',
+          borderColor: props.borderColor || '#ffffff',
           borderStyle: props.borderStyle || 'solid',
           borderTopWidth: props.borderTopWidth ?? props.borderWidth ?? 0,
           borderRightWidth: props.borderRightWidth ?? props.borderWidth ?? 0,
@@ -561,8 +568,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={width}
-            height={height}
+            width={contentWidth}
+            height={contentHeight}
             fontSize={props.fontSize || 18}
             format={props.format || 'number'}
             prefix={props.prefix || ''}
@@ -670,6 +677,13 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         const customWidth = stateSize?.width ?? width;
         const customHeight = stateSize?.height ?? height;
 
+        const customBorderTop = effectiveProps.borderTopWidth ?? effectiveProps.borderWidth ?? 0;
+        const customBorderRight = effectiveProps.borderRightWidth ?? effectiveProps.borderWidth ?? 0;
+        const customBorderBottom = effectiveProps.borderBottomWidth ?? effectiveProps.borderWidth ?? 0;
+        const customBorderLeft = effectiveProps.borderLeftWidth ?? effectiveProps.borderWidth ?? 0;
+        const customContentWidth = customWidth - customBorderLeft - customBorderRight;
+        const customContentHeight = customHeight - customBorderTop - customBorderBottom;
+
         // Apply border to wrapper div to prevent z-index separation issues with react-native-web
         const customBaseStyle: React.CSSProperties = {
           ...baseStyle,
@@ -679,7 +693,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           height: customHeight,
           boxSizing: 'border-box',
           borderWidth: effectiveProps.borderWidth || 0,
-          borderColor: effectiveProps.borderColor || 'transparent',
+          borderColor: effectiveProps.borderColor || '#ffffff',
           borderStyle: effectiveProps.borderStyle || 'solid',
           borderTopWidth: effectiveProps.borderTopWidth ?? effectiveProps.borderWidth ?? 0,
           borderRightWidth: effectiveProps.borderRightWidth ?? effectiveProps.borderWidth ?? 0,
@@ -698,8 +712,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             label={props.label}
             backgroundColor={props.backgroundColor}
             textColor={props.textColor}
-            width={customWidth}
-            height={customHeight}
+            width={customContentWidth}
+            height={customContentHeight}
             fontSize={props.fontSize || 24}
             format={props.format || 'text'}
             prefix={props.prefix || ''}

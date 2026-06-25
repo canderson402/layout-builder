@@ -2819,7 +2819,7 @@ export default function Canvas({
       borderBottomWidth: borderBottomWidth,
       borderLeftWidth: borderLeftWidth,
       borderStyle: hasBorder ? (component.props?.borderStyle || 'solid') : 'none',
-      borderColor: hasBorder ? (component.props?.borderColor || '#666') : 'transparent',
+      borderColor: hasBorder ? (component.props?.borderColor || '#ffffff') : 'transparent',
       boxShadow: (showBoundingBoxes && selectedComponents.includes(component.id)) ? '0 0 0 2px #4CAF50' : 'none',
       backgroundColor: component.props?.backgroundColor || getComponentColor(component),
       borderTopLeftRadius: component.props?.borderTopLeftRadius || 0,

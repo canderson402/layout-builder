@@ -124,6 +124,8 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   { label: 'Tennis: Away Sets Won', value: 'setSlots.setsWon.away', group: 'Tennis LE', purposes: ['data'] },
   { label: 'Tennis: Total Sets', value: 'setSlots.totalSets', group: 'Tennis LE', purposes: ['data'] },
   { label: 'Tennis: Points Tracking Enabled', value: 'setSlots.pointsEnabled', group: 'Tennis LE', purposes: ['toggle', 'visibility'] },
+  { label: 'Tennis: Home Advantage', value: 'setSlots.homeAdvantage', group: 'Tennis LE', purposes: ['toggle', 'visibility'], description: 'Home player holds advantage (AD)' },
+  { label: 'Tennis: Away Advantage', value: 'setSlots.awayAdvantage', group: 'Tennis LE', purposes: ['toggle', 'visibility'], description: 'Away player holds advantage (AD)' },
 
   // ── Tennis Slot Template (auto-prefixed) ───────────────────────────────
   { label: 'Set Number', value: 'setNumber', group: 'Tennis Slot Template', purposes: ['data'], slotContext: true },

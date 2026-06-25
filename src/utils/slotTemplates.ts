@@ -211,6 +211,34 @@ export function expandSlotList(
         clonedComp.props.toggleDataPath = `${dataPathPrefix}.${team}.slot${i}.${clonedComp.props.toggleDataPath}`;
       }
 
+      // Prefix paths inside condition groups (visibilityCondition / toggleCondition).
+      // Slot templates gate on per-slot fields (active/exists/won) authored as
+      // short, prefix-less paths on slot 0; without this they evaluate against
+      // the root game data and never match.
+      const prefixSlotPath = (p?: string): string | undefined => {
+        if (!p || p === 'none') return p;
+        // Only auto-prefix short, prefix-less names (e.g. 'active').
+        if (!p.includes('.')) return `${dataPathPrefix}.${team}.slot${i}.${p}`;
+        return p;
+      };
+      const prefixConditionGroup = (group: any): any => {
+        if (!group || !Array.isArray(group.conditions)) return group;
+        return {
+          ...group,
+          conditions: group.conditions.map((cond: any) => ({
+            ...cond,
+            leftPath: prefixSlotPath(cond.leftPath),
+            rightPath: cond.rightType === 'path' ? prefixSlotPath(cond.rightPath) : cond.rightPath,
+          })),
+        };
+      };
+      if (clonedComp.props?.visibilityCondition) {
+        clonedComp.props.visibilityCondition = prefixConditionGroup(clonedComp.props.visibilityCondition);
+      }
+      if (clonedComp.props?.toggleCondition) {
+        clonedComp.props.toggleCondition = prefixConditionGroup(clonedComp.props.toggleCondition);
+      }
+
       expandedComponents.push(clonedComp);
     });
   }
