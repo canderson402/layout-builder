@@ -52,6 +52,19 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Shape Editing',
+    shortcuts: [
+      { keys: 'E / Enter', description: 'Enter vertex edit mode (single shape selected)' },
+      { keys: 'E / Escape', description: 'Exit vertex edit mode' },
+      { keys: 'Double-click shape', description: 'Enter vertex edit mode' },
+      { keys: 'Double-click vertex', description: 'Toggle corner / smooth' },
+      { keys: 'Alt + Drag handle', description: 'Break handle pair (cusp)' },
+      { keys: 'Shift + Drag vertex', description: 'Precision movement' },
+      { keys: 'Delete / Backspace', description: 'Delete selected vertices' },
+      { keys: 'Click edge', description: 'Add vertex on edge' },
+    ],
+  },
+  {
     title: 'View',
     shortcuts: [
       { keys: 'G', description: 'Toggle grid' },

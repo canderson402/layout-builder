@@ -7,7 +7,8 @@ import ExportModal from './components/ExportModal';
 import PresetModal from './components/PresetModal';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
 import { ToastProvider, useToast } from './components/Toast';
-import { expandLayoutForExport, repairTemplateReferences } from './utils/slotTemplates';
+import { repairTemplateReferences } from './utils/slotTemplates';
+import { SHAPE_PRESETS } from './utils/shapePresets';
 import './App.css';
 
 // Panel resize constants
@@ -290,6 +291,16 @@ function App() {
   // Remove expensive console.log - causes performance issues
 
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+  const [editingShapeId, setEditingShapeId] = useState<string | null>(null);
+  const [selectedVertices, setSelectedVertices] = useState<number[]>([]);
+
+  // Leave edit mode automatically if the component disappears (undo, delete, import)
+  useEffect(() => {
+    if (editingShapeId && !(layout.components || []).some(c => c.id === editingShapeId && c.type === 'shape')) {
+      setEditingShapeId(null);
+      setSelectedVertices([]);
+    }
+  }, [editingShapeId, layout.components]);
 
   // Helper to get all descendants of a component (for group selection)
   const getAllDescendants = useCallback((parentId: string, components: ComponentConfig[]): string[] => {
@@ -376,9 +387,6 @@ function App() {
   
   // Component naming counter system
   
-  // TV endpoint controls
-  const [tvIpAddress, setTvIpAddress] = useState('192.168.1.100'); // Default IP
-  const [isSendingToTv, setIsSendingToTv] = useState(false);
 
   // Panel resize state
   const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_PANEL_WIDTH);
@@ -507,250 +515,6 @@ function App() {
       return remainingRedoHistory;
     });
   }, []);
-
-  // Send layout to TV endpoint
-  const sendLayoutToTv = useCallback(async () => {
-    if (!tvIpAddress.trim()) {
-      toast.warning('Please enter a valid TV IP address');
-      return;
-    }
-
-    setIsSendingToTv(true);
-    try {
-      // Remove port if already included in IP address, then add :3080
-      const cleanIp = tvIpAddress.replace(/:.*$/, '');
-
-      // Debug payload size and content
-      const layoutJson = JSON.stringify(layout);
-      const payloadSize = new Blob([layoutJson]).size;
-      console.log('📦 Layout payload size:', payloadSize, 'bytes');
-      console.log('📋 Layout components count:', layout.components?.length || 0);
-      console.log('📄 Layout structure:', {
-        name: layout.name,
-        dimensions: layout.dimensions,
-        componentCount: layout.components?.length || 0,
-        hasComponents: !!layout.components
-      });
-
-      // Validate JSON can be parsed back
-      try {
-        const testParse = JSON.parse(layoutJson);
-        console.log('✅ JSON validation passed');
-
-        // Check for required fields
-        if (!testParse.name || !testParse.components || !testParse.dimensions) {
-          console.warn('⚠️ Missing required fields:', {
-            hasName: !!testParse.name,
-            hasComponents: !!testParse.components,
-            hasDimensions: !!testParse.dimensions
-          });
-        }
-      } catch (jsonError) {
-        console.error('JSON validation failed:', jsonError);
-        toast.error('Invalid layout data - JSON formatting error');
-        return;
-      }
-
-      // Warn if payload is very large
-      if (payloadSize > 1024 * 1024) { // 1MB
-        console.warn('⚠️ Large payload detected:', (payloadSize / 1024 / 1024).toFixed(2), 'MB');
-      }
-
-      // Log a sample of the JSON for debugging
-      console.log('📄 JSON sample (first 500 chars):', layoutJson.substring(0, 500));
-
-      // Binary search to find the breaking point efficiently
-      console.log('🔍 Binary search for maximum working component count...');
-
-      const totalComponents = layout.components?.length || 0;
-      let workingCount = 5; // We know 5 works
-      let failingCount = totalComponents;
-
-      while (workingCount + 1 < failingCount) {
-        const testCount = Math.floor((workingCount + failingCount) / 2);
-
-        const testLayout = {
-          name: layout.name,
-          components: layout.components?.slice(0, testCount) || [],
-          dimensions: layout.dimensions,
-          backgroundColor: layout.backgroundColor
-        };
-
-        const testJson = JSON.stringify(testLayout);
-        const testSize = new Blob([testJson]).size;
-        console.log(`🔍 Testing ${testCount} components (${testSize} bytes)`);
-
-        try {
-          const testResponse = await fetch(`http://${cleanIp}:3080/layout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: testJson,
-          });
-
-          if (testResponse.ok) {
-            console.log(`✅ ${testCount} components: SUCCESS`);
-            workingCount = testCount;
-          } else {
-            const errorText = await testResponse.text();
-            console.log(`❌ ${testCount} components: FAILED - ${testResponse.status} ${errorText}`);
-            failingCount = testCount;
-          }
-        } catch (testError) {
-          console.log(`❌ ${testCount} components: ERROR - ${testError}`);
-          failingCount = testCount;
-        }
-      }
-
-      console.log(`🎯 Maximum working: ${workingCount} components, Breaks at: ${failingCount} components`);
-      if (failingCount < totalComponents) {
-        console.log('🚨 Breaking component:', layout.components?.[failingCount - 1]);
-      }
-
-      console.log('🎯 Progressive test completed, trying to fix and send full layout...');
-
-      // First expand any slotList components into concrete components for the TV
-      const expandedLayout = {
-        ...layout,
-        components: expandLayoutForExport(layout.components || [])
-      };
-
-      // Comprehensive JSON cleaning system to handle ALL Swift parsing issues
-      const cleanLayoutForServer = (layoutToClean: any) => {
-        return {
-          name: layoutToClean.name || "basketball",
-          components: (layoutToClean.components || []).map((component: any) => {
-            // Start with only the essential fields Swift expects
-            const cleanComponent: any = {
-              id: component.id,
-              type: component.type || "custom",
-              position: {
-                x: Number(component.position?.x || 0),
-                y: Number(component.position?.y || 0)
-              },
-              size: {
-                width: Number(component.size?.width || 100),
-                height: Number(component.size?.height || 50)
-              },
-              props: {}
-            };
-
-            // Add optional fields only if they exist and are valid
-            if (component.displayName && typeof component.displayName === 'string') {
-              cleanComponent.displayName = component.displayName;
-            }
-
-            if (typeof component.layer === 'number') {
-              cleanComponent.layer = component.layer;
-            }
-
-            if (typeof component.visible === 'boolean') {
-              cleanComponent.visible = component.visible;
-            }
-
-            // Comprehensively clean props - merge from all possible sources
-            const allProps = {
-              ...component.props,
-              // Move root-level team color fields into props
-              ...(component.useTeamColor !== undefined && { useTeamColor: component.useTeamColor }),
-              ...(component.teamColorSide !== undefined && { teamColorSide: component.teamColorSide })
-            };
-
-            // Clean and validate each prop
-            Object.keys(allProps).forEach(key => {
-              const value = allProps[key];
-
-              // Skip undefined, null, or empty objects
-              if (value === undefined || value === null) return;
-              if (typeof value === 'object' && Object.keys(value).length === 0) return;
-
-              // Convert problematic string values
-              if (value === "none" && (key === 'dataPath' || key === 'imagePath')) {
-                cleanComponent.props[key] = "";
-                return;
-              }
-
-              if (value === "none" && key === 'objectFit') {
-                cleanComponent.props[key] = "fill";
-                return;
-              }
-
-              // Clean strings
-              if (typeof value === 'string') {
-                const cleaned = value.trim();
-                if (cleaned.length > 0) {
-                  cleanComponent.props[key] = cleaned;
-                }
-                return;
-              }
-
-              // Keep numbers and booleans as-is
-              if (typeof value === 'number' || typeof value === 'boolean') {
-                cleanComponent.props[key] = value;
-                return;
-              }
-
-              // For objects, only include if they have content
-              if (typeof value === 'object' && Object.keys(value).length > 0) {
-                cleanComponent.props[key] = value;
-              }
-            });
-
-            return cleanComponent;
-          }),
-          dimensions: {
-            width: Number(layoutToClean.dimensions?.width || 1920),
-            height: Number(layoutToClean.dimensions?.height || 1080)
-          },
-          backgroundColor: layoutToClean.backgroundColor || "#000000"
-        };
-      };
-
-      const cleanedLayout = cleanLayoutForServer(expandedLayout);
-
-      const cleanedJson = JSON.stringify(cleanedLayout);
-      const cleanedSize = new Blob([cleanedJson]).size;
-      console.log('🧹 Cleaned layout size:', cleanedSize, 'bytes');
-
-      const response = await fetch(`http://${cleanIp}:3080/layout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: cleanedJson,
-      });
-
-      if (!response.ok) {
-        // Try to get more details from the response
-        let errorDetails = '';
-        try {
-          const responseText = await response.text();
-          if (responseText) {
-            errorDetails = ` - ${responseText}`;
-          }
-        } catch (e) {
-          // Ignore if we can't read response
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}${errorDetails}`);
-      }
-
-      console.log('Layout sent successfully to TV');
-      toast.success('Layout sent successfully to TV!');
-    } catch (error) {
-      console.error('Error sending layout to TV:', error);
-
-      // Check if this is a network restriction error (common in Brave browser)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_ADDRESS_UNREACHABLE')) {
-        toast.error('Network blocked by browser. Try disabling Brave shields or use Chrome/Safari.', 8000);
-      } else {
-        toast.error(`Failed to send layout to TV: ${errorMessage}`);
-      }
-    } finally {
-      setIsSendingToTv(false);
-    }
-  }, [layout, tvIpAddress, toast]);
 
   // Quick save preset function
   const quickSavePreset = useCallback(() => {
@@ -964,6 +728,22 @@ function App() {
 
     return componentId;
   }, [saveStateForUndo, generateComponentId]);
+
+  const addShape = useCallback((presetKey: string) => {
+    const preset = SHAPE_PRESETS[presetKey];
+    if (!preset) return;
+    addComponent(
+      'shape',
+      undefined,
+      { ...preset.defaultSize },
+      {
+        ...getDefaultProps('shape'),
+        ...(preset.props || {}),
+        shape: structuredClone(preset.shape),
+      },
+      preset.label
+    );
+  }, [addComponent]);
 
   // Add a ref to track if we're currently dragging to batch position updates
   const isDraggingRef = React.useRef(false);
@@ -1652,6 +1432,7 @@ function App() {
                 onUpdateComponent={updateComponent}
                 onDeleteComponent={deleteComponent}
                 onAddComponent={addComponent}
+                onAddShape={addShape}
                 onStartDragOperation={startDragOperation}
                 onEndDragOperation={endDragOperation}
                 onCopyComponents={copyComponents}
@@ -1683,6 +1464,10 @@ function App() {
               onEndDragOperation={endDragOperation}
               onUpdateLayout={handleUpdateLayout}
               gameData={gameData}
+              editingShapeId={editingShapeId}
+              onSetEditingShape={setEditingShapeId}
+              selectedVertices={selectedVertices}
+              onSelectVertices={setSelectedVertices}
             />
 
             <aside
@@ -1707,6 +1492,8 @@ function App() {
                 onUpdateGameData={setGameData}
                 panelWidth={rightPanelWidth}
                 templateRefreshKey={templateRefreshKey}
+                editingShapeId={editingShapeId}
+                selectedVertices={selectedVertices}
               />
             </aside>
       </main>
@@ -1749,9 +1536,10 @@ function getDefaultSize(type: ComponentConfig['type']) {
     custom: { width: 192, height: 108 },    // 192px width, 108px height
     dynamicList: { width: 300, height: 60 }, // 300px width, 60px height
     leaderboardList: { width: 300, height: 340 }, // 300px width, 340px height
-    multiState: { width: 0, height: 0 } // no own size — footprint is the children's bounding box
+    multiState: { width: 0, height: 0 }, // no own size — footprint is the children's bounding box
+    shape: { width: 384, height: 216 },
   };
-  return sizes[type] || { width: 192, height: 108 };
+  return (sizes as Record<string, {width:number;height:number}>)[type] || { width: 192, height: 108 };
 }
 
 function getDefaultProps(type: ComponentConfig['type']) {
@@ -1820,8 +1608,18 @@ function getDefaultProps(type: ComponentConfig['type']) {
       cycleTransition: 'fade',
       cycleDuration: 500
     },
+    shape: {
+      shape: structuredClone(SHAPE_PRESETS.rectangle.shape),
+      fillType: 'solid',
+      fillColor: '#4CAF50',
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWidth: 0,
+      strokeOpacity: 1,
+      strokeCap: 'butt',
+    },
   };
-  return props[type] || {};
+  return (props as Record<string, unknown>)[type] || {};
 }
 
 function getDefaultDisplayName(type: ComponentConfig['type']) {

@@ -1,5 +1,5 @@
 export interface ComponentConfig {
-  type: 'teamName' | 'score' | 'clock' | 'period' | 'fouls' | 'timeouts' | 'bonus' | 'custom' | 'dynamicList' | 'leaderboardList' | 'slotList' | 'group' | 'multiState';
+  type: 'teamName' | 'score' | 'clock' | 'period' | 'fouls' | 'timeouts' | 'bonus' | 'custom' | 'dynamicList' | 'leaderboardList' | 'slotList' | 'group' | 'multiState' | 'shape';
   position: {
     x: number;
     y: number;
@@ -28,6 +28,7 @@ export interface SlotTemplate {
   id: string;
   name: string;
   description?: string;
+  folder?: string;
   isPreset?: boolean; // True for built-in preset templates
   // The template components with relative data paths (e.g., 'jersey', 'name', 'points')
   components: ComponentConfig[];
@@ -60,6 +61,7 @@ export interface ComponentGroupTemplate {
   id: string;
   name: string;
   description?: string;
+  folder?: string;
   // The components with positions normalized to (0,0) origin
   components: ComponentConfig[];
   // Bounding box of all components

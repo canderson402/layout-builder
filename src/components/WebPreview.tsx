@@ -11,6 +11,7 @@ import {
   isMultiStateGroup,
 } from '../shared/conditions';
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
+import ShapeSvg from './ShapeSvg';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
@@ -635,6 +636,32 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           componentKey
         );
 
+      case 'shape': {
+        if (!props?.shape) return null;
+        return wrapContent(
+          <ShapeSvg
+            id={id}
+            shape={props.shape}
+            width={width}
+            height={height}
+            fillType={props.fillType}
+            fillColor={props.fillColor}
+            gradient={props.gradient}
+            fillOpacity={props.fillOpacity}
+            strokeColor={props.strokeColor}
+            strokeWidth={props.strokeWidth}
+            strokeOpacity={props.strokeOpacity}
+            strokeDash={props.strokeDash}
+            strokeCap={props.strokeCap}
+            useTeamColor={config.useTeamColor}
+            teamColorSide={config.teamColorSide}
+            gameData={effectiveGameData}
+          />,
+          baseStyle,
+          componentKey
+        );
+      }
+
       case 'custom': {
         // For toggle components, compute effective toggle state and get state-specific props
         let effectiveProps = props;
@@ -704,6 +731,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           borderBottomLeftRadius: effectiveProps.borderBottomLeftRadius || 0,
           borderBottomRightRadius: effectiveProps.borderBottomRightRadius || 0,
           overflow: 'hidden',  // Clip content to border radius
+          opacity: isVisible ? 1 : 0,
         };
         return wrapContent(
           <CustomDataDisplay
@@ -870,6 +898,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           }
         }
 
+
         // If no template selected, show placeholder
         if (!template) {
           return wrapContent(
@@ -905,6 +934,21 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         const naturalHeight = direction === 'vertical'
           ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
           : template.slotSize.height;
+
+        console.log('[SLOTLIST]', config.id, {
+          templateName: props.templateName,
+          templateId: props.templateId,
+          templateFound: !!template,
+          componentCount: template.components.length,
+          nonGroupCount: template.components.filter(c => c.type !== 'group').length,
+          slotCount,
+          firstComp: template.components.filter(c => c.type !== 'group')[0]?.props
+            ? {
+                visibilityPath: template.components.filter(c => c.type !== 'group')[0].props?.visibilityPath,
+                visibilityCondition: template.components.filter(c => c.type !== 'group')[0].props?.visibilityCondition,
+              }
+            : null,
+        });
 
         // Render actual template components for each slot
         const slotElements: React.ReactNode[] = [];
@@ -944,16 +988,49 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             };
 
             // Prefix data paths for preview
+            const prefixSlotPath = (p?: string): string | undefined => {
+              if (!p || p === 'none') return p;
+              if (!p.includes('.')) return `${prefix}.${teamLabel}.slot${slotIndex}.${p}`;
+              return p;
+            };
+            const prefixConditionGroup = (group: any): any => {
+              if (!group || !Array.isArray(group.conditions)) return group;
+              return {
+                ...group,
+                conditions: group.conditions.map((cond: any) => ({
+                  ...cond,
+                  leftPath: prefixSlotPath(cond.leftPath),
+                  rightPath: cond.rightType === 'path' ? prefixSlotPath(cond.rightPath) : cond.rightPath,
+                })),
+              };
+            };
             if (previewComp.props?.dataPath && previewComp.props.dataPath !== 'none') {
               previewComp.props.dataPath = `${prefix}.${teamLabel}.slot${slotIndex}.${previewComp.props.dataPath}`;
             }
             if (previewComp.props?.visibilityPath) {
-              previewComp.props.visibilityPath = `${prefix}.${teamLabel}.slot${slotIndex}.${previewComp.props.visibilityPath}`;
+              previewComp.props.visibilityPath = prefixSlotPath(previewComp.props.visibilityPath);
+            }
+            if (previewComp.props?.visibilityCondition) {
+              previewComp.props.visibilityCondition = prefixConditionGroup(previewComp.props.visibilityCondition);
+            }
+            if (previewComp.props?.toggleDataPath) {
+              previewComp.props.toggleDataPath = prefixSlotPath(previewComp.props.toggleDataPath);
+            }
+            if (previewComp.props?.toggleCondition) {
+              previewComp.props.toggleCondition = prefixConditionGroup(previewComp.props.toggleCondition);
             }
 
             // Render the component - use template's layer + base effectiveLayer for proper z-ordering
             const componentLayer = effectiveLayer + (templateComp.layer || 0);
-            const compElement = renderComponent(previewComp, slotIndex * 100 + compIndex, componentLayer, true);
+            const slotVisible = getComponentVisibility(previewComp, effectiveGameData);
+            console.log('[SLOT]', config.id, 'slot' + slotIndex, {
+              type: previewComp.type,
+              visibilityPath: previewComp.props?.visibilityPath,
+              resolvedPath: previewComp.props?.visibilityPath ? getNestedData(effectiveGameData, previewComp.props.visibilityPath) : undefined,
+              hasCondition: !!previewComp.props?.visibilityCondition,
+              slotVisible,
+            });
+            const compElement = renderComponent(previewComp, slotIndex * 100 + compIndex, componentLayer, slotVisible);
             slotElements.push(compElement);
           });
         }

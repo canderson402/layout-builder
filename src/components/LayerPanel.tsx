@@ -1,23 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ComponentConfig, LayoutConfig, SlotTemplate, ComponentGroupTemplate } from '../types';
-import { loadTemplates, createTemplate, deleteTemplate, calculateBoundingBox } from '../utils/slotTemplates';
+import { loadTemplates, createTemplate, deleteTemplate, calculateBoundingBox, updateTemplate } from '../utils/slotTemplates';
 import {
   loadComponentTemplates,
   createComponentTemplate,
   deleteComponentTemplate,
+  updateComponentTemplate,
   instantiateTemplate
 } from '../utils/componentTemplates';
+import TemplateBrowser from './TemplateBrowser';
 import { useToast } from './Toast';
 import CollapsibleSection from './common/CollapsibleSection';
+import { SHAPE_PRESET_LIST } from '../utils/shapePresets';
 import Button from './common/Button';
 import InfoTooltip from './common/InfoTooltip';
 import './LayerPanel.css';
 
 // Delete glyph used in the template rows. Row click loads the template;
 // only the trailing × is a separate action button.
-const deleteIcon = (
-  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-    <path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+const saveIcon = (
+  <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 2.5h8L13.5 5.5v8h-11z" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    <rect x="5" y="9" width="6" height="4.5" fill="none" stroke="currentColor" strokeWidth="1.1" />
+    <path d="M5 2.5v3h4.5v-3" fill="none" stroke="currentColor" strokeWidth="1.1" />
+  </svg>
+);
+
+const loadIcon = (
+  <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2 4h4l1.5 1.6H14v7.4H2z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
   </svg>
 );
 
@@ -41,6 +52,7 @@ interface LayerPanelProps {
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onDeleteComponent: (id: string) => void;
   onAddComponent: (type: ComponentConfig['type'], position?: { x: number, y: number }, size?: { width: number, height: number }, customProps?: Record<string, any>, customDisplayName?: string, parentId?: string, customId?: string, customLayer?: number, extraProps?: Partial<ComponentConfig>) => string;
+  onAddShape: (presetKey: string) => void;
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
   onCopyComponents?: () => void;
@@ -62,6 +74,7 @@ export default function LayerPanel({
   onUpdateComponent,
   onDeleteComponent,
   onAddComponent,
+  onAddShape,
   onStartDragOperation,
   onEndDragOperation,
   onCopyComponents,
@@ -86,6 +99,7 @@ export default function LayerPanel({
   const [templates, setTemplates] = useState<SlotTemplate[]>(() => loadTemplates());
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateFolder, setNewTemplateFolder] = useState('');
   const [templateSlotWidth, setTemplateSlotWidth] = useState(0);
   const [templateSlotHeight, setTemplateSlotHeight] = useState(0);
   // showTemplateManager / showComponentTemplateManager removed — collapse state
@@ -95,6 +109,7 @@ export default function LayerPanel({
   const [componentTemplates, setComponentTemplates] = useState<ComponentGroupTemplate[]>(() => loadComponentTemplates());
   const [showComponentTemplateModal, setShowComponentTemplateModal] = useState(false);
   const [newComponentTemplateName, setNewComponentTemplateName] = useState('');
+  const [newComponentTemplateFolder, setNewComponentTemplateFolder] = useState('');
 
   // Refresh templates from storage
   const refreshTemplates = () => {
@@ -178,10 +193,11 @@ export default function LayerPanel({
       ? { width: templateSlotWidth, height: templateSlotHeight }
       : undefined;
 
-    createTemplate(newTemplateName.trim(), renderableComponents, undefined, customSlotSize);
+    createTemplate(newTemplateName.trim(), renderableComponents, undefined, customSlotSize, newTemplateFolder.trim() || undefined);
     refreshTemplates();
     setShowTemplateModal(false);
     setNewTemplateName('');
+    setNewTemplateFolder('');
   };
 
   const handleDeleteTemplate = (id: string) => {
@@ -263,11 +279,14 @@ export default function LayerPanel({
     createComponentTemplate(
       newComponentTemplateName.trim(),
       selectedComponents,
-      layout.components
+      layout.components,
+      undefined,
+      newComponentTemplateFolder.trim() || undefined
     );
     refreshComponentTemplates();
     setShowComponentTemplateModal(false);
     setNewComponentTemplateName('');
+    setNewComponentTemplateFolder('');
   };
 
   const handleDeleteComponentTemplate = (id: string) => {
@@ -1221,141 +1240,104 @@ export default function LayerPanel({
 
       </CollapsibleSection>
 
-      <CollapsibleSection
-        id="layer-panel-slot-templates"
-        title="Slot Templates"
-        count={templates.length}
-        defaultOpen={false}
-      >
-        <Button
-          block
-          variant="primary"
-          onClick={handleSaveAsTemplate}
-          disabled={selectedComponents.length === 0}
-          title={selectedComponents.length === 0 ? 'Select components first' : 'Save current selection as a slot template'}
-        >
-          + Save as Slot Template
-        </Button>
-
-        {templates.length === 0 ? (
-          <div className="tpl-empty">
-            No templates saved. Select components and click "+ Save as Slot Template" above.
-          </div>
-        ) : (
-          <ul className="tpl-list">
-            {templates.map(template => (
-              <li key={template.id} className="tpl-row-wrap">
-                <button
-                  type="button"
-                  className="tpl-row"
-                  onClick={() => handleLoadTemplate(template)}
-                  title="Click to load template"
-                  aria-label={`Load template ${template.name}`}
-                >
-                  <span className="tpl-name">{template.name}</span>
-                  <span
-                    className="tpl-info-slot"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <InfoTooltip
-                      label={`${template.name} details`}
-                      content={
-                        <>
-                          {template.components.length} component{template.components.length !== 1 ? 's' : ''}
-                          <br />
-                          {template.slotSize.width} × {template.slotSize.height} px
-                        </>
-                      }
-                    />
-                  </span>
-                </button>
-                <Button
-                  className="tpl-delete"
-                  size="xs"
-                  variant="ghost"
-                  iconOnly
-                  icon={deleteIcon}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteTemplate(template.id);
-                  }}
-                  title="Delete template"
-                  aria-label={`Delete template ${template.name}`}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+      <CollapsibleSection id="layer-panel-shapes" title="Shapes" defaultOpen={true}>
+        <div className="quick-add-grid" role="toolbar" aria-label="Add shapes">
+          {SHAPE_PRESET_LIST.map(({ key, label, icon }) => (
+            <Button
+              key={key}
+              block
+              variant="default"
+              onClick={() => onAddShape(key)}
+              aria-label={`Add ${label} shape`}
+            >
+              {icon} {label}
+            </Button>
+          ))}
+        </div>
       </CollapsibleSection>
 
-      <CollapsibleSection
-        id="layer-panel-component-templates"
-        title="Component Templates"
-        count={componentTemplates.length}
-        defaultOpen={false}
-      >
-        <Button
-          block
-          variant="secondary"
-          onClick={handleSaveAsComponentTemplate}
-          disabled={selectedComponents.length === 0}
-          title={selectedComponents.length === 0 ? 'Select components first' : 'Save current selection as a component template'}
-        >
-          + Save as Component Template
-        </Button>
+      <div className="tpl-section">
+        <div className="tpl-section-header">Slot Templates</div>
+        <div className="tpl-section-actions">
+          <button
+            type="button"
+            className="tpl-icon-btn"
+            onClick={handleSaveAsTemplate}
+            disabled={selectedComponents.length === 0}
+            title={selectedComponents.length === 0 ? 'Select components first' : 'Save selection as a slot template'}
+          >
+            {saveIcon}
+          </button>
+          <TemplateBrowser
+            triggerIcon={loadIcon}
+            triggerTitle="Load a slot template"
+            title="Slot Templates"
+            items={templates.map(t => ({
+            id: t.id,
+            name: t.name,
+            folder: t.folder,
+            locked: t.isPreset,
+            meta: (
+              <InfoTooltip
+                label={`${t.name} details`}
+                content={
+                  <>
+                    {t.components.length} component{t.components.length !== 1 ? 's' : ''}
+                    <br />
+                    {t.slotSize.width} × {t.slotSize.height} px
+                  </>
+                }
+              />
+            ),
+          }))}
+            onLoad={(id) => { const t = templates.find(x => x.id === id); if (t) handleLoadTemplate(t); }}
+            onDelete={(id) => handleDeleteTemplate(id)}
+            onMoveFolder={(id, folder) => { updateTemplate(id, { folder }); setTemplates(loadTemplates()); }}
+            emptyText="No slot templates saved yet."
+          />
+        </div>
+      </div>
 
-        {componentTemplates.length === 0 ? (
-          <div className="tpl-empty">
-            No component templates saved. Select components and click "+ Save as Component Template" above.
-          </div>
-        ) : (
-          <ul className="tpl-list">
-            {componentTemplates.map(template => (
-              <li key={template.id} className="tpl-row-wrap">
-                <button
-                  type="button"
-                  className="tpl-row"
-                  onClick={() => handleLoadComponentTemplate(template)}
-                  title="Click to load template"
-                  aria-label={`Load template ${template.name}`}
-                >
-                  <span className="tpl-name">{template.name}</span>
-                  <span
-                    className="tpl-info-slot"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <InfoTooltip
-                      label={`${template.name} details`}
-                      content={
-                        <>
-                          {template.components.length} component{template.components.length !== 1 ? 's' : ''}
-                          <br />
-                          {template.boundingBox.width} × {template.boundingBox.height} px
-                        </>
-                      }
-                    />
-                  </span>
-                </button>
-                <Button
-                  className="tpl-delete"
-                  size="xs"
-                  variant="ghost"
-                  iconOnly
-                  icon={deleteIcon}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteComponentTemplate(template.id);
-                  }}
-                  title="Delete template"
-                  aria-label={`Delete template ${template.name}`}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </CollapsibleSection>
+      <div className="tpl-section">
+        <div className="tpl-section-header">Component Templates</div>
+        <div className="tpl-section-actions">
+          <button
+            type="button"
+            className="tpl-icon-btn"
+            onClick={handleSaveAsComponentTemplate}
+            disabled={selectedComponents.length === 0}
+            title={selectedComponents.length === 0 ? 'Select components first' : 'Save selection as a component template'}
+          >
+            {saveIcon}
+          </button>
+          <TemplateBrowser
+            triggerIcon={loadIcon}
+            triggerTitle="Load a component template"
+            title="Component Templates"
+            items={componentTemplates.map(t => ({
+            id: t.id,
+            name: t.name,
+            folder: t.folder,
+            meta: (
+              <InfoTooltip
+                label={`${t.name} details`}
+                content={
+                  <>
+                    {t.components.length} component{t.components.length !== 1 ? 's' : ''}
+                    <br />
+                    {t.boundingBox.width} × {t.boundingBox.height} px
+                  </>
+                }
+              />
+            ),
+          }))}
+            onLoad={(id) => { const t = componentTemplates.find(x => x.id === id); if (t) handleLoadComponentTemplate(t); }}
+            onDelete={(id) => handleDeleteComponentTemplate(id)}
+            onMoveFolder={(id, folder) => { updateComponentTemplate(id, { folder }); refreshComponentTemplates(); }}
+            emptyText="No component templates saved yet."
+          />
+        </div>
+      </div>
 
       {/* Save Template Modal */}
       {showTemplateModal && (
@@ -1415,6 +1397,31 @@ export default function LayerPanel({
               autoFocus
               aria-describedby="slot-template-desc"
             />
+            <label htmlFor="slot-template-folder" className="sr-only">Folder</label>
+            <input
+              id="slot-template-folder"
+              type="text"
+              list="slot-template-folders"
+              placeholder="Folder (optional)"
+              value={newTemplateFolder}
+              onChange={e => setNewTemplateFolder(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmSaveTemplate()}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#333',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                color: '#fff',
+                marginBottom: '16px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <datalist id="slot-template-folders">
+              {Array.from(new Set(templates.map(t => t.folder).filter(Boolean))).map(f => (
+                <option key={f as string} value={f as string} />
+              ))}
+            </datalist>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowTemplateModal(false)}
@@ -1504,6 +1511,29 @@ export default function LayerPanel({
               autoFocus
               aria-describedby="component-template-desc"
             />
+            <input
+              type="text"
+              list="component-template-folders"
+              placeholder="Folder (optional)"
+              value={newComponentTemplateFolder}
+              onChange={e => setNewComponentTemplateFolder(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmSaveComponentTemplate()}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#333',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                color: '#fff',
+                marginBottom: '16px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <datalist id="component-template-folders">
+              {Array.from(new Set(componentTemplates.map(t => t.folder).filter(Boolean))).map(f => (
+                <option key={f as string} value={f as string} />
+              ))}
+            </datalist>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowComponentTemplateModal(false)}

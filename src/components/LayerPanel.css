@@ -671,3 +671,119 @@
   border-color: #5a7a9a;
   color: #fff;
 }
+/* Template browser: search + folder-grouped rows */
+.tpl-browser { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+.tpl-search {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #e2e2e2;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+.tpl-search:focus { border-color: #4FC3F7; }
+.tpl-search::placeholder { color: #777; }
+
+.tpl-folder-group { display: flex; flex-direction: column; gap: 2px; }
+
+.tpl-folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #888;
+}
+.tpl-folder-count {
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  font-size: 10px;
+  color: #aaa;
+  letter-spacing: 0;
+}
+
+.tpl-folder-select {
+  flex-shrink: 0;
+  max-width: 96px;
+  height: 24px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  color: #b8b8b8;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.tpl-folder-select:focus { border-color: #4FC3F7; }
+
+.tpl-delete-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tpl-delete-btn:hover { background: #3a2a2a; color: #ff6b6b; }
+
+/* Template sections: plain header + separator + inline icon buttons */
+.tpl-section { padding: 10px 12px; }
+
+.tpl-section-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #b8b8b8;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.tpl-section-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.tpl-icon-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #d0d0d0;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.tpl-icon-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tpl-icon-btn:hover:not(:disabled) {
+  background: #323232;
+  border-color: #4a4a4a;
+  color: #fff;
+}
+
+.tpl-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

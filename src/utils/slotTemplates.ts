@@ -61,7 +61,8 @@ export function createTemplate(
   name: string,
   components: ComponentConfig[],
   description?: string,
-  customSlotSize?: { width: number; height: number }
+  customSlotSize?: { width: number; height: number },
+  folder?: string
 ): SlotTemplate {
   const templates = loadTemplates();
 
@@ -91,6 +92,7 @@ export function createTemplate(
     id: existingIndex !== -1 ? templates[existingIndex].id : crypto.randomUUID(),
     name,
     description,
+    folder: folder?.trim() || (existingIndex !== -1 ? templates[existingIndex].folder : undefined),
     components: normalizedComponents,
     slotSize,
     // Set original size for percentage-based scaling

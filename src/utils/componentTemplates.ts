@@ -60,7 +60,8 @@ export function createComponentTemplate(
   name: string,
   selectedIds: string[],
   allComponents: ComponentConfig[],
-  description?: string
+  description?: string,
+  folder?: string
 ): ComponentGroupTemplate {
   const templates = loadComponentTemplates();
 
@@ -114,6 +115,7 @@ export function createComponentTemplate(
     id: existingIndex !== -1 ? templates[existingIndex].id : crypto.randomUUID(),
     name,
     description,
+    folder: folder?.trim() || (existingIndex !== -1 ? templates[existingIndex].folder : undefined),
     components: normalizedComponents,
     boundingBox: { width: bounds.width, height: bounds.height },
     originalPosition: { x: bounds.minX, y: bounds.minY },
@@ -129,6 +131,18 @@ export function createComponentTemplate(
   saveComponentTemplates(templates);
 
   return template;
+}
+
+export function updateComponentTemplate(
+  id: string,
+  updates: Partial<ComponentGroupTemplate>
+): ComponentGroupTemplate | undefined {
+  const templates = loadComponentTemplates();
+  const idx = templates.findIndex(t => t.id === id);
+  if (idx === -1) return undefined;
+  templates[idx] = { ...templates[idx], ...updates, updatedAt: Date.now() };
+  saveComponentTemplates(templates);
+  return templates[idx];
 }
 
 // Delete a template

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutConfig, ComponentConfig } from '../types';
 import { expandLayoutForRuntime } from '../utils/slotTemplates';
+import { bakeShapeComponents } from '../utils/shapeExport';
 import { measureTextBearings, getSampleTextForBearing } from '../utils/textBearings';
 import './ExportModal.css';
 
@@ -20,6 +21,10 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
   };
 
   if (!roundedComponent.props) return roundedComponent;
+
+  // Shape components: props were already validated/baked by bakeShapeComponents,
+  // and none of the image/text/border cleanup below applies to them.
+  if (roundedComponent.type === 'shape') return roundedComponent;
 
   const props = { ...roundedComponent.props };
 
@@ -196,12 +201,12 @@ function normalizeLayerValues(components: ComponentConfig[]): ComponentConfig[] 
 // with short paths. The TV-side slot expansion auto-prefixes paths and clones
 // per row. Same export works for re-importing into the builder because
 // templates are inlined rather than referenced by id.
-function cleanLayoutForExport(layout: LayoutConfig): LayoutConfig {
+export function cleanLayoutForExport(layout: LayoutConfig): LayoutConfig {
   const inlinedComponents = expandLayoutForRuntime(layout.components);
   const normalizedComponents = normalizeLayerValues(inlinedComponents);
   return {
     ...layout,
-    components: normalizedComponents.map(cleanComponentProps)
+    components: bakeShapeComponents(normalizedComponents).map(cleanComponentProps)
   };
 }
 
