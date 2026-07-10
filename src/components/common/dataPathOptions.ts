@@ -124,6 +124,7 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   { label: 'Tennis: Away Sets Won', value: 'setSlots.setsWon.away', group: 'Tennis LE', purposes: ['data'] },
   { label: 'Tennis: Total Sets', value: 'setSlots.totalSets', group: 'Tennis LE', purposes: ['data'] },
   { label: 'Tennis: Points Tracking Enabled', value: 'setSlots.pointsEnabled', group: 'Tennis LE', purposes: ['toggle', 'visibility'] },
+  { label: 'Tennis: In Tiebreak', value: 'setSlots.inTiebreak', group: 'Tennis LE', purposes: ['toggle', 'visibility'], description: 'True during a 6-6 tiebreak' },
   { label: 'Tennis: Home Advantage', value: 'setSlots.homeAdvantage', group: 'Tennis LE', purposes: ['toggle', 'visibility'], description: 'Home player holds advantage (AD)' },
   { label: 'Tennis: Away Advantage', value: 'setSlots.awayAdvantage', group: 'Tennis LE', purposes: ['toggle', 'visibility'], description: 'Away player holds advantage (AD)' },
 
@@ -133,6 +134,7 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   { label: 'Set Active (current set)', value: 'active', group: 'Tennis Slot Template', purposes: ['toggle', 'visibility'], slotContext: true },
   { label: 'Set Exists (within best-of)', value: 'exists', group: 'Tennis Slot Template', purposes: ['toggle', 'visibility'], slotContext: true },
   { label: 'Set Won (historical winner)', value: 'won', group: 'Tennis Slot Template', purposes: ['toggle', 'visibility'], slotContext: true },
+  { label: 'Set Played (historical, past set)', value: 'played', group: 'Tennis Slot Template', purposes: ['toggle', 'visibility'], slotContext: true },
 
   // ── Leaderboard ────────────────────────────────────────────────────────
   { label: 'Home Player Count', value: 'leaderboardSlots.home.count', group: 'Leaderboard', purposes: ['data'] },

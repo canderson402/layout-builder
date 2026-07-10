@@ -1158,17 +1158,23 @@ function PropertyPanel({
                       away: { ...newGameData.setSlots?.away },
                     };
                     for (let i = 0; i < 5; i++) {
-                      const isActive = i + 1 === activeSet;
-                      const exists = i + 1 <= totalSets;
+                      const setNumber = i + 1;
+                      const isActive = setNumber === activeSet;
+                      const exists = setNumber <= totalSets;
+                      const played = setNumber < activeSet;
                       newGameData.setSlots.home[`slot${i}`] = {
                         ...newGameData.setSlots.home[`slot${i}`],
                         active: isActive,
                         exists,
+                        played,
+                        won: played,
                       };
                       newGameData.setSlots.away[`slot${i}`] = {
                         ...newGameData.setSlots.away[`slot${i}`],
                         active: isActive,
                         exists,
+                        played,
+                        won: false,
                       };
                     }
                     if (onUpdateGameData) onUpdateGameData(newGameData);

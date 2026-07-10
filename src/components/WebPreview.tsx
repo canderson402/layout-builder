@@ -935,21 +935,6 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
           : template.slotSize.height;
 
-        console.log('[SLOTLIST]', config.id, {
-          templateName: props.templateName,
-          templateId: props.templateId,
-          templateFound: !!template,
-          componentCount: template.components.length,
-          nonGroupCount: template.components.filter(c => c.type !== 'group').length,
-          slotCount,
-          firstComp: template.components.filter(c => c.type !== 'group')[0]?.props
-            ? {
-                visibilityPath: template.components.filter(c => c.type !== 'group')[0].props?.visibilityPath,
-                visibilityCondition: template.components.filter(c => c.type !== 'group')[0].props?.visibilityCondition,
-              }
-            : null,
-        });
-
         // Render actual template components for each slot
         const slotElements: React.ReactNode[] = [];
         let visibleSlotIndex = 0; // Track position for visible slots (stacks consecutively)
@@ -1023,13 +1008,6 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             // Render the component - use template's layer + base effectiveLayer for proper z-ordering
             const componentLayer = effectiveLayer + (templateComp.layer || 0);
             const slotVisible = getComponentVisibility(previewComp, effectiveGameData);
-            console.log('[SLOT]', config.id, 'slot' + slotIndex, {
-              type: previewComp.type,
-              visibilityPath: previewComp.props?.visibilityPath,
-              resolvedPath: previewComp.props?.visibilityPath ? getNestedData(effectiveGameData, previewComp.props.visibilityPath) : undefined,
-              hasCondition: !!previewComp.props?.visibilityCondition,
-              slotVisible,
-            });
             const compElement = renderComponent(previewComp, slotIndex * 100 + compIndex, componentLayer, slotVisible);
             slotElements.push(compElement);
           });
