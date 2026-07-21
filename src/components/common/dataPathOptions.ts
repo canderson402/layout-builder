@@ -245,6 +245,7 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
 
   // ── Game Settings ──────────────────────────────────────────────────────
   { label: 'Display Clock', value: 'gameSettings.display_clock', group: 'Game Settings', purposes: ['toggle', 'visibility'] },
+  { label: 'Single Bonus Light', value: 'singleBonusLight', group: 'Game Settings', purposes: ['toggle', 'visibility'] },
 
   // ── Sponsorship ────────────────────────────────────────────────────────
   { label: 'Banner Ads', value: 'user_sequences.banner', group: 'Sponsorship', purposes: ['data'] },
