@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 // Run `npm run sync-images` from the project root to regenerate
 //
-// Generated: 2026-06-25T14:56:28.760Z
+// Generated: 2026-07-22T17:00:14.849Z
 
 // Available sports (auto-detected from folder structure)
 export const AVAILABLE_SPORTS = ["Baseball","Basketball","Fallback","Football","Generic","Lacrosse-Hockey-Waterpolo","Leaderboard","Mocks","Rugby","Sequence","Soccer","Tennis","Tennis-LE","Universal","Utility","Volleyball","Wrestling","scoreTable","shootout"] as const;
@@ -22,7 +22,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
     hasSubsections: false,
   },
   "Basketball": {
-    rootImages: ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png"],
+    rootImages: ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png","single-bonus-left-off.png","single-bonus-left-on.png","single-bonus-right-off.png","single-bonus-right-on.png","st-single-bonus-left-off.png","st-single-bonus-left-on.png","st-single-bonus-right-off.png","st-single-bonus-right-on.png"],
     subsections: {},
     hasSubsections: false,
   },
@@ -116,7 +116,7 @@ export const SPORT_IMAGE_DATA: Record<Sport, SportImageData> = {
 // Legacy flat manifest (root images only, for backwards compatibility)
 export const KNOWN_IMAGES: Record<Sport, string[]> = {
   "Baseball": ["baseball-base.png","baseball-bases-1-filled.png","baseball-bases-1.png","baseball-bases-2-filled.png","baseball-bases-2.png","baseball-bases-3 filled.png","baseball-bases-3.png"],
-  "Basketball": ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png"],
+  "Basketball": ["basketball-base.png","basketball-bonus-left_bottom-active.png","basketball-bonus-left_bottom.png","basketball-bonus-left_top-active.png","basketball-bonus-left_top.png","basketball-bonus-right_bottom-active.png","basketball-bonus-right_bottom.png","basketball-bonus-right_top-active.png","basketball-bonus-right_top.png","basketball-clock-bg-paused.png","basketball-clock-bg.png","basketball-overtime-overlay.png","basketball-posession-left.png","basketball-posession-right.png","single-bonus-left-off.png","single-bonus-left-on.png","single-bonus-right-off.png","single-bonus-right-on.png","st-single-bonus-left-off.png","st-single-bonus-left-on.png","st-single-bonus-right-off.png","st-single-bonus-right-on.png"],
   "Fallback": ["cinema-placeholder.png","pano-placeholder.png"],
   "Football": ["football-base.png","football-clock-bg-paused.png","football-clock-bg.png","football-overtime-overlay.png"],
   "Generic": [],
