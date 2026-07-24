@@ -18,6 +18,11 @@
  * picker when the field is inside a slotList template.
  */
 
+// Note: `overtimeRules` and `tennisMatches` exist on GameData (granular
+// protocol) as arbitrary structural objects for slot/structural consumption
+// only — they are not directly bindable scalar paths, so they're
+// intentionally omitted from this catalog.
+
 export type PathPurpose = 'data' | 'toggle' | 'visibility' | 'condition';
 
 export interface PathOption {
@@ -88,6 +93,7 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   { label: 'Away In Double Bonus', value: 'awayTeam.doubleBonus', group: 'Status', purposes: ['toggle', 'visibility'] },
   { label: 'Home Has Possession', value: 'homeTeam.possession', group: 'Status', purposes: ['toggle', 'visibility'] },
   { label: 'Away Has Possession', value: 'awayTeam.possession', group: 'Status', purposes: ['toggle', 'visibility'] },
+  { label: 'Wrestling Scoring Mode', value: 'wrestlingScoringMode', group: 'Status', purposes: ['data'] },
 
   // ── Stats ──────────────────────────────────────────────────────────────
   { label: 'Home Timeouts', value: 'homeTeam.timeouts', group: 'Stats', purposes: ['data'] },
@@ -208,6 +214,12 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   { label: 'First Base Occupied', value: 'firstBase', group: 'Baseball', purposes: ['toggle', 'visibility'] },
   { label: 'Second Base Occupied', value: 'secondBase', group: 'Baseball', purposes: ['toggle', 'visibility'] },
   { label: 'Third Base Occupied', value: 'thirdBase', group: 'Baseball', purposes: ['toggle', 'visibility'] },
+  { label: 'Home Pitches', value: 'homeTeam.pitches', group: 'Baseball', purposes: ['data'] },
+  { label: 'Away Pitches', value: 'awayTeam.pitches', group: 'Baseball', purposes: ['data'] },
+  { label: 'Home Hits', value: 'homeTeam.hits', group: 'Baseball', purposes: ['data'] },
+  { label: 'Away Hits', value: 'awayTeam.hits', group: 'Baseball', purposes: ['data'] },
+  { label: 'Home Errors', value: 'homeTeam.errors', group: 'Baseball', purposes: ['data'] },
+  { label: 'Away Errors', value: 'awayTeam.errors', group: 'Baseball', purposes: ['data'] },
 
   // ── Inning Slots (Baseball — visibility for current inning) ────────────
   { label: 'Slot 1 Is Current Inning', value: 'inningSlots.0.isCurrentInning', group: 'Baseball', purposes: ['visibility'] },

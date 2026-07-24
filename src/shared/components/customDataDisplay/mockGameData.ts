@@ -19,6 +19,7 @@ export const mockGameData = {
     color: '#c41e3a',
     hits: 0,
     errors: 0,
+    pitches: 0,
     cornerKicks: 0,
   },
   awayTeam: {
@@ -32,6 +33,7 @@ export const mockGameData = {
     color: '#003f7f',
     hits: 0,
     errors: 0,
+    pitches: 0,
     cornerKicks: 0,
   },
   gameClock: '5:42',
@@ -51,6 +53,9 @@ export const mockGameData = {
   half: 2,
   set: 3,
   isOvertimeActive: true,
+  overtimeRules: null,
+  tennisMatches: null,
+  wrestlingScoringMode: 'wrestling',
   // Football
   down: 1,
   yardsToGo: 10,
