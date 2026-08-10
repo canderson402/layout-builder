@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from
 import { ComponentConfig, LayoutConfig, SlotTemplate } from '../types';
 import { loadTemplates, saveTemplates } from '../utils/slotTemplates';
 import TemplatePicker from './common/TemplatePicker';
+import { VARIANT_PATH_OPTIONS, findVariantPath } from './common/variantOptions';
 import ColorPicker from './ColorPicker';
 import CollapsibleSection from './common/CollapsibleSection';
 import SectionGroup from './common/SectionGroup';
@@ -654,6 +655,40 @@ function PropertyPanel({
   );
 
 
+  /**
+   * Preview a trivia question type. Also reshapes the option slots, because the
+   * kind and the number of options move together on the wire: True/False is
+   * always two, typed answers have none.
+   */
+  const updateTriviaKind = (kind: string) => {
+    if (!onUpdateGameData || !gameData) return;
+
+    const OPTIONS: Record<string, { label: string; text: string; correct: boolean }[]> = {
+      true_false: [
+        { label: 'A', text: 'True', correct: true },
+        { label: 'B', text: 'False', correct: false },
+      ],
+      text_input: [],
+      number_input: [],
+    };
+    const fallback = [
+      { label: 'A', text: 'Traveling', correct: false },
+      { label: 'B', text: 'Double dribble', correct: false },
+      { label: 'C', text: 'Icing', correct: true },
+      { label: 'D', text: 'Backcourt', correct: false },
+    ];
+    const options = OPTIONS[kind] ?? fallback;
+
+    onUpdateGameData({
+      ...gameData,
+      trivia: { ...gameData.trivia, questionKind: kind, multiSelect: kind === 'multiple_select' },
+      triviaSlots: {
+        optionCount: options.length,
+        home: Object.fromEntries(options.map((o, i) => [`slot${i}`, { exists: true, ...o }])),
+      },
+    });
+  };
+
   // Helper to update penalty count for preview
   const updatePenaltyCount = (team: 'home' | 'away', count: number) => {
     if (!onUpdateGameData || !gameData) return;
@@ -982,6 +1017,51 @@ function PropertyPanel({
             <div style={{ height: '8px' }} />
             <GameDataInput label="Away Team Name" path="awayTeam.name" />
             <GameDataColor label="Away Team Color" path="awayTeam.color" />
+          </GameDataSection>
+
+          {/* Trivia (Engage) */}
+          <GameDataSection title="Trivia">
+            <label style={{ display: 'block', color: '#aaa', fontSize: '11px', marginBottom: '2px' }}>
+              Question Type
+            </label>
+            <select
+              value={gameData?.trivia?.questionKind || 'multiple_choice'}
+              onChange={(e) => updateTriviaKind(e.target.value)}
+              style={{ width: '100%', marginBottom: '8px' }}
+            >
+              <option value="true_false">True / False</option>
+              <option value="multiple_choice">Multiple Choice</option>
+              <option value="multiple_select">Multiple Choice (Select Many)</option>
+              <option value="text_input">Text Answer</option>
+              <option value="number_input">Number Answer</option>
+            </select>
+            <label style={{ display: 'block', color: '#aaa', fontSize: '11px', marginBottom: '2px' }}>
+              Phase
+            </label>
+            <select
+              value={gameData?.trivia?.phase || 'question'}
+              onChange={(e) => onUpdateGameData?.({
+                ...gameData,
+                trivia: { ...gameData.trivia, phase: e.target.value },
+              })}
+              style={{ width: '100%', marginBottom: '8px' }}
+            >
+              <option value="standby">Standby</option>
+              <option value="countdown">Countdown</option>
+              <option value="question">Question</option>
+              <option value="answer">Answer / Reveal</option>
+              <option value="gameOver">Game Over</option>
+            </select>
+            <GameDataInput label="Question" path="trivia.questionText" />
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Question #" path="trivia.questionNumber" type="number" min={0} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <GameDataInput label="Of" path="trivia.questionTotal" type="number" min={0} />
+              </div>
+            </div>
+            <GameDataInput label="Seconds Left" path="trivia.secondsRemaining" type="number" min={0} />
           </GameDataSection>
 
           {/* Scores */}
@@ -3988,6 +4068,66 @@ function PropertyPanel({
               </div>
 
               <div className="property-field">
+                <label>Template Varies By</label>
+                <select
+                  value={component.props?.variantPath || ''}
+                  onChange={(e) => updateComponentWithScrollPreservation(component.id, {
+                    props: {
+                      ...component.props,
+                      variantPath: e.target.value || undefined,
+                      // Assignments belong to the path they were made against.
+                      variants: e.target.value === component.props?.variantPath
+                        ? component.props?.variants
+                        : undefined,
+                    }
+                  })}
+                >
+                  <option value="">Nothing (always use the template above)</option>
+                  {VARIANT_PATH_OPTIONS.map(option => (
+                    <option key={option.path} value={option.path}>{option.label}</option>
+                  ))}
+                </select>
+                <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
+                  Pick a different template per value. Anything left unset falls back to the template above.
+                </small>
+              </div>
+
+              {findVariantPath(component.props?.variantPath) && (
+                <div className="property-field">
+                  <label>Template Per Value</label>
+                  {findVariantPath(component.props?.variantPath)!.values.map(variant => {
+                    const assigned = component.props?.variants?.[variant.value];
+                    return (
+                      <div key={variant.value} style={{ marginBottom: '8px' }}>
+                        <div style={{ color: '#aaa', fontSize: '11px', marginBottom: '2px' }}>
+                          {variant.label}
+                        </div>
+                        <TemplatePicker
+                          templates={slotTemplates}
+                          value={assigned?.templateId}
+                          onChange={(newTemplateId) => {
+                            const selectedTemplate = slotTemplates.find(t => t.id === newTemplateId);
+                            const nextVariants = { ...(component.props?.variants || {}) };
+                            if (newTemplateId) {
+                              nextVariants[variant.value] = {
+                                templateId: newTemplateId,
+                                templateName: selectedTemplate?.name || '',
+                              };
+                            } else {
+                              delete nextVariants[variant.value];
+                            }
+                            updateComponentWithScrollPreservation(component.id, {
+                              props: { ...component.props, variants: nextVariants }
+                            });
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="property-field">
                 <label>Team</label>
                 <select
                   value={component.props?.team || 'home'}
@@ -4012,6 +4152,7 @@ function PropertyPanel({
                   <option value="volleyballLeaderboardSlots">Leaderboard Slots (Volleyball)</option>
                   <option value="penaltySlots">Penalty Slots</option>
                   <option value="setSlots">Tennis Set Slots</option>
+                  <option value="triviaSlots">Trivia Answer Slots</option>
                 </select>
                 <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>
                   Template data paths will be prefixed with this + team + slot number
@@ -4055,6 +4196,9 @@ function PropertyPanel({
                   <option value="">None (use static Number of Slots)</option>
                   <optgroup label="Tennis LE">
                     <option value="setSlots.totalSets">Tennis Total Sets (Best-Of)</option>
+                  </optgroup>
+                  <optgroup label="Trivia">
+                    <option value="triviaSlots.optionCount">Trivia Answer Options</option>
                   </optgroup>
                 </select>
                 <small style={{ color: '#888', display: 'block', marginTop: '4px' }}>

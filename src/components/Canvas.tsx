@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ComponentConfig, LayoutConfig } from '../types';
 import WebPreview from './WebPreview';
-import { isMultiStateGroup, resolveActiveStateId } from '../shared/conditions';
+import { isMultiStateGroup, resolveActiveStateId, evaluateConditionGroup, getNestedValue } from '../shared/conditions';
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 import VertexEditOverlay from './VertexEditOverlay';
 import { refitShapeGeometry } from '../shared/utils/shapePath';
@@ -96,6 +96,9 @@ export default function Canvas({
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string>('');
   const [showGrid, setShowGrid] = useState(true);
+  // When on, only what the preview is actually drawing can be clicked. Stops a
+  // click from landing on a component belonging to a state you aren't editing.
+  const [lockHidden, setLockHidden] = useState(true);
   const [showHalfwayLines, setShowHalfwayLines] = useState(false);
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true); // Toggle for green selection outlines (default ON)
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string>(() => {
@@ -272,6 +275,45 @@ export default function Canvas({
     }
     return false;
   }, [gameData]);
+
+  /**
+   * Is this component hidden by its OWN rules right now?
+   *
+   * Ancestor gates are handled by isAncestorHidden; this covers the case of
+   * several components stacked in one spot, each shown by a different
+   * condition (a correct-answer variant over a wrong-answer variant, say).
+   * Without it, clicking the stack grabs whichever is on top rather than the
+   * one you can see.
+   */
+  const isSelfHidden = useCallback((component: ComponentConfig): boolean => {
+    const props: any = component.props || {};
+    const conditionResult = evaluateConditionGroup(props.visibilityCondition, gameData);
+    if (conditionResult !== null) return !conditionResult;
+    if (props.visibilityPath) {
+      const value = getNestedValue(gameData, props.visibilityPath);
+      if (typeof value === 'boolean') return !value;
+    }
+    return false;
+  }, [gameData]);
+
+  /**
+   * Can this component be grabbed on the canvas? Selecting from the Layer
+   * Panel always works, so hidden things are never truly out of reach --
+   * and the Hidden toolbar toggle turns this filter off entirely.
+   */
+  const isSelectableOnCanvas = useCallback((component: ComponentConfig): boolean => {
+    // Groups and multi-state parents are containers -- they have no drawn
+    // form, so there is nothing on the canvas to grab. Select them in the
+    // Layer Panel; their children carry the geometry.
+    if (component.type === 'group' || component.type === 'multiState') return false;
+    if (component.visible === false) return false;
+    // A component in a state you aren't previewing is never grabbable, even if
+    // it is currently selected -- it isn't on screen. Edit it from the
+    // Property Panel, or switch states in the Layer Panel.
+    if (isAncestorHidden(component, layout.components || [])) return false;
+    if (lockHidden && isSelfHidden(component)) return false;
+    return true;
+  }, [isAncestorHidden, isSelfHidden, lockHidden, layout.components]);
 
   // Simple pixel-based grid
   const gridSize = GRID_SIZE_OPTIONS[gridSizeIndex] || DEFAULT_GRID_SIZE;
@@ -978,7 +1020,10 @@ export default function Canvas({
     
     // Find all components at this click position
     const componentsAtPosition = (layout.components || [])
-      .filter(c => c.visible !== false)
+      // Cycling through stacked components must not reach into a state that
+      // isn't being previewed -- selecting one used to re-pin the preview to
+      // it, flipping the canvas out from under you.
+      .filter(c => isSelectableOnCanvas(c))
       .filter(c => {
         const left = c.position.x;
         const right = c.position.x + c.size.width;
@@ -1007,7 +1052,7 @@ export default function Canvas({
       handleComponentSelect(currentComponent.id, true);
       setLastSelectedId(currentComponent.id);
     }
-  }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing, isScaling, confirmScaleMode, cancelScaleMode]);
+  }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing, isScaling, confirmScaleMode, cancelScaleMode, isSelectableOnCanvas]);
 
   // Handler for axis-constrained drag (from arrow handles)
   const handleAxisDragMouseDown = useCallback((e: React.MouseEvent, axis: 'x' | 'y', component: ComponentConfig) => {
@@ -1443,7 +1488,9 @@ export default function Canvas({
 
       if (hasArea) {
         const hit = (layout.components || [])
-          .filter(c => c.visible !== false && c.type !== 'group')
+          // Marquee must not sweep up components from a state that isn't
+          // being previewed -- they aren't on screen to be dragged around.
+          .filter(c => isSelectableOnCanvas(c))
           .filter(c => {
             const cLeft = c.position.x;
             const cRight = c.position.x + c.size.width;
@@ -1561,7 +1608,7 @@ export default function Canvas({
     setActiveGuides({ guides: [] }); // Clear smart guides
     setDragAxisConstraint(null); // Clear axis constraint
     isCopyDragRef.current = false; // Clear copy-drag flag
-  }, [setDraggedComponent, isCreating, createStart, createEnd, isMarqueeSelecting, marqueeStart, marqueeEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId]);
+  }, [setDraggedComponent, isCreating, createStart, createEnd, isMarqueeSelecting, marqueeStart, marqueeEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId, isSelectableOnCanvas]);
 
   // Calculate bounding box for multiple selected components
   const getMultiSelectBounds = useCallback(() => {
@@ -2264,13 +2311,7 @@ export default function Canvas({
   // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
     return (layout.components || [])
-      .filter(component =>
-        component.visible !== false &&
-        component.type !== 'group' &&
-        !isAncestorHidden(component, layout.components || [])
-      ) // Only check visible, non-group components with visible ancestors
-      // Multi-state containers match last so the components inside win the hit
-      .sort((a, b) => (a.type === 'multiState' ? 1 : 0) - (b.type === 'multiState' ? 1 : 0))
+      .filter(component => isSelectableOnCanvas(component)) // Only what the preview draws
       .find(component => {
         // Positions and sizes are already in pixels; multi-state parents use
         // their children's bounding box (placeholder box while empty)
@@ -2286,7 +2327,7 @@ export default function Canvas({
 
         return x >= left && x <= left + width && y >= top && y <= top + height;
       });
-  }, [layout.components, isAncestorHidden]);
+  }, [layout.components, isSelectableOnCanvas]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // Handle scale mode - left click confirms, right click is handled by context menu
@@ -2365,11 +2406,12 @@ export default function Canvas({
         }
         e.stopPropagation();
       } else if (!componentAtPoint) {
-        // Cmd+drag on empty canvas - create a new component
+        // Cmd+drag on empty canvas - create a new component. Selection is left
+        // alone on purpose: it is what tells App which group or state the new
+        // component belongs to.
         setIsCreating(true);
         setCreateStart({ x: canvasX, y: canvasY });
         setCreateEnd({ x: canvasX, y: canvasY });
-        onSelectComponents([]);
 
         // Prevent synthetic touch events from interfering
         if (e.type === 'touchstart') {
@@ -3106,6 +3148,13 @@ export default function Canvas({
             >
               BG
             </button>
+            <button
+              className={`segmented-btn ${lockHidden ? 'active' : ''}`}
+              onClick={() => setLockHidden(!lockHidden)}
+              title="Lock hidden components — only what the preview draws can be clicked"
+            >
+              Lock Hidden
+            </button>
           </div>
         </div>
 
@@ -3661,11 +3710,8 @@ export default function Canvas({
           {/* Overlay draggable handles - sorted by effective layer (considers parent hierarchy), only show visible components and those with visible ancestors, exclude groups */}
           {[...(layout.components || [])]
             .filter(component =>
-              component.visible !== false &&
-              component.type !== 'group' &&
-              component.id !== editingShapeId &&
-              !isAncestorHidden(component, layout.components || [])
-            ) // Exclude groups, components with hidden ancestors, and the shape being vertex-edited
+              component.id !== editingShapeId && isSelectableOnCanvas(component)
+            ) // Exclude the shape being vertex-edited and anything the preview isn't drawing
             .sort((a, b) => getEffectiveLayer(a) - getEffectiveLayer(b))
             .map(component => getComponentHandle(component))}
 
@@ -3899,7 +3945,8 @@ function getComponentColor(component: ComponentConfig): string {
     custom: '#795548',
     dynamicList: '#009688',
     group: '#666666',
-    multiState: '#BA68C8'
+    multiState: '#BA68C8',
+    qrCode: '#37474F'
   };
-  return colors[component.type] || '#666';
+  return (colors as Record<string, string>)[component.type] || '#666';
 }

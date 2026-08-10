@@ -4,7 +4,7 @@ import { ComponentConfig, LayoutConfig } from '../types';
 import CustomDataDisplay from '../shared/components/CustomDataDisplay';
 import DynamicList from '../shared/components/DynamicList';
 import LeaderboardList from '../shared/components/LeaderboardList';
-import { getTemplate } from '../utils/slotTemplates';
+import { resolveSlotTemplate } from '../utils/slotTemplates';
 import {
   evaluateConditionGroup,
   resolveActiveStateId,
@@ -662,6 +662,40 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         );
       }
 
+      case 'qrCode': {
+        // Placeholder, not a real code. The preview only needs to communicate
+        // position and size; drawing it for real would mean a second QR
+        // library in the builder for no benefit.
+        const qrSize = Math.min(width, height);
+        return wrapContent(
+          <div
+            style={{
+              width: qrSize,
+              height: qrSize,
+              background: props?.backgroundColor || '#ffffff',
+              border: `2px dashed ${props?.color || '#000000'}`,
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: props?.color || '#000000',
+              fontSize: Math.max(10, Math.round(qrSize * 0.09)),
+              fontWeight: 700,
+              textAlign: 'center',
+              gap: 4,
+            }}
+          >
+            <span>QR CODE</span>
+            <span style={{ fontSize: Math.max(8, Math.round(qrSize * 0.06)), fontWeight: 400, opacity: 0.7 }}>
+              {props?.dataPath || 'no data path'}
+            </span>
+          </div>,
+          baseStyle,
+          componentKey
+        );
+      }
+
       case 'custom': {
         // For toggle components, compute effective toggle state and get state-specific props
         let effectiveProps = props;
@@ -878,7 +912,10 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
       case 'slotList': {
         // Render the actual template components for preview
         // Try to get template by ID first, then fallback to name for imported layouts
-        const template = props.templateId ? getTemplate(props.templateId, props.templateName) : null;
+        // Variant-aware: with variantPath set the template follows the live
+        // preview value, so switching Trivia Question Type in Preview Data
+        // swaps the row design the way the TV will.
+        const template = resolveSlotTemplate(props, effectiveGameData) || null;
         const staticSlotCount = props.slotCount || 5;
         const slotSpacing = props.slotSpacing ?? 5;
         const direction = props.direction || 'vertical';

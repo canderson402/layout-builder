@@ -31,6 +31,9 @@ const EXCLUDED_INGEST = new Set([
   'periodScores',
   'tennisSetSlots',
   'leaderboardEvent',
+  // Routed to the leaderboard manager rather than a GameData field, per the
+  // registry entry's own note, and carries an empty path.
+  'leaderboardSnapshot',
 ]);
 
 const EXCLUDED_IDS = new Set(['overtime_rules', 'tennis_matches', 'setting', 'team']);
@@ -46,8 +49,13 @@ function expandPath(entry: RegistryEntry): string[] {
 }
 
 describe('dataPathOptions vs protocol-registry', () => {
+  // Only field entries carry a `path` and become bindable data paths. Commands
+  // (layout switches, clock updates, trivia state) have none -- the same filter
+  // the ingest-map generator applies.
   const entries = (registry as RegistryEntry[]).filter(
-    e => !EXCLUDED_INGEST.has(e.ingest) && !EXCLUDED_IDS.has(e.id),
+    e => ((e as any).kind ?? 'field') === 'field'
+      && !EXCLUDED_INGEST.has(e.ingest)
+      && !EXCLUDED_IDS.has(e.id),
   );
 
   // tennis_points path template `setSlots.{team}Points` doesn't match the

@@ -60,6 +60,7 @@ const GROUP_ORDER = [
   'Rugby',
   'Soccer',
   'Game Settings',
+  'Trivia',
   'Sponsorship',
 ];
 
@@ -96,6 +97,35 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   { label: 'Wrestling Scoring Mode', value: 'wrestlingScoringMode', group: 'Status', purposes: ['data'] },
 
   // ── Stats ──────────────────────────────────────────────────────────────
+  // Trivia (Engage). 'trivia.joinUrl' feeds the QR Code component -- it must not
+  // be renamed to end in '.imageUrl', which would route it to the image renderer.
+  { label: 'Trivia Phase', value: 'trivia.phase', group: 'Trivia', purposes: ['data', 'visibility'] },
+  { label: 'Trivia Game Name', value: 'trivia.gameName', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Room Code', value: 'trivia.roomCode', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Join URL (for QR)', value: 'trivia.joinUrl', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Question Number', value: 'trivia.questionNumber', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Question Total', value: 'trivia.questionTotal', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Question', value: 'trivia.questionText', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Points', value: 'trivia.points', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Answer', value: 'trivia.answerText', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Players', value: 'trivia.playerCount', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Answered', value: 'trivia.answeredCount', group: 'Trivia', purposes: ['data'] },
+  { label: 'Trivia Seconds Left', value: 'trivia.secondsRemaining', group: 'Trivia', purposes: ['data'] },
+  // Question kind: true_false | multiple_choice | multiple_select | text_input
+  // | number_input. Compare against it to show the option list for pick-one /
+  // pick-many questions and a "answer on your phone" panel for typed ones.
+  { label: 'Trivia Question Kind', value: 'trivia.questionKind', group: 'Trivia', purposes: ['data', 'visibility'] },
+  { label: 'Trivia Multi-Select', value: 'trivia.multiSelect', group: 'Trivia', purposes: ['toggle', 'visibility'] },
+  { label: 'Trivia Wager Question', value: 'trivia.wager', group: 'Trivia', purposes: ['toggle', 'visibility'] },
+  { label: 'Trivia Option Count', value: 'triviaSlots.optionCount', group: 'Trivia', purposes: ['data'] },
+  // Per-slot fields for a slot list holding the answer options. Short names --
+  // the slot list prefixes them with the row being drawn, same as every other
+  // slot template.
+  { label: 'Option Letter', value: 'label', group: 'Trivia', purposes: ['data'], slotContext: true },
+  { label: 'Option Text', value: 'text', group: 'Trivia', purposes: ['data'], slotContext: true },
+  { label: 'Option Is Correct', value: 'correct', group: 'Trivia', purposes: ['toggle', 'visibility'], slotContext: true },
+  { label: 'Option Exists', value: 'exists', group: 'Trivia', purposes: ['toggle', 'visibility'], slotContext: true },
+
   { label: 'Home Timeouts', value: 'homeTeam.timeouts', group: 'Stats', purposes: ['data'] },
   { label: 'Away Timeouts', value: 'awayTeam.timeouts', group: 'Stats', purposes: ['data'] },
   { label: 'Home Fouls', value: 'homeTeam.fouls', group: 'Stats', purposes: ['data'] },

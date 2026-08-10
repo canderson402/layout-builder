@@ -140,6 +140,33 @@ export function deleteTemplate(id: string): boolean {
 }
 
 // Expand a slotList component into concrete components with full data paths
+/**
+ * Which template should a slot list draw right now?
+ *
+ * With `variantPath` set, the value at that path in game data picks the
+ * template — so one slot list covers every trivia question type without a
+ * single visibility condition. Unassigned values fall back to the list's
+ * default template.
+ */
+export function resolveSlotTemplate(
+  props: any,
+  gameData?: any,
+): SlotTemplate | undefined {
+  const variantPath = props?.variantPath;
+  if (variantPath && gameData) {
+    const value = variantPath.split('.').reduce(
+      (current: any, key: string) => (current && current[key] !== undefined ? current[key] : undefined),
+      gameData,
+    );
+    const assigned = props?.variants?.[String(value)];
+    if (assigned?.templateId) {
+      const variantTemplate = getTemplate(assigned.templateId, assigned.templateName);
+      if (variantTemplate) return variantTemplate;
+    }
+  }
+  return getTemplate(props?.templateId, props?.templateName);
+}
+
 export function expandSlotList(
   slotListComponent: ComponentConfig,
   template: SlotTemplate
@@ -286,10 +313,19 @@ export function expandLayoutForRuntime(components: ComponentConfig[]): Component
     // size, team, dataPathPrefix, slotCountPath, etc.
     result.push(comp);
 
-    const template = getTemplate(comp.props?.templateId, comp.props?.templateName);
-    if (!template) return;
-
     const props = comp.props || {};
+
+    // One inlined slot-0 set per template in play: the default, plus each
+    // variant assignment. The runtime keeps whichever matches variantPath.
+    const variantEntries: { value?: string; template: SlotTemplate }[] = [];
+    const defaultTemplate = getTemplate(props.templateId, props.templateName);
+    if (defaultTemplate) variantEntries.push({ template: defaultTemplate });
+    Object.entries((props.variants || {}) as Record<string, any>).forEach(([value, assigned]) => {
+      const variantTemplate = getTemplate(assigned?.templateId, assigned?.templateName);
+      if (variantTemplate) variantEntries.push({ value, template: variantTemplate });
+    });
+
+    if (variantEntries.length === 0) return;
     const slotCount = props.slotCount || 5;
     const slotSpacing = props.slotSpacing ?? 5;
     const direction = props.direction || 'vertical';
@@ -297,6 +333,7 @@ export function expandLayoutForRuntime(components: ComponentConfig[]): Component
     const boundingWidth = comp.size.width;
     const boundingHeight = comp.size.height;
 
+    variantEntries.forEach(({ value: variantValue, template }) => {
     const naturalWidth = direction === 'horizontal'
       ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
       : template.slotSize.width;
@@ -331,9 +368,12 @@ export function expandLayoutForRuntime(components: ComponentConfig[]): Component
           // runtime to disambiguate when multiple slotLists exist (e.g.
           // stacked home/away strips in a tennis layout).
           slotListId: comp.id,
+          // Absent on the default set; the runtime uses it to pick a set.
+          variantValue,
         },
       };
       result.push(cloned);
+    });
     });
   });
 

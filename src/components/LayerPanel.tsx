@@ -1236,6 +1236,33 @@ export default function LayerPanel({
           >
             Slot List
           </Button>
+
+          {/* Draws a QR from a URL already in game data -- nothing is fetched. */}
+          <Button
+            block
+            variant="default"
+            draggable
+            onClick={() => {
+              const id = onAddComponent('qrCode');
+              onSelectComponents([id]);
+            }}
+            onDragStart={(e: React.DragEvent<HTMLButtonElement>) => {
+              e.dataTransfer.setData('text/plain', JSON.stringify({
+                type: 'preset-component',
+                componentType: 'qrCode',
+                size: { width: 240, height: 240 },
+                props: {
+                  dataPath: 'trivia.joinUrl',
+                  color: '#000000',
+                  backgroundColor: '#ffffff',
+                  ecl: 'M'
+                }
+              }));
+            }}
+            aria-label="Add QR code"
+          >
+            QR Code
+          </Button>
         </div>
 
       </CollapsibleSection>

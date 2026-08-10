@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig, LAYOUT_TYPES } from './types';
+import { resolveActiveStateId } from './shared/conditions';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
@@ -216,6 +217,34 @@ function App() {
       { round: 5, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
     ],
     // Leaderboard slots for player stats preview (includes both basketball and volleyball stats)
+    // Engage trivia. `questionKind` drives slot-list variant templates, so
+    // switching it in Preview Data swaps the row design the way the TV will.
+    trivia: {
+      phase: 'question',
+      questionKind: 'multiple_choice',
+      multiSelect: false,
+      wager: false,
+      gameName: 'Basketball Trivia',
+      roomCode: 'WX2DRP',
+      joinUrl: 'https://example.com/engage/j/WX2DRP',
+      questionNumber: 3,
+      questionTotal: 10,
+      questionText: 'Which of these is NOT a violation in basketball?',
+      points: 100,
+      answerText: 'Icing',
+      playerCount: 42,
+      answeredCount: 37,
+      secondsRemaining: 12,
+    },
+    triviaSlots: {
+      optionCount: 4,
+      home: {
+        slot0: { exists: true, label: 'A', text: 'Traveling', correct: false },
+        slot1: { exists: true, label: 'B', text: 'Double dribble', correct: false },
+        slot2: { exists: true, label: 'C', text: 'Icing', correct: true },
+        slot3: { exists: true, label: 'D', text: 'Backcourt', correct: false },
+      },
+    },
     leaderboardSlots: {
       home: {
         count: 6,
@@ -313,8 +342,17 @@ function App() {
     return descendants;
   }, []);
 
-  // Wrapper for setSelectedComponents that auto-selects children when selecting groups
-  const handleSelectComponents = useCallback((ids: string[]) => {
+  /**
+   * Wrapper for setSelectedComponents that auto-selects children of groups.
+   *
+   * `autoPinState` controls whether selecting something inside a multi-state
+   * container flips the preview to that state. The Layer Panel wants that --
+   * clicking a state is how you switch to it. The canvas must not: it only
+   * offers what the preview is already drawing, and re-pinning from there
+   * would swap the canvas out from under the click.
+   */
+  const handleSelectComponents = useCallback((ids: string[], options?: { autoPinState?: boolean }) => {
+    const autoPinState = options?.autoPinState !== false;
     // Get current layout components
     const components = layout.components || [];
 
@@ -340,7 +378,7 @@ function App() {
     // states just by clicking them in the layer panel. Preview-only prop —
     // stripped on export, so no undo entry needed.
     const pinUpdates = new Map<string, string>(); // parentId -> stateId
-    for (const id of ids) {
+    for (const id of autoPinState ? ids : []) {
       let node = components.find(c => c.id === id);
       while (node?.parentId) {
         const parent = components.find(c => c.id === node!.parentId);
@@ -368,6 +406,11 @@ function App() {
 
     setSelectedComponents(Array.from(expandedIds));
   }, [layout.components, getAllDescendants]);
+
+  /** Canvas selection: same expansion, but never re-pins the previewed state. */
+  const handleSelectFromCanvas = useCallback((ids: string[]) => {
+    handleSelectComponents(ids, { autoPinState: false });
+  }, [handleSelectComponents]);
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
@@ -666,6 +709,59 @@ function App() {
     };
   }, [undo, redo]);
 
+  /**
+   * Where should a newly created component go?
+   *
+   * Whatever is selected defines the context you are working in: a group (or a
+   * multi-state's state container) means "inside this", any other component
+   * means "beside this, under the same parent". Only an empty selection puts
+   * something at the root. Saves dragging every new element into its layer.
+   */
+  const inferParentId = useCallback((): string | undefined => {
+    const components = layout.components || [];
+    // Nothing selected: fall back to the container last worked in, which
+    // survives a deselect (clicking empty canvas, Escape).
+    if (selectedComponents.length === 0) {
+      const remembered = lastContainerRef.current;
+      return remembered && components.some(c => c.id === remembered) ? remembered : undefined;
+    }
+
+    const parentOf = (id: string): string | undefined => {
+      const component = components.find(c => c.id === id);
+      if (!component) return undefined;
+      // A container is the context itself; anything else contributes its parent.
+      return component.type === 'group' ? component.id : component.parentId;
+    };
+
+    const contexts = new Set(selectedComponents.map(parentOf));
+    // A mixed selection has no single home -- fall back to the root.
+    if (contexts.size !== 1) return undefined;
+
+    const context = contexts.values().next().value;
+    if (!context) return undefined;
+
+    // A multi-state parent can only hold state containers, so redirect into
+    // the state currently being previewed.
+    const container = components.find(c => c.id === context);
+    if (container?.type === 'multiState' && Array.isArray(container.props?.states)) {
+      const states = container.props.states;
+      const pinned = container.props.previewStateId;
+      const activeId = pinned && pinned !== 'auto' && states.some((st: any) => st.id === pinned)
+        ? pinned
+        : resolveActiveStateId(states, gameData);
+      return states.find((st: any) => st.id === activeId)?.childId;
+    }
+
+    return context;
+  }, [layout.components, selectedComponents, gameData]);
+
+  // Remember the container the selection sat in, for the empty-selection case.
+  const lastContainerRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (selectedComponents.length === 0) return;
+    lastContainerRef.current = inferParentId();
+  }, [selectedComponents, inferParentId]);
+
   const addComponent = useCallback((
     type: ComponentConfig['type'],
     customPosition?: { x: number, y: number },
@@ -679,6 +775,7 @@ function App() {
   ): string => {
     // Generate ID outside setLayout so we can return it
     const componentId = customId || generateComponentId(type);
+    const resolvedParentId = parentId ?? inferParentId();
 
     setLayout(prev => {
       // Save current state for undo
@@ -702,9 +799,10 @@ function App() {
         uniqueName = `${baseName}${counter}`;
       }
 
-      // Calculate highest layer among root components (no parent) to place new component on top
-      const rootComponents = (prev.components || []).filter(c => !c.parentId);
-      const maxRootLayer = rootComponents.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
+      // Place the new component on top of its siblings -- the components
+      // sharing its parent, which is the root set when it has none.
+      const siblings = (prev.components || []).filter(c => c.parentId === resolvedParentId);
+      const maxRootLayer = siblings.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
 
       const newComponent: ComponentConfig = {
         id: componentId,
@@ -715,7 +813,7 @@ function App() {
         layer: customLayer !== undefined ? customLayer : maxRootLayer + 1,
         props: customProps || getDefaultProps(type),
         team: needsTeam(type) ? 'home' : undefined,
-        parentId,
+        parentId: resolvedParentId,
         // Merge in extra properties (originalSize, originalAspectRatio, scaleAnchor, visible, etc.)
         ...extraProps
       };
@@ -727,7 +825,7 @@ function App() {
     });
 
     return componentId;
-  }, [saveStateForUndo, generateComponentId]);
+  }, [saveStateForUndo, generateComponentId, inferParentId]);
 
   const addShape = useCallback((presetKey: string) => {
     const preset = SHAPE_PRESETS[presetKey];
@@ -1452,7 +1550,7 @@ function App() {
             <MemoizedCanvas
               layout={layout}
               selectedComponents={selectedComponents}
-              onSelectComponents={handleSelectComponents}
+              onSelectComponents={handleSelectFromCanvas}
               onUpdateComponent={updateComponent}
               onDeleteComponent={deleteComponent}
               onDuplicateComponent={duplicateComponent}
@@ -1538,6 +1636,7 @@ function getDefaultSize(type: ComponentConfig['type']) {
     leaderboardList: { width: 300, height: 340 }, // 300px width, 340px height
     multiState: { width: 0, height: 0 }, // no own size — footprint is the children's bounding box
     shape: { width: 384, height: 216 },
+    qrCode: { width: 240, height: 240 },
   };
   return (sizes as Record<string, {width:number;height:number}>)[type] || { width: 192, height: 108 };
 }
@@ -1607,6 +1706,14 @@ function getDefaultProps(type: ComponentConfig['type']) {
       cycleInterval: 5000,
       cycleTransition: 'fade',
       cycleDuration: 500
+    },
+    qrCode: {
+      // The URL to encode. Deliberately not an '.imageUrl' path -- that suffix
+      // routes to the image renderer, which would fetch the page as a picture.
+      dataPath: 'trivia.joinUrl',
+      color: '#000000',
+      backgroundColor: '#ffffff',
+      ecl: 'M',
     },
     shape: {
       shape: structuredClone(SHAPE_PRESETS.rectangle.shape),

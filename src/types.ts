@@ -1,5 +1,5 @@
 export interface ComponentConfig {
-  type: 'teamName' | 'score' | 'clock' | 'period' | 'fouls' | 'timeouts' | 'bonus' | 'custom' | 'dynamicList' | 'leaderboardList' | 'slotList' | 'group' | 'multiState' | 'shape';
+  type: 'teamName' | 'score' | 'clock' | 'period' | 'fouls' | 'timeouts' | 'bonus' | 'custom' | 'dynamicList' | 'leaderboardList' | 'slotList' | 'group' | 'multiState' | 'shape' | 'qrCode';
   position: {
     x: number;
     y: number;
