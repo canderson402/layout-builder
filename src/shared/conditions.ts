@@ -42,10 +42,13 @@ export interface Condition {
   leftPath: string;
   op: ConditionOperator;
   /**
-   * Right side kind: a literal value, another game-data path, or a
-   * true/false boolean ('bool' stores 'true'/'false' in rightValue).
+   * Right side kind: a literal value, another game-data path, a true/false
+   * boolean ('bool' stores 'true'/'false' in rightValue), or one value of an
+   * enum-valued path ('enum', picked from a dropdown in the builder).
+   * 'enum' evaluates exactly like 'value' — the wire value lives in
+   * rightValue — the distinction is only which editor the builder shows.
    */
-  rightType: 'value' | 'path' | 'bool';
+  rightType: 'value' | 'path' | 'bool' | 'enum';
   /** Literal right side, stored as string and coerced at evaluation time. */
   rightValue?: string;
   /** Path right side (e.g. 'awayTeam.score'). */

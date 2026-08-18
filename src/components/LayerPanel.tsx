@@ -14,6 +14,7 @@ import CollapsibleSection from './common/CollapsibleSection';
 import { SHAPE_PRESET_LIST } from '../utils/shapePresets';
 import Button from './common/Button';
 import InfoTooltip from './common/InfoTooltip';
+import TemplateSaveTargets from './common/TemplateSaveTargets';
 import './LayerPanel.css';
 
 // Delete glyph used in the template rows. Row click loads the template;
@@ -111,6 +112,29 @@ export default function LayerPanel({
   const [newComponentTemplateName, setNewComponentTemplateName] = useState('');
   const [newComponentTemplateFolder, setNewComponentTemplateFolder] = useState('');
 
+  // Where a component on the canvas came from, for components loaded from a
+  // template this session: componentId -> the template it was loaded from.
+  // Saving a selection that traces back to a template defaults to overwriting
+  // that template instead of inventing a name from the first component.
+  // Session-scoped — a page reload starts the layout over from the file.
+  const slotTemplateOrigins = useRef(new Map<string, SlotTemplate>());
+  const componentTemplateOrigins = useRef(new Map<string, ComponentGroupTemplate>());
+
+  // Walk each selected component and its ancestors looking for a load origin.
+  const findOrigin = <T,>(origins: Map<string, T>): T | undefined => {
+    for (const id of selectedComponents) {
+      let cursor: string | undefined = id;
+      const guard = new Set<string>();
+      while (cursor && !guard.has(cursor)) {
+        guard.add(cursor);
+        const hit = origins.get(cursor);
+        if (hit) return hit;
+        cursor = layout.components.find(c => c.id === cursor)?.parentId;
+      }
+    }
+    return undefined;
+  };
+
   // Refresh templates from storage
   const refreshTemplates = () => {
     setTemplates(loadTemplates());
@@ -154,10 +178,21 @@ export default function LayerPanel({
       setTemplateSlotHeight(Math.round(bounds.height));
     }
 
-    // Pre-populate with the first selected component's name
-    const firstSelected = layout.components.find(c => c.id === selectedComponents[0]);
-    const defaultName = firstSelected ? getComponentDisplayName(firstSelected) : '';
-    setNewTemplateName(defaultName);
+    // Default to the template this selection was loaded from, so editing a
+    // loaded template and saving updates it instead of creating a near-copy.
+    const origin = findOrigin(slotTemplateOrigins.current);
+    if (origin) {
+      setNewTemplateName(origin.name);
+      setNewTemplateFolder(origin.folder || '');
+      // Keep the slot size the template was authored with — it can be larger
+      // than the components' bounds on purpose (row pitch / padding).
+      setTemplateSlotWidth(Math.round(origin.slotSize.width));
+      setTemplateSlotHeight(Math.round(origin.slotSize.height));
+    } else {
+      // Otherwise pre-populate with the first selected component's name
+      const firstSelected = layout.components.find(c => c.id === selectedComponents[0]);
+      setNewTemplateName(firstSelected ? getComponentDisplayName(firstSelected) : '');
+    }
     setShowTemplateModal(true);
   };
 
@@ -259,6 +294,10 @@ export default function LayerPanel({
       );
     });
 
+    // Tag the wrapper group; the loaded components hang off it, so saving any
+    // of them traces back here through parentId.
+    slotTemplateOrigins.current.set(groupId, template);
+
     onEndDragOperation?.(`Load template: ${template.name}`);
   };
 
@@ -266,10 +305,16 @@ export default function LayerPanel({
   const handleSaveAsComponentTemplate = () => {
     if (selectedComponents.length === 0) return;
 
-    // Pre-populate with the first selected component's name
-    const firstSelected = layout.components.find(c => c.id === selectedComponents[0]);
-    const defaultName = firstSelected ? getComponentDisplayName(firstSelected) : '';
-    setNewComponentTemplateName(defaultName);
+    // Same as slot templates: a selection loaded from a template defaults to
+    // overwriting that template.
+    const origin = findOrigin(componentTemplateOrigins.current);
+    if (origin) {
+      setNewComponentTemplateName(origin.name);
+      setNewComponentTemplateFolder(origin.folder || '');
+    } else {
+      const firstSelected = layout.components.find(c => c.id === selectedComponents[0]);
+      setNewComponentTemplateName(firstSelected ? getComponentDisplayName(firstSelected) : '');
+    }
     setShowComponentTemplateModal(true);
   };
 
@@ -333,6 +378,10 @@ export default function LayerPanel({
         Object.keys(extraProps).length > 0 ? extraProps : undefined
       );
     });
+
+    // Component templates instantiate with known ids, so tag every one of
+    // them — the selection that gets saved may be any part of the group.
+    newComponents.forEach(comp => componentTemplateOrigins.current.set(comp.id, template));
 
     onEndDragOperation?.(`Load component template: ${template.name}`);
   };
@@ -980,6 +1029,15 @@ export default function LayerPanel({
 
   const componentCountForHeader = (layout.components || []).filter(c => c.type !== 'group').length;
 
+  // Both template stores key on name: saving under an existing name replaces
+  // that template. Surface which one, so an overwrite is never a surprise.
+  const nameMatch = <T extends { name: string }>(list: T[], typed: string): T | undefined => {
+    const q = typed.trim().toLowerCase();
+    return q ? list.find(t => t.name.trim().toLowerCase() === q) : undefined;
+  };
+  const slotOverwriteTarget = nameMatch(templates, newTemplateName);
+  const componentOverwriteTarget = nameMatch(componentTemplates, newComponentTemplateName);
+
   return (
     <div className="layer-panel" tabIndex={-1} onKeyDown={handleKeyDown} role="region" aria-label="Layers and components">
       <CollapsibleSection
@@ -1449,6 +1507,20 @@ export default function LayerPanel({
                 <option key={f as string} value={f as string} />
               ))}
             </datalist>
+            <TemplateSaveTargets
+              templates={templates}
+              name={newTemplateName}
+              accentColor="#2196F3"
+              onPick={(name, folder) => {
+                setNewTemplateName(name);
+                setNewTemplateFolder(folder || '');
+              }}
+            />
+            {slotOverwriteTarget && (
+              <p style={{ color: '#FFB74D', fontSize: '12px', marginBottom: '12px' }}>
+                Overwrites “{slotOverwriteTarget.name}” — layouts using it pick up the change.
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowTemplateModal(false)}
@@ -1475,7 +1547,7 @@ export default function LayerPanel({
                   cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed'
                 }}
               >
-                Save Template
+                {slotOverwriteTarget ? 'Overwrite Template' : 'Save Template'}
               </button>
             </div>
           </div>
@@ -1561,6 +1633,20 @@ export default function LayerPanel({
                 <option key={f as string} value={f as string} />
               ))}
             </datalist>
+            <TemplateSaveTargets
+              templates={componentTemplates}
+              name={newComponentTemplateName}
+              accentColor="#9C27B0"
+              onPick={(name, folder) => {
+                setNewComponentTemplateName(name);
+                setNewComponentTemplateFolder(folder || '');
+              }}
+            />
+            {componentOverwriteTarget && (
+              <p style={{ color: '#FFB74D', fontSize: '12px', marginBottom: '12px' }}>
+                Overwrites “{componentOverwriteTarget.name}”.
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowComponentTemplateModal(false)}
@@ -1587,7 +1673,7 @@ export default function LayerPanel({
                   cursor: newComponentTemplateName.trim() ? 'pointer' : 'not-allowed'
                 }}
               >
-                Save Template
+                {componentOverwriteTarget ? 'Overwrite Template' : 'Save Template'}
               </button>
             </div>
           </div>

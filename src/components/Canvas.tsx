@@ -3,6 +3,7 @@ import { ComponentConfig, LayoutConfig } from '../types';
 import WebPreview from './WebPreview';
 import { isMultiStateGroup, resolveActiveStateId, evaluateConditionGroup, getNestedValue } from '../shared/conditions';
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
+import { getSlotListBounds } from '../utils/slotListBounds';
 import VertexEditOverlay from './VertexEditOverlay';
 import { refitShapeGeometry } from '../shared/utils/shapePath';
 import './Canvas.css';
@@ -360,6 +361,26 @@ export default function Canvas({
     return Math.abs(value - snappedValue) <= snapThreshold;
   }, [snapThreshold]);
 
+  // On-screen rect of a component: what the preview actually draws, which is
+  // not always position/size. Container types (multiState, slotList) have no
+  // footprint of their own — theirs is the bounding box of their contents, so
+  // selection, hit testing, snapping and guides all use that instead of the
+  // container's nominal frame.
+  const getDisplayRect = useCallback((component: ComponentConfig) => {
+    const bounds = component.type === 'multiState'
+      ? getMultiStateBounds(component, layout.components || [])
+      : getSlotListBounds(component, gameData);
+    if (bounds) {
+      return { left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height };
+    }
+    return {
+      left: component.position.x,
+      top: component.position.y,
+      width: component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.width : component.size.width,
+      height: component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.height : component.size.height,
+    };
+  }, [layout.components, gameData]);
+
   // Smart snapping function that returns snapped position and active guides
   const smartSnap = useCallback((
     rawX: number,
@@ -455,12 +476,13 @@ export default function Canvas({
       // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
       if (snapToElements) {
         for (const other of otherComponents) {
-        const otherLeft = other.position.x;
-        const otherRight = other.position.x + other.size.width;
-        const otherTop = other.position.y;
-        const otherBottom = other.position.y + other.size.height;
-        const otherCenterX = other.position.x + other.size.width / 2;
-        const otherCenterY = other.position.y + other.size.height / 2;
+        const otherRect = getDisplayRect(other);
+        const otherLeft = otherRect.left;
+        const otherRight = otherRect.left + otherRect.width;
+        const otherTop = otherRect.top;
+        const otherBottom = otherRect.top + otherRect.height;
+        const otherCenterX = otherRect.left + otherRect.width / 2;
+        const otherCenterY = otherRect.top + otherRect.height / 2;
 
         // Calculate vertical span for horizontal guides (min/max Y of both elements)
         const getVerticalSpan = () => ({
@@ -615,7 +637,7 @@ export default function Canvas({
         }
       }
     };
-  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides]);
+  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides, getDisplayRect]);
 
   // Smart snapping function for resize operations - snaps moving edges to guides
   const smartSnapResize = useCallback((
@@ -712,12 +734,13 @@ export default function Canvas({
     // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
     if (snapToElements) {
       for (const other of otherComponents) {
-        const otherLeft = other.position.x;
-        const otherRight = other.position.x + other.size.width;
-        const otherTop = other.position.y;
-        const otherBottom = other.position.y + other.size.height;
-        const otherCenterX = other.position.x + other.size.width / 2;
-        const otherCenterY = other.position.y + other.size.height / 2;
+        const otherRect = getDisplayRect(other);
+        const otherLeft = otherRect.left;
+        const otherRight = otherRect.left + otherRect.width;
+        const otherTop = otherRect.top;
+        const otherBottom = otherRect.top + otherRect.height;
+        const otherCenterX = otherRect.left + otherRect.width / 2;
+        const otherCenterY = otherRect.top + otherRect.height / 2;
 
         // --- Vertical edge snapping (X-axis) ---
         if (movingLeft && !snappedLeftEdge) {
@@ -868,7 +891,7 @@ export default function Canvas({
         }
       }
     };
-  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides]);
+  }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides, getDisplayRect]);
 
   // Use manual zoom level (10% to 200%)
   const scale = zoomLevel / 100;
@@ -1416,10 +1439,15 @@ export default function Canvas({
           const initPos = initialComponentPositions.get(id);
           const comp = layoutRef.current.components.find(c => c.id === id);
           if (initPos && comp) {
-            minX = Math.min(minX, initPos.x);
-            minY = Math.min(minY, initPos.y);
-            maxX = Math.max(maxX, initPos.x + comp.size.width);
-            maxY = Math.max(maxY, initPos.y + comp.size.height);
+            // Snap against what's drawn, so container types (slotList,
+            // multiState) contribute their content box, not their frame.
+            const rect = getDisplayRect(comp);
+            const insetX = rect.left - comp.position.x;
+            const insetY = rect.top - comp.position.y;
+            minX = Math.min(minX, initPos.x + insetX);
+            minY = Math.min(minY, initPos.y + insetY);
+            maxX = Math.max(maxX, initPos.x + insetX + rect.width);
+            maxY = Math.max(maxY, initPos.y + insetY + rect.height);
           }
         });
 
@@ -1431,11 +1459,12 @@ export default function Canvas({
         snapRawX = minX + rawDeltaX;
         snapRawY = minY + rawDeltaY;
       } else {
-        // Single selection - use the component's own dimensions
-        snapWidth = draggedComponent.size.width;
-        snapHeight = draggedComponent.size.height;
-        snapRawX = rawPrimaryX;
-        snapRawY = rawPrimaryY;
+        // Single selection - use the component's drawn rect
+        const rect = getDisplayRect(draggedComponent);
+        snapWidth = rect.width;
+        snapHeight = rect.height;
+        snapRawX = rawPrimaryX + (rect.left - draggedComponent.position.x);
+        snapRawY = rawPrimaryY + (rect.top - draggedComponent.position.y);
       }
 
       // Use smart snapping with the bounding box dimensions
@@ -1492,10 +1521,11 @@ export default function Canvas({
           // being previewed -- they aren't on screen to be dragged around.
           .filter(c => isSelectableOnCanvas(c))
           .filter(c => {
-            const cLeft = c.position.x;
-            const cRight = c.position.x + c.size.width;
-            const cTop = c.position.y;
-            const cBottom = c.position.y + c.size.height;
+            const cRect = getDisplayRect(c);
+            const cLeft = cRect.left;
+            const cRight = cRect.left + cRect.width;
+            const cTop = cRect.top;
+            const cBottom = cRect.top + cRect.height;
             // Intersection — partial overlap counts. Switch to full
             // containment by requiring cLeft >= left && cRight <= right etc.
             return cLeft < right && cRight > left && cTop < bottom && cBottom > top;
@@ -2313,21 +2343,10 @@ export default function Canvas({
     return (layout.components || [])
       .filter(component => isSelectableOnCanvas(component)) // Only what the preview draws
       .find(component => {
-        // Positions and sizes are already in pixels; multi-state parents use
-        // their children's bounding box (placeholder box while empty)
-        const msBounds = component.type === 'multiState'
-          ? getMultiStateBounds(component, layout.components || [])
-          : null;
-        const left = msBounds ? msBounds.x : component.position.x;
-        const top = msBounds ? msBounds.y : component.position.y;
-        const width = msBounds ? msBounds.width
-          : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.width : component.size.width;
-        const height = msBounds ? msBounds.height
-          : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.height : component.size.height;
-
+        const { left, top, width, height } = getDisplayRect(component);
         return x >= left && x <= left + width && y >= top && y <= top + height;
       });
-  }, [layout.components, isSelectableOnCanvas]);
+  }, [layout.components, isSelectableOnCanvas, getDisplayRect]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // Handle scale mode - left click confirms, right click is handled by context menu
@@ -2877,17 +2896,10 @@ export default function Canvas({
 
   const getComponentHandle = (component: ComponentConfig) => {
     // Positions and sizes are already in pixels.
-    // Multi-state parents have no size of their own — their footprint is the
-    // bounding box of their children (placeholder box while still empty).
-    const msBounds = component.type === 'multiState'
-      ? getMultiStateBounds(component, layout.components || [])
-      : null;
-    const left = msBounds ? msBounds.x : component.position.x;
-    const top = msBounds ? msBounds.y : component.position.y;
-    const width = msBounds ? msBounds.width
-      : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.width : component.size.width;
-    const height = msBounds ? msBounds.height
-      : component.type === 'multiState' ? EMPTY_MULTISTATE_SIZE.height : component.size.height;
+    // Container types (multiState, slotList) have no footprint of their own —
+    // theirs is the bounding box of what they draw, so the selection box hugs
+    // the slots instead of the container's padded frame.
+    const { left, top, width, height } = getDisplayRect(component);
 
     // Calculate border widths
     // Note: dynamicList uses borderWidth for items inside, not the wrapper

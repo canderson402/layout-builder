@@ -1,6 +1,6 @@
 import React from 'react';
 import DataPathPicker from './DataPathPicker';
-import { findOption } from './dataPathOptions';
+import { findOption, valuesForPath, PathValueOption } from './dataPathOptions';
 import {
   Condition,
   ConditionGroup,
@@ -72,6 +72,32 @@ const DebouncedValueInput = ({ value, onCommit, placeholder }: {
         }
       }}
     />
+  );
+};
+
+// Right-side operand mode for enum-valued paths (trivia phase, question kind,
+// ...): pick "Answer (reveal)" without having to know the wire value is
+// `answer`. This is its own mode alongside 123 / {x} / T/F — free-text entry
+// stays available for every path. An off-list value (hand-edited layout,
+// renamed enum) is kept as an extra entry so nothing is silently rewritten.
+const EnumValueSelect = ({ values, value, onCommit }: {
+  values: PathValueOption[];
+  value: string;
+  onCommit: (next: string) => void;
+}) => {
+  const known = values.some(v => v.value === value);
+  return (
+    <select
+      className="condition-builder__enum"
+      value={value}
+      onChange={(e) => onCommit(e.target.value)}
+      title={value || 'Select value'}
+    >
+      {!known && <option value={value}>{value ? `${value} (unknown)` : 'Select value…'}</option>}
+      {values.map(v => (
+        <option key={v.value} value={v.value}>{v.label}</option>
+      ))}
+    </select>
   );
 };
 
@@ -150,6 +176,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
       )}
 
       {conditions.map((cond, index) => {
+        const enumValues = valuesForPath(cond.leftPath);
         return (
           <div key={index} className="condition-builder__row">
             {/* Chain operator — how this row combines with the result so far.
@@ -198,6 +225,12 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                 <option value="true">true</option>
                 <option value="false">false</option>
               </select>
+            ) : cond.rightType === 'enum' && enumValues ? (
+              <EnumValueSelect
+                values={enumValues}
+                value={cond.rightValue ?? ''}
+                onCommit={(next) => updateCondition(index, { rightValue: next })}
+              />
             ) : (
               <DebouncedValueInput
                 value={cond.rightValue ?? ''}
@@ -210,8 +243,11 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
               type="button"
               className="condition-builder__mode-btn"
               onClick={() => {
+                // value → path → bool → enum (enum only offered when the left
+                // path has a fixed set of values) → value
                 const nextType = cond.rightType === 'value' ? 'path'
                   : cond.rightType === 'path' ? 'bool'
+                  : cond.rightType === 'bool' && enumValues ? 'enum'
                   : 'value';
                 updateCondition(index, {
                   rightType: nextType,
@@ -219,15 +255,26 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                   ...(nextType === 'bool' && cond.rightValue !== 'true' && cond.rightValue !== 'false'
                     ? { rightValue: 'true' }
                     : {}),
+                  // Entering enum mode needs one of the path's values
+                  ...(nextType === 'enum' && enumValues && !enumValues.some(v => v.value === cond.rightValue)
+                    ? { rightValue: enumValues[0].value }
+                    : {}),
                 });
               }}
               title={cond.rightType === 'value'
                 ? 'Fixed value — click to compare against a game value'
                 : cond.rightType === 'path'
                 ? 'Game value — click to compare against true/false'
-                : 'True/false — click to compare against a fixed value'}
+                : cond.rightType === 'bool'
+                ? (enumValues
+                  ? 'True/false — click to pick from this path\'s values'
+                  : 'True/false — click to compare against a fixed value')
+                : 'One of this path\'s values — click to compare against a fixed value'}
             >
-              {cond.rightType === 'value' ? '123' : cond.rightType === 'path' ? '{x}' : 'T/F'}
+              {cond.rightType === 'value' ? '123'
+                : cond.rightType === 'path' ? '{x}'
+                : cond.rightType === 'bool' ? 'T/F'
+                : '≡'}
             </button>
 
             <button

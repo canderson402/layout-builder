@@ -167,6 +167,39 @@ export function resolveSlotTemplate(
   return getTemplate(props?.templateId, props?.templateName);
 }
 
+/**
+ * A slotList's stored frame should equal the space its slots occupy — the
+ * property panel keeps it in sync. If it has drifted (template edited while
+ * the list wasn't selected, hand-edited JSON), nothing is distorted any more,
+ * but the container's own box no longer matches its contents. Say so, since
+ * that box is what alignment and snapping use.
+ */
+function warnOnFrameDrift(
+  slotListComponent: ComponentConfig,
+  template: SlotTemplate,
+  slotCount: number,
+  slotSpacing: number,
+  direction: 'vertical' | 'horizontal',
+): void {
+  const naturalWidth = direction === 'horizontal'
+    ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
+    : template.slotSize.width;
+  const naturalHeight = direction === 'vertical'
+    ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
+    : template.slotSize.height;
+
+  const dw = Math.abs(slotListComponent.size.width - naturalWidth);
+  const dh = Math.abs(slotListComponent.size.height - naturalHeight);
+  if (dw > 1 || dh > 1) {
+    console.warn(
+      `[slotList] frame ${slotListComponent.size.width}x${slotListComponent.size.height} ` +
+      `does not match the slots' natural size ${naturalWidth}x${naturalHeight} ` +
+      `(template "${template.name}"). Slots keep their authored size; ` +
+      `reselect the slot list to resync its frame.`,
+    );
+  }
+}
+
 export function expandSlotList(
   slotListComponent: ComponentConfig,
   template: SlotTemplate
@@ -179,21 +212,12 @@ export function expandSlotList(
   const dataPathPrefix = props.dataPathPrefix || 'leaderboardSlots';
   const hideInactiveSlots = props.hideInactiveSlots || false;
 
-  // Get the slotList bounding box size
-  const boundingWidth = slotListComponent.size.width;
-  const boundingHeight = slotListComponent.size.height;
-
-  // Calculate natural size of all slots combined (same as WebPreview)
-  const naturalWidth = direction === 'horizontal'
-    ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
-    : template.slotSize.width;
-  const naturalHeight = direction === 'vertical'
-    ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
-    : template.slotSize.height;
-
-  // Calculate scale to fit within the SlotList bounding box
-  const scaleX = boundingWidth / naturalWidth;
-  const scaleY = boundingHeight / naturalHeight;
+  // No scaling: slots are emitted at the exact geometry they were authored
+  // with, laid out from the container's origin at the template's own pitch.
+  // Scaling to the container frame used to distort every row whenever the
+  // stored frame drifted from the template's natural size, which is what put
+  // the TV out of step with the canvas.
+  warnOnFrameDrift(slotListComponent, template, slotCount, slotSpacing, direction);
 
   const expandedComponents: ComponentConfig[] = [];
 
@@ -202,20 +226,18 @@ export function expandSlotList(
     const offsetX = direction === 'horizontal' ? i * (template.slotSize.width + slotSpacing) : 0;
     const offsetY = direction === 'vertical' ? i * (template.slotSize.height + slotSpacing) : 0;
 
-    // Clone each template component with prefixed data paths and scaled positions/sizes
+    // Clone each template component with prefixed data paths, at its authored
+    // geometry offset to this slot's position
     template.components.forEach(templateComp => {
       const clonedComp: ComponentConfig = {
         ...templateComp,
         id: crypto.randomUUID(),
         slot: i, // Tag with slot index for TV app cycling animation
         position: {
-          x: slotListComponent.position.x + (templateComp.position.x + offsetX) * scaleX,
-          y: slotListComponent.position.y + (templateComp.position.y + offsetY) * scaleY,
+          x: slotListComponent.position.x + templateComp.position.x + offsetX,
+          y: slotListComponent.position.y + templateComp.position.y + offsetY,
         },
-        size: {
-          width: templateComp.size.width * scaleX,
-          height: templateComp.size.height * scaleY,
-        },
+        size: { ...templateComp.size },
         props: templateComp.props ? { ...templateComp.props } : {},
       };
 
@@ -309,10 +331,6 @@ export function expandLayoutForRuntime(components: ComponentConfig[]): Component
       return;
     }
 
-    // Always emit the slotList container itself — runtime expansion reads its
-    // size, team, dataPathPrefix, slotCountPath, etc.
-    result.push(comp);
-
     const props = comp.props || {};
 
     // One inlined slot-0 set per template in play: the default, plus each
@@ -325,24 +343,34 @@ export function expandLayoutForRuntime(components: ComponentConfig[]): Component
       if (variantTemplate) variantEntries.push({ value, template: variantTemplate });
     });
 
-    if (variantEntries.length === 0) return;
+    if (variantEntries.length === 0) {
+      // No template resolved — emit the bare container so the layout still
+      // round-trips back into the builder.
+      result.push(comp);
+      return;
+    }
     const slotCount = props.slotCount || 5;
     const slotSpacing = props.slotSpacing ?? 5;
     const direction = props.direction || 'vertical';
 
-    const boundingWidth = comp.size.width;
-    const boundingHeight = comp.size.height;
+    // Row pitch travels with the container instead of being re-derived from
+    // its frame on the TV. The frame can drift from the template's natural
+    // size; the pitch cannot, so the TV lays rows out exactly as the canvas
+    // does. Taken from the default template — every variant of one list
+    // shares its row pitch.
+    const pitchTemplate = variantEntries[0].template;
+    const slotStepX = direction === 'horizontal' ? pitchTemplate.slotSize.width + slotSpacing : 0;
+    const slotStepY = direction === 'vertical' ? pitchTemplate.slotSize.height + slotSpacing : 0;
+
+    // Emit the slotList container itself — runtime expansion reads its
+    // position, team, dataPathPrefix, slotCountPath, pitch, etc.
+    result.push({
+      ...comp,
+      props: { ...props, slotStepX, slotStepY },
+    });
 
     variantEntries.forEach(({ value: variantValue, template }) => {
-    const naturalWidth = direction === 'horizontal'
-      ? slotCount * template.slotSize.width + (slotCount - 1) * slotSpacing
-      : template.slotSize.width;
-    const naturalHeight = direction === 'vertical'
-      ? slotCount * template.slotSize.height + (slotCount - 1) * slotSpacing
-      : template.slotSize.height;
-
-    const scaleX = boundingWidth / naturalWidth;
-    const scaleY = boundingHeight / naturalHeight;
+    warnOnFrameDrift(comp, template, slotCount, slotSpacing, direction);
 
     // Slot 0 only — runtime expansion clones this for slot1..slotN.
     template.components.forEach(templateComp => {
@@ -354,14 +382,12 @@ export function expandLayoutForRuntime(components: ComponentConfig[]): Component
         // the existing layer hierarchy doesn't shift. Template-to-slotList
         // association is carried in props.slotListId instead, which the
         // runtime expansion reads without affecting layer ordering.
+        // Authored geometry, verbatim — no fitting to the container frame.
         position: {
-          x: comp.position.x + templateComp.position.x * scaleX,
-          y: comp.position.y + templateComp.position.y * scaleY,
+          x: comp.position.x + templateComp.position.x,
+          y: comp.position.y + templateComp.position.y,
         },
-        size: {
-          width: templateComp.size.width * scaleX,
-          height: templateComp.size.height * scaleY,
-        },
+        size: { ...templateComp.size },
         props: {
           ...(templateComp.props || {}),
           // Bind this template to the slotList container by id. Used by the

@@ -1,3 +1,5 @@
+import { PathValueOption, TRIVIA_QUESTION_KIND_VALUES } from './dataPathOptions';
+
 /**
  * Switch paths a slot list can vary its template on.
  *
@@ -7,13 +9,12 @@
  * question and an "answer on your phone" panel for a typed one, with no
  * visibility conditions to maintain.
  *
- * Values are enumerated here because the property panel needs to offer a row
- * per possible value. Adding a switch path is adding an entry to this list.
+ * Values come from the path's enum in dataPathOptions, the single source of
+ * truth for enumerated path domains — the property panel offers a row per
+ * possible value. Adding a switch path is adding an entry to this list.
  */
-export interface VariantValue {
-  value: string;
-  label: string;
-}
+
+export type VariantValue = PathValueOption;
 
 export interface VariantPathOption {
   path: string;
@@ -25,13 +26,7 @@ export const VARIANT_PATH_OPTIONS: VariantPathOption[] = [
   {
     path: 'trivia.questionKind',
     label: 'Trivia Question Type',
-    values: [
-      { value: 'true_false', label: 'True / False' },
-      { value: 'multiple_choice', label: 'Multiple Choice' },
-      { value: 'multiple_select', label: 'Multiple Choice (Select Many)' },
-      { value: 'text_input', label: 'Text Answer' },
-      { value: 'number_input', label: 'Number Answer' },
-    ],
+    values: TRIVIA_QUESTION_KIND_VALUES,
   },
 ];
 

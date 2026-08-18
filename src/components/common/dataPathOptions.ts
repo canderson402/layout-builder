@@ -25,6 +25,19 @@
 
 export type PathPurpose = 'data' | 'toggle' | 'visibility' | 'condition';
 
+/**
+ * One allowed value of an enum-valued path. Paths whose domain is a fixed set
+ * of strings (trivia phase, question kind, ...) declare their values here so
+ * the condition editor can offer a dropdown instead of a free-text box — you
+ * pick "Answer (reveal)" rather than having to know the wire value is `answer`.
+ */
+export interface PathValueOption {
+  /** Raw value as it arrives in game data / is written to the layout JSON. */
+  value: string;
+  /** Friendly label shown in the dropdown. */
+  label: string;
+}
+
 export interface PathOption {
   /** Friendly human-readable label shown as the primary line. */
   label: string;
@@ -38,7 +51,31 @@ export interface PathOption {
   slotContext?: boolean;
   /** Optional one-line hint. */
   description?: string;
+  /**
+   * Fixed set of values this path can hold. Present only on enum-valued
+   * paths; the condition editor turns it into a dropdown.
+   */
+  values?: PathValueOption[];
 }
+
+// ── Enumerated path domains ──────────────────────────────────────────────
+// Wire values must match the TV app's types (src/types/gameData.ts).
+
+export const TRIVIA_PHASE_VALUES: PathValueOption[] = [
+  { value: 'standby', label: 'Standby (lobby / join)' },
+  { value: 'countdown', label: 'Countdown' },
+  { value: 'question', label: 'Question (accepting answers)' },
+  { value: 'answer', label: 'Answer (reveal)' },
+  { value: 'gameOver', label: 'Game Over' },
+];
+
+export const TRIVIA_QUESTION_KIND_VALUES: PathValueOption[] = [
+  { value: 'true_false', label: 'True / False' },
+  { value: 'multiple_choice', label: 'Multiple Choice' },
+  { value: 'multiple_select', label: 'Multiple Choice (Select Many)' },
+  { value: 'text_input', label: 'Text Answer' },
+  { value: 'number_input', label: 'Number Answer' },
+];
 
 // Order in this array is the order of groups in the modal.
 const GROUP_ORDER = [
@@ -99,7 +136,7 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   // ── Stats ──────────────────────────────────────────────────────────────
   // Trivia (Engage). 'trivia.joinUrl' feeds the QR Code component -- it must not
   // be renamed to end in '.imageUrl', which would route it to the image renderer.
-  { label: 'Trivia Phase', value: 'trivia.phase', group: 'Trivia', purposes: ['data', 'visibility'] },
+  { label: 'Trivia Phase', value: 'trivia.phase', group: 'Trivia', purposes: ['data', 'visibility'], values: TRIVIA_PHASE_VALUES },
   { label: 'Trivia Game Name', value: 'trivia.gameName', group: 'Trivia', purposes: ['data'] },
   { label: 'Trivia Room Code', value: 'trivia.roomCode', group: 'Trivia', purposes: ['data'] },
   { label: 'Trivia Join URL (for QR)', value: 'trivia.joinUrl', group: 'Trivia', purposes: ['data'] },
@@ -114,7 +151,7 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
   // Question kind: true_false | multiple_choice | multiple_select | text_input
   // | number_input. Compare against it to show the option list for pick-one /
   // pick-many questions and a "answer on your phone" panel for typed ones.
-  { label: 'Trivia Question Kind', value: 'trivia.questionKind', group: 'Trivia', purposes: ['data', 'visibility'] },
+  { label: 'Trivia Question Kind', value: 'trivia.questionKind', group: 'Trivia', purposes: ['data', 'visibility'], values: TRIVIA_QUESTION_KIND_VALUES },
   { label: 'Trivia Multi-Select', value: 'trivia.multiSelect', group: 'Trivia', purposes: ['toggle', 'visibility'] },
   { label: 'Trivia Wager Question', value: 'trivia.wager', group: 'Trivia', purposes: ['toggle', 'visibility'] },
   { label: 'Trivia Option Count', value: 'triviaSlots.optionCount', group: 'Trivia', purposes: ['data'] },
@@ -307,6 +344,22 @@ export const DATA_PATH_OPTIONS: PathOption[] = [
 export function findOption(value: string | undefined): PathOption | undefined {
   if (!value) return undefined;
   return DATA_PATH_OPTIONS.find(o => o.value === value);
+}
+
+/**
+ * Allowed values for an enum-valued path, or undefined for free-form paths.
+ * Slot-template binds arrive prefixed at runtime (`triviaSlots.home.slot0.x`)
+ * but are authored short, so both forms resolve.
+ */
+export function valuesForPath(path: string | undefined): PathValueOption[] | undefined {
+  if (!path) return undefined;
+  const direct = findOption(path);
+  if (direct?.values) return direct.values;
+  const short = path.split('.').pop();
+  const shortOption = short && short !== path
+    ? DATA_PATH_OPTIONS.find(o => o.slotContext && o.value === short)
+    : undefined;
+  return shortOption?.values;
 }
 
 /**

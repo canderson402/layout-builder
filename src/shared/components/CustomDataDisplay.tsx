@@ -404,7 +404,6 @@ export default function CustomDataDisplay(props: CustomDataDisplayProps) {
       paddingLeft: 0,
       position: 'relative',
       opacity: isVisible ? 1 : 0,
-      transition: 'opacity 150ms ease-in-out',
       flexDirection: 'column'
     }}>
       {imageSourceObj ? (

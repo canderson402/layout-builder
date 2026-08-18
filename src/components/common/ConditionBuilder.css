@@ -111,6 +111,19 @@
 }
 
 /* true/false dropdown for bool mode */
+.condition-builder__row select.condition-builder__enum {
+  flex: 1 1 90px;
+  width: auto;
+  min-width: 0;
+  max-width: 160px;
+  background-color: #333;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 5px 6px;
+  font-size: 12px;
+}
+
 .condition-builder__row select.condition-builder__bool {
   flex: 1 1 60px;
   width: auto;

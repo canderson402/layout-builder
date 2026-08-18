@@ -541,6 +541,45 @@ function PropertyPanel({
     }
   }, [component, componentId, editingState, updateComponentWithScrollPreservation]);
   
+  // Turn a plain component into a toggle one, and back. State props layer over
+  // the component's base props, so seeding them empty means both states start
+  // out looking exactly like the component does now — nothing shifts until a
+  // state is actually edited.
+  const enableToggle = useCallback(() => {
+    if (!component || !componentId) return;
+    setEditingState(1);
+    updateComponentWithScrollPreservation(componentId, {
+      props: {
+        ...component.props,
+        canToggle: true,
+        toggleState: false,
+        state1Props: component.props?.state1Props || {},
+        state2Props: component.props?.state2Props || {},
+      },
+    });
+  }, [component, componentId, updateComponentWithScrollPreservation]);
+
+  // Dropping toggle keeps the State 1 look by folding its overrides into the
+  // base props; State 2's overrides and the toggle binding are discarded.
+  const disableToggle = useCallback(() => {
+    if (!component || !componentId) return;
+    const {
+      canToggle: _canToggle,
+      toggleState: _toggleState,
+      state1Props,
+      state2Props: _state2Props,
+      toggleDataPath: _toggleDataPath,
+      toggleCondition: _toggleCondition,
+      autoToggle: _autoToggle,
+      ...rest
+    } = component.props || {};
+    const { position: _s1Position, size: _s1Size, ...state1Visuals } = state1Props || {};
+    setEditingState(1);
+    updateComponentWithScrollPreservation(componentId, {
+      props: { ...rest, ...state1Visuals },
+    });
+  }, [component, componentId, updateComponentWithScrollPreservation]);
+
   // Helper to get the current property value based on editing state
   const getStateValue = useCallback((field: string, defaultValue?: any) => {
     if (!component?.props) return defaultValue;
@@ -2203,7 +2242,7 @@ function PropertyPanel({
           </div>
         </div>
       )}
-      
+
       {/* Display Name Field — state containers rename via the layer panel */}
       {!isStateContainer && (
       <div className="property-section">
@@ -2219,6 +2258,21 @@ function PropertyPanel({
             style={{ maxWidth: '200px' }}
           />
         </div>
+        {/* Promote a plain component to a two-state toggle, or drop back to
+            one state. Only `custom` components render a toggle
+            (CustomDataDisplay owns the state merge). */}
+        {component.type === 'custom' && (
+          <div className="property-field">
+            <label>
+              <input
+                type="checkbox"
+                checked={!!component.props?.canToggle}
+                onChange={(e) => (e.target.checked ? enableToggle() : disableToggle())}
+              />
+              Toggle Component
+            </label>
+          </div>
+        )}
       </div>
       )}
 
