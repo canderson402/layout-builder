@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutConfig, ComponentConfig } from '../types';
 import { expandLayoutForRuntime } from '../utils/slotTemplates';
 import { bakeShapeComponents } from '../utils/shapeExport';
+import { sanitizeTransforms } from '../utils/transformExport';
 import { measureTextBearings, getSampleTextForBearing } from '../utils/textBearings';
 import './ExportModal.css';
 
@@ -206,7 +207,7 @@ export function cleanLayoutForExport(layout: LayoutConfig): LayoutConfig {
   const normalizedComponents = normalizeLayerValues(inlinedComponents);
   return {
     ...layout,
-    components: bakeShapeComponents(normalizedComponents).map(cleanComponentProps)
+    components: sanitizeTransforms(bakeShapeComponents(normalizedComponents)).map(cleanComponentProps)
   };
 }
 

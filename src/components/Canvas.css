@@ -495,3 +495,33 @@
 .resize-handle-ne { cursor: ne-resize; }
 .resize-handle-sw { cursor: sw-resize; }
 .resize-handle-se { cursor: se-resize; }
+.resize-handle-n { cursor: ns-resize; }
+.resize-handle-s { cursor: ns-resize; }
+.resize-handle-e { cursor: ew-resize; }
+.resize-handle-w { cursor: ew-resize; }
+
+/* Rotation handle */
+.rotate-handle-stem {
+  position: absolute;
+  width: 1px;
+  height: 20px;
+  background: #4CAF50;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.rotate-handle-node {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #4CAF50;
+  border: 1px solid white;
+  border-radius: 50%;
+  z-index: 21;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.rotate-handle-node:active {
+  cursor: grabbing;
+}

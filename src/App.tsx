@@ -870,7 +870,7 @@ function App() {
         // Check if this is a position/size update (drag/resize operation)
         const isPropertyUpdate = Object.keys(roundedUpdates).some(key => !['position', 'size'].includes(key));
 
-        if (isPropertyUpdate) {
+        if (isPropertyUpdate && !isDraggingRef.current) {
           // Property updates always save undo state
           saveStateForUndo('UPDATE_COMPONENT', `Update ${component.type} properties`, prev);
         }
@@ -1592,6 +1592,8 @@ function App() {
                 templateRefreshKey={templateRefreshKey}
                 editingShapeId={editingShapeId}
                 selectedVertices={selectedVertices}
+                onStartDragOperation={startDragOperation}
+                onEndDragOperation={endDragOperation}
               />
             </aside>
       </main>

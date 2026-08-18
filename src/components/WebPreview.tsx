@@ -12,6 +12,7 @@ import {
 } from '../shared/conditions';
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 import ShapeSvg from './ShapeSvg';
+import { buildCssTransform, buildCssTransformOrigin } from '../shared/utils/componentTransform';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
@@ -283,6 +284,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
       height,
       zIndex: effectiveLayer,  // Use effective layer that considers parent hierarchy
       isolation: 'isolate',  // Create stacking context to contain borders
+      transform: buildCssTransform(config.transform),
+      transformOrigin: buildCssTransformOrigin(config.transform, width, height),
     };
 
     // Use component ID as key for stable identity
@@ -752,6 +755,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           top: statePosition?.y ?? top,
           width: customWidth,
           height: customHeight,
+          transform: buildCssTransform(config.transform),
+          transformOrigin: buildCssTransformOrigin(config.transform, customWidth, customHeight),
           boxSizing: 'border-box',
           borderWidth: effectiveProps.borderWidth || 0,
           borderColor: effectiveProps.borderColor || '#ffffff',
@@ -851,6 +856,11 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           top: msBounds ? msBounds.y : position.y,
           width: msBounds ? msBounds.width : EMPTY_MULTISTATE_SIZE.width,
           height: msBounds ? msBounds.height : EMPTY_MULTISTATE_SIZE.height,
+          transformOrigin: buildCssTransformOrigin(
+            config.transform,
+            msBounds ? msBounds.width : EMPTY_MULTISTATE_SIZE.width,
+            msBounds ? msBounds.height : EMPTY_MULTISTATE_SIZE.height,
+          ),
           pointerEvents: 'none' as const,
         };
         return wrapContent(
@@ -1056,6 +1066,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             ...baseStyle,
             width: naturalWidth,
             height: naturalHeight,
+            transformOrigin: buildCssTransformOrigin(config.transform, naturalWidth, naturalHeight),
             overflow: 'visible'
           }}>
             {slotElements}

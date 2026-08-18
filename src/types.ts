@@ -1,3 +1,5 @@
+import type { ComponentTransform } from './shared/utils/componentTransform';
+
 export interface ComponentConfig {
   type: 'teamName' | 'score' | 'clock' | 'period' | 'fouls' | 'timeouts' | 'bonus' | 'custom' | 'dynamicList' | 'leaderboardList' | 'slotList' | 'group' | 'multiState' | 'shape' | 'qrCode';
   position: {
@@ -20,6 +22,7 @@ export interface ComponentConfig {
   originalAspectRatio?: number; // Stored aspect ratio (width/height) for precise scaling
   originalSize?: { width: number; height: number }; // Original/base dimensions for percentage-based scaling
   scaleAnchor?: 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; // Anchor point for scaling (default: corner being dragged)
+  transform?: ComponentTransform;
   slot?: number; // Slot index (0-4) for leaderboard/slot components - used by TV app for cycling animation
 }
 

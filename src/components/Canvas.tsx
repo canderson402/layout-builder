@@ -4,8 +4,11 @@ import WebPreview from './WebPreview';
 import { isMultiStateGroup, resolveActiveStateId, evaluateConditionGroup, getNestedValue } from '../shared/conditions';
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 import { getSlotListBounds } from '../utils/slotListBounds';
+import { containsPoint } from '../utils/transformBounds';
 import VertexEditOverlay from './VertexEditOverlay';
 import { refitShapeGeometry } from '../shared/utils/shapePath';
+import { buildCssTransform, buildCssTransformOrigin, isIdentityTransform, isDefaultTransform, resolveOrigin } from '../shared/utils/componentTransform';
+import { pointerToLocal, positionAfterResize, movesEdges, ResizeHandle } from '../utils/resizeTransform';
 import './Canvas.css';
 
 interface CanvasProps {
@@ -96,6 +99,8 @@ export default function Canvas({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string>('');
+  const [isRotating, setIsRotating] = useState(false);
+  const rotateStartRef = useRef({ rotation: 0, angle: 0 });
   const [showGrid, setShowGrid] = useState(true);
   // When on, only what the preview is actually drawing can be clicked. Stops a
   // click from landing on a component belonging to a state you aren't editing.
@@ -136,7 +141,6 @@ export default function Canvas({
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [hasDraggedFarEnough, setHasDraggedFarEnough] = useState(false);
   const [initialComponentPositions, setInitialComponentPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
-  const [dragAxisConstraint, setDragAxisConstraint] = useState<'x' | 'y' | null>(null); // Axis-constrained dragging
   const [initialResizeBounds, setInitialResizeBounds] = useState<{ x: number, y: number, width: number, height: number, components: ComponentConfig[] } | null>(null); // Store bounds at resize start
   const isCopyDragRef = useRef(false); // Track if Command was held at drag start for copy-drag
 
@@ -660,10 +664,11 @@ export default function Canvas({
     const canvasCenterY = canvasHeight / 2;
 
     // Determine which edges are being moved based on handle
-    const movingLeft = handle === 'nw' || handle === 'sw';
-    const movingRight = handle === 'ne' || handle === 'se';
-    const movingTop = handle === 'nw' || handle === 'ne';
-    const movingBottom = handle === 'sw' || handle === 'se';
+    const edges = movesEdges(handle as ResizeHandle);
+    const movingLeft = edges.left;
+    const movingRight = edges.right;
+    const movingTop = edges.top;
+    const movingBottom = edges.bottom;
 
     // If Alt is held, skip all smart snapping but still apply grid
     if (isAltHeldRef.current) {
@@ -1077,47 +1082,6 @@ export default function Canvas({
     }
   }, [handleComponentSelect, setDraggedComponent, layout, scale, selectedComponents, lastSelectedId, isDragging, isResizing, isScaling, confirmScaleMode, cancelScaleMode, isSelectableOnCanvas]);
 
-  // Handler for axis-constrained drag (from arrow handles)
-  const handleAxisDragMouseDown = useCallback((e: React.MouseEvent, axis: 'x' | 'y', component: ComponentConfig) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const canvasX = (e.clientX - rect.left) / scale;
-    const canvasY = (e.clientY - rect.top) / scale;
-
-    // Set the axis constraint
-    setDragAxisConstraint(axis);
-
-    // Start dragging immediately
-    onStartDragOperation();
-    setIsDragging(true);
-    setHasDraggedFarEnough(true);
-    setDraggedComponent(component);
-    setDragOffset({
-      x: canvasX - component.position.x,
-      y: canvasY - component.position.y
-    });
-
-    // Store initial positions
-    const positions = new Map<string, { x: number, y: number }>();
-    const selectedIds = selectedComponentsRef.current.includes(component.id)
-      ? selectedComponentsRef.current
-      : [component.id];
-    const descendantIds = getAllDescendants(selectedIds, layoutRef.current.components);
-    const allIdsToMove = [...selectedIds, ...descendantIds];
-
-    allIdsToMove.forEach(componentId => {
-      const comp = layoutRef.current.components.find(c => c.id === componentId);
-      if (comp) {
-        positions.set(componentId, { x: comp.position.x, y: comp.position.y });
-      }
-    });
-    setInitialComponentPositions(positions);
-
-    window.dispatchEvent(new CustomEvent('canvas-drag-start'));
-  }, [scale, onStartDragOperation, setDraggedComponent]);
-
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!canvasRef.current) return;
 
@@ -1388,15 +1352,32 @@ export default function Canvas({
       return;
     }
 
-    if (!isDragging && !isResizing && !isCreating) return;
+    if (!isDragging && !isResizing && !isRotating && !isCreating) return;
 
     // Handle creation dragging
     if (isCreating) {
       setCreateEnd({ x: canvasX, y: canvasY });
       return;
     }
-    
+
     if (!draggedComponent) return;
+
+    if (isRotating) {
+      const originLocal = resolveOrigin(draggedComponent.transform?.origin, draggedComponent.size.width, draggedComponent.size.height);
+      const originCanvas = { x: draggedComponent.position.x + originLocal.x, y: draggedComponent.position.y + originLocal.y };
+      const currentAngle = Math.atan2(canvasY - originCanvas.y, canvasX - originCanvas.x) * 180 / Math.PI;
+      let rotation = rotateStartRef.current.rotation + (currentAngle - rotateStartRef.current.angle);
+
+      if (e.shiftKey) {
+        rotation = Math.round(rotation / 15) * 15;
+      }
+
+      const nextTransform = { ...draggedComponent.transform, rotation };
+      onUpdateComponent(draggedComponent.id, {
+        transform: isDefaultTransform(nextTransform) ? undefined : nextTransform
+      });
+      return;
+    }
 
     if (isDragging) {
       // Throttle drag updates for better performance
@@ -1415,14 +1396,8 @@ export default function Canvas({
 
       // Calculate the raw delta from initial position
       // Apply axis constraint if dragging from an axis handle
-      let rawDeltaX = rawPrimaryX - initialPrimaryPos.x;
-      let rawDeltaY = rawPrimaryY - initialPrimaryPos.y;
-
-      if (dragAxisConstraint === 'x') {
-        rawDeltaY = 0; // Only allow horizontal movement
-      } else if (dragAxisConstraint === 'y') {
-        rawDeltaX = 0; // Only allow vertical movement
-      }
+      const rawDeltaX = rawPrimaryX - initialPrimaryPos.x;
+      const rawDeltaY = rawPrimaryY - initialPrimaryPos.y;
 
       // For multi-selection, calculate the bounding box of the selection and use it for snapping
       const selectedIds = selectedComponentsRef.current;
@@ -1497,7 +1472,7 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, isMarqueeSelecting, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides, dragAxisConstraint]);
+  }, [isDragging, isResizing, isRotating, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, isMarqueeSelecting, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
@@ -1625,10 +1600,18 @@ export default function Canvas({
       }
       // Notify PropertyPanel to resume normal rendering
       window.dispatchEvent(new CustomEvent('canvas-drag-end'));
+    } else if (isRotating && draggedComponent) {
+      const component = (layout.components || []).find(c => c.id === draggedComponent.id);
+      if (component) {
+        onEndDragOperation(`Rotate ${component.type} component`);
+      }
+      // Notify PropertyPanel to resume normal rendering
+      window.dispatchEvent(new CustomEvent('canvas-drag-end'));
     }
-    
+
     setIsDragging(false);
     setIsResizing(false);
+    setIsRotating(false);
     setResizeHandle('');
     setDraggedComponent(null);
     setHasDraggedFarEnough(false);
@@ -1636,9 +1619,8 @@ export default function Canvas({
     setInitialComponentPositions(new Map()); // Clear initial positions
     setInitialResizeBounds(null); // Clear initial resize bounds
     setActiveGuides({ guides: [] }); // Clear smart guides
-    setDragAxisConstraint(null); // Clear axis constraint
     isCopyDragRef.current = false; // Clear copy-drag flag
-  }, [setDraggedComponent, isCreating, createStart, createEnd, isMarqueeSelecting, marqueeStart, marqueeEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId, isSelectableOnCanvas]);
+  }, [setDraggedComponent, isCreating, createStart, createEnd, isMarqueeSelecting, marqueeStart, marqueeEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, isRotating, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId, isSelectableOnCanvas]);
 
   // Calculate bounding box for multiple selected components
   const getMultiSelectBounds = useCallback(() => {
@@ -2074,6 +2056,16 @@ export default function Canvas({
 
     const minSize = 20;
 
+    const local = pointerToLocal(
+      canvasX,
+      canvasY,
+      draggedComponent.position,
+      draggedComponent.size,
+      draggedComponent.transform,
+    );
+    const localX = local.x + draggedComponent.position.x;
+    const localY = local.y + draggedComponent.position.y;
+
     // Calculate raw edge positions based on resize handle
     let rawLeft = currentLeft;
     let rawTop = currentTop;
@@ -2082,20 +2074,32 @@ export default function Canvas({
 
     switch (resizeHandle) {
       case 'se': // Bottom-right - right and bottom edges move
-        rawRight = canvasX;
-        rawBottom = canvasY;
+        rawRight = localX;
+        rawBottom = localY;
         break;
       case 'sw': // Bottom-left - left and bottom edges move
-        rawLeft = canvasX;
-        rawBottom = canvasY;
+        rawLeft = localX;
+        rawBottom = localY;
         break;
       case 'ne': // Top-right - right and top edges move
-        rawRight = canvasX;
-        rawTop = canvasY;
+        rawRight = localX;
+        rawTop = localY;
         break;
       case 'nw': // Top-left - left and top edges move
-        rawLeft = canvasX;
-        rawTop = canvasY;
+        rawLeft = localX;
+        rawTop = localY;
+        break;
+      case 'e': // Right edge - width only
+        rawRight = localX;
+        break;
+      case 'w': // Left edge - width only
+        rawLeft = localX;
+        break;
+      case 's': // Bottom edge - height only
+        rawBottom = localY;
+        break;
+      case 'n': // Top edge - height only
+        rawTop = localY;
         break;
     }
 
@@ -2105,7 +2109,9 @@ export default function Canvas({
     let finalRight = rawRight;
     let finalBottom = rawBottom;
 
-    if (!shouldMaintainAspectRatio) {
+    const rotated = !isIdentityTransform(draggedComponent.transform);
+
+    if (!shouldMaintainAspectRatio && !rotated) {
       const snapResult = smartSnapResize(
         resizeHandle,
         rawLeft,
@@ -2148,15 +2154,13 @@ export default function Canvas({
           return { x: left, y: bottom };
         case 'bottom-right':
           return { x: right, y: bottom };
-        default:
-          // 'corner' - use opposite corner of the resize handle
-          switch (resizeHandle) {
-            case 'se': return { x: left, y: top };
-            case 'sw': return { x: right, y: top };
-            case 'ne': return { x: left, y: bottom };
-            case 'nw': return { x: right, y: bottom };
-            default: return { x: left, y: top };
-          }
+        default: {
+          // 'corner' - anchor at the point whose edges do NOT move
+          const m = movesEdges(resizeHandle as ResizeHandle);
+          const x = m.left ? right : m.right ? left : (left + right) / 2;
+          const y = m.top ? bottom : m.bottom ? top : (top + bottom) / 2;
+          return { x, y };
+        }
       }
     };
 
@@ -2181,15 +2185,13 @@ export default function Canvas({
           return { left: anchorX, top: anchorY - height };
         case 'bottom-right':
           return { left: anchorX - width, top: anchorY - height };
-        default:
-          // 'corner' - anchor at opposite corner
-          switch (resizeHandle) {
-            case 'se': return { left: anchorX, top: anchorY };
-            case 'sw': return { left: anchorX - width, top: anchorY };
-            case 'ne': return { left: anchorX, top: anchorY - height };
-            case 'nw': return { left: anchorX - width, top: anchorY - height };
-            default: return { left: anchorX, top: anchorY };
-          }
+        default: {
+          // 'corner' - the anchor point is the fixed edge/point; derive box position from it
+          const m = movesEdges(resizeHandle as ResizeHandle);
+          const left = m.left ? anchorX - width : m.right ? anchorX : anchorX - width / 2;
+          const top = m.top ? anchorY - height : m.bottom ? anchorY : anchorY - height / 2;
+          return { left, top };
+        }
       }
     };
 
@@ -2238,14 +2240,14 @@ export default function Canvas({
 
     // Enforce minimum size
     if (finalRight - finalLeft < minSize) {
-      if (resizeHandle === 'nw' || resizeHandle === 'sw') {
+      if (movesEdges(resizeHandle as ResizeHandle).left) {
         finalLeft = finalRight - minSize;
       } else {
         finalRight = finalLeft + minSize;
       }
     }
     if (finalBottom - finalTop < minSize) {
-      if (resizeHandle === 'nw' || resizeHandle === 'ne') {
+      if (movesEdges(resizeHandle as ResizeHandle).top) {
         finalTop = finalBottom - minSize;
       } else {
         finalBottom = finalTop + minSize;
@@ -2253,10 +2255,23 @@ export default function Canvas({
     }
 
     // Round to integers for pixel-perfect alignment
-    const newX = Math.round(finalLeft);
-    const newY = Math.round(finalTop);
     const finalWidth = Math.round(finalRight - finalLeft);
     const finalHeight = Math.round(finalBottom - finalTop);
+
+    const VALID_RESIZE_HANDLES: ResizeHandle[] = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+    const isValidHandle = (VALID_RESIZE_HANDLES as string[]).includes(resizeHandle);
+
+    const compensated = rotated && isValidHandle
+      ? positionAfterResize(
+          draggedComponent.position,
+          draggedComponent.size,
+          { width: finalWidth, height: finalHeight },
+          resizeHandle as ResizeHandle,
+          draggedComponent.transform,
+        )
+      : { x: finalLeft, y: finalTop };
+    const newX = Math.round(compensated.x);
+    const newY = Math.round(compensated.y);
 
     // Store pixel values as integers
     onUpdateComponent(draggedComponent.id, {
@@ -2338,13 +2353,34 @@ export default function Canvas({
     }
   }, [handleComponentSelect, setDraggedComponent, onStartDragOperation, layout.components]);
 
+  // Handle rotation node mouse down
+  const handleRotateMouseDown = useCallback((e: React.MouseEvent, component: ComponentConfig) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const canvasX = (e.clientX - rect.left) / scale;
+    const canvasY = (e.clientY - rect.top) / scale;
+
+    const originLocal = resolveOrigin(component.transform?.origin, component.size.width, component.size.height);
+    const originCanvas = { x: component.position.x + originLocal.x, y: component.position.y + originLocal.y };
+    const startAngle = Math.atan2(canvasY - originCanvas.y, canvasX - originCanvas.x) * 180 / Math.PI;
+
+    onStartDragOperation(); // Save initial state for undo
+    rotateStartRef.current = { rotation: component.transform?.rotation ?? 0, angle: startAngle };
+    setIsRotating(true);
+    setDraggedComponent(component);
+    handleComponentSelect(component.id, false); // Single select for rotation
+  }, [handleComponentSelect, setDraggedComponent, onStartDragOperation, scale]);
+
   // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
     return (layout.components || [])
       .filter(component => isSelectableOnCanvas(component)) // Only what the preview draws
       .find(component => {
         const { left, top, width, height } = getDisplayRect(component);
-        return x >= left && x <= left + width && y >= top && y <= top + height;
+        return containsPoint(x - left, y - top, component.transform, width, height);
       });
   }, [layout.components, isSelectableOnCanvas, getDisplayRect]);
 
@@ -2800,7 +2836,7 @@ export default function Canvas({
 
   // Document-level mouse event handling for drag operations outside canvas
   React.useEffect(() => {
-    const isOperationActive = isDragging || isScaling || isResizing || isPanning || isCreating || isMarqueeSelecting;
+    const isOperationActive = isDragging || isScaling || isResizing || isRotating || isPanning || isCreating || isMarqueeSelecting;
 
     if (!isOperationActive) return;
 
@@ -2820,7 +2856,7 @@ export default function Canvas({
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isDragging, isScaling, isResizing, isPanning, isCreating, isMarqueeSelecting, handleMouseMove, handleMouseUp]);
+  }, [isDragging, isScaling, isResizing, isRotating, isPanning, isCreating, isMarqueeSelecting, handleMouseMove, handleMouseUp]);
 
   // Alt key listener to temporarily disable snapping
   React.useEffect(() => {
@@ -2935,7 +2971,9 @@ export default function Canvas({
       alignItems: 'center',
       justifyContent: 'center',
       cursor: 'move',
-      userSelect: 'none' as const
+      userSelect: 'none' as const,
+      transform: buildCssTransform(component.transform),
+      transformOrigin: buildCssTransformOrigin(component.transform, width, height),
     };
 
     const isSelected = selectedComponents.includes(component.id);
@@ -3012,78 +3050,37 @@ export default function Canvas({
               style={{ bottom: -4, right: -4 }}
             />
 
-            {/* Axis-constrained drag handles (arrows) */}
-            {/* Top arrow - vertical movement only */}
+            {/* Edge resize handles - midpoints of each side */}
             <div
-              onMouseDown={(e) => handleAxisDragMouseDown(e, 'y', component)}
-              style={{
-                position: 'absolute',
-                top: -16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: 0,
-                height: 0,
-                borderLeft: '6px solid transparent',
-                borderRight: '6px solid transparent',
-                borderBottom: '10px solid #4CAF50',
-                cursor: 'ns-resize',
-                zIndex: 25,
-              }}
-              title="Drag to move vertically only"
+              className="resize-handle resize-handle-n"
+              onMouseDown={(e) => handleResizeMouseDown(e, 'n', component)}
+              style={{ top: -4, left: '50%', transform: 'translateX(-50%)' }}
             />
-            {/* Bottom arrow - vertical movement only */}
             <div
-              onMouseDown={(e) => handleAxisDragMouseDown(e, 'y', component)}
-              style={{
-                position: 'absolute',
-                bottom: -16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: 0,
-                height: 0,
-                borderLeft: '6px solid transparent',
-                borderRight: '6px solid transparent',
-                borderTop: '10px solid #4CAF50',
-                cursor: 'ns-resize',
-                zIndex: 25,
-              }}
-              title="Drag to move vertically only"
+              className="resize-handle resize-handle-s"
+              onMouseDown={(e) => handleResizeMouseDown(e, 's', component)}
+              style={{ bottom: -4, left: '50%', transform: 'translateX(-50%)' }}
             />
-            {/* Left arrow - horizontal movement only */}
             <div
-              onMouseDown={(e) => handleAxisDragMouseDown(e, 'x', component)}
-              style={{
-                position: 'absolute',
-                left: -16,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 0,
-                height: 0,
-                borderTop: '6px solid transparent',
-                borderBottom: '6px solid transparent',
-                borderRight: '10px solid #4CAF50',
-                cursor: 'ew-resize',
-                zIndex: 25,
-              }}
-              title="Drag to move horizontally only"
+              className="resize-handle resize-handle-w"
+              onMouseDown={(e) => handleResizeMouseDown(e, 'w', component)}
+              style={{ left: -4, top: '50%', transform: 'translateY(-50%)' }}
             />
-            {/* Right arrow - horizontal movement only */}
             <div
-              onMouseDown={(e) => handleAxisDragMouseDown(e, 'x', component)}
-              style={{
-                position: 'absolute',
-                right: -16,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 0,
-                height: 0,
-                borderTop: '6px solid transparent',
-                borderBottom: '6px solid transparent',
-                borderLeft: '10px solid #4CAF50',
-                cursor: 'ew-resize',
-                zIndex: 25,
-              }}
-              title="Drag to move horizontally only"
+              className="resize-handle resize-handle-e"
+              onMouseDown={(e) => handleResizeMouseDown(e, 'e', component)}
+              style={{ right: -4, top: '50%', transform: 'translateY(-50%)' }}
+            />
+
+            {/* Rotation handle - stem rising from top-center with a node at its end */}
+            <div
+              className="rotate-handle-stem"
+              style={{ top: -24, left: '50%', transform: 'translateX(-50%)' }}
+            />
+            <div
+              className="rotate-handle-node"
+              onMouseDown={(e) => handleRotateMouseDown(e, component)}
+              style={{ top: -32, left: '50%', transform: 'translateX(-50%)' }}
             />
 
           </>

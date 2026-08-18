@@ -13,6 +13,7 @@ import Button from './common/Button';
 import { getMultiStateBounds, collectDescendantIds } from '../utils/multiState';
 import ShapeProperties, { VertexInspector } from './ShapeProperties';
 import type { Vertex } from '../shared/utils/shapePath';
+import { ComponentTransform, TransformOrigin, isDefaultTransform } from '../shared/utils/componentTransform';
 import './PropertyPanel.css';
 
 // Helper to resolve image paths with BASE_URL for loading
@@ -39,6 +40,8 @@ interface PropertyPanelProps {
   templateRefreshKey?: number;
   editingShapeId: string | null;
   selectedVertices: number[];
+  onStartDragOperation?: () => void;
+  onEndDragOperation?: (description: string) => void;
 }
 
 // Width threshold for two-column layout
@@ -102,6 +105,27 @@ const DebouncedInput = React.memo(({ value, onCommit, ...props }: DebouncedInput
 
 DebouncedInput.displayName = 'DebouncedInput';
 
+const StaticColorSwatch = ({ label, color }: { label: string, color: string }) => (
+  <div className="property-field">
+    <label className="color-picker-label">{label}</label>
+    <div className="color-picker-container">
+      <div
+        className="color-picker-swatch"
+        style={{ backgroundColor: color, cursor: 'not-allowed', opacity: 0.7 }}
+      >
+        <div className="color-picker-checkerboard" />
+        <div className="color-picker-color" style={{ backgroundColor: color }} />
+      </div>
+    </div>
+  </div>
+);
+
+const PropertySection = ({ title, sectionKey, children }: { title: string, sectionKey: string, children: React.ReactNode }) => (
+  <CollapsibleSection id={`prop-${sectionKey}`} title={title} defaultOpen={false}>
+    {children}
+  </CollapsibleSection>
+);
+
 function PropertyPanel({
   layout,
   selectedComponents,
@@ -112,7 +136,9 @@ function PropertyPanel({
   panelWidth = 320,
   templateRefreshKey,
   editingShapeId,
-  selectedVertices
+  selectedVertices,
+  onStartDragOperation,
+  onEndDragOperation
 }: PropertyPanelProps) {
   const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
@@ -415,23 +441,6 @@ function PropertyPanel({
     }
   }, [component, componentId, updateX, updateY, updateWidth, updateHeight, updateLayer, updateFontSize, updateBorderWidth, updateComponentWithScrollPreservation, editingState]);
 
-  // Create a static color swatch for drag operations
-  const StaticColorSwatch = ({ label, color }: { label: string, color: string }) => (
-    <div className="property-field">
-      <label className="color-picker-label">{label}</label>
-      <div className="color-picker-container">
-        <div
-          className="color-picker-swatch"
-          style={{ backgroundColor: color, cursor: 'not-allowed', opacity: 0.7 }}
-        >
-          <div className="color-picker-checkerboard" />
-          <div className="color-picker-color" style={{ backgroundColor: color }} />
-        </div>
-      </div>
-    </div>
-  );
-  
-  
   // Ref to maintain scroll position
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
@@ -684,15 +693,6 @@ function PropertyPanel({
     };
     img.src = resolveImagePath(newImagePath);
   }, [component, componentId, editingState, layout.dimensions, updateStateProps, updateComponentWithScrollPreservation]);
-
-  // Thin wrapper for backwards-compat with the existing call sites — maps
-  // `sectionKey` (legacy prop) onto the shared CollapsibleSection's `id`.
-  const PropertySection = ({ title, sectionKey, children }: { title: string, sectionKey: string, children: React.ReactNode }) => (
-    <CollapsibleSection id={`prop-${sectionKey}`} title={title} defaultOpen={false}>
-      {children}
-    </CollapsibleSection>
-  );
-
 
   /**
    * Preview a trivia question type. Also reshapes the option slots, because the
@@ -2324,10 +2324,9 @@ function PropertyPanel({
           );
         })()}
 
-        {/* POSITION & SIZE SECTION */}
-        {component.type !== 'multiState' && !isStateContainer && (
-        <PropertySection title="POSITION & SIZE" sectionKey="position-size">
-          {(() => {
+        {/* TRANSFORM SECTION */}
+        <PropertySection title="TRANSFORM" sectionKey="position-size">
+          {component.type !== 'multiState' && !isStateContainer && (() => {
             // Toggle components carry per-state geometry: the component's own
             // position/size is State 1; editing State 2 reads/writes an
             // override stored in state2Props so the box moves/resizes when
@@ -2440,229 +2439,85 @@ function PropertyPanel({
             );
           })()}
 
-          {/* Scale Percentage Section */}
-          <div className="property-field" style={{ marginTop: '12px' }}>
-            <label>Scale %</label>
-            {component?.originalSize ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <DebouncedInput
-                    type="number"
-                    step="0.1"
-                    style={{ width: '70px' }}
-                    value={Math.round((component.size.width / component.originalSize.width) * 1000) / 10}
-                    onCommit={(val) => {
-                      const scale = (parseFloat(val) || 100) / 100;
-                      updateComponentWithScrollPreservation(component.id, {
-                        size: {
-                          width: Math.round(component.originalSize!.width * scale),
-                          height: Math.round(component.originalSize!.height * scale)
-                        }
-                      });
-                    }}
-                  />
-                  <span style={{ fontSize: '12px', color: '#888' }}>%</span>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {[25, 50, 75, 100].map(pct => (
-                      <button
-                        key={pct}
-                        onClick={() => {
-                          const scale = pct / 100;
-                          updateComponentWithScrollPreservation(component.id, {
-                            size: {
-                              width: Math.round(component.originalSize!.width * scale),
-                              height: Math.round(component.originalSize!.height * scale)
-                            }
-                          });
-                        }}
-                        style={{
-                          fontSize: '10px',
-                          padding: '2px 6px',
-                          backgroundColor: Math.abs((component.size.width / component.originalSize.width) * 100 - pct) < 0.1 ? '#4CAF50' : '#444',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '3px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {pct}%
-                      </button>
-                    ))}
+          {(() => {
+            const transform = component.transform;
+            const rotation = transform?.rotation ?? 0;
+            const scale = transform?.scale ?? 1;
+            const origin = transform?.origin ?? 'center';
+
+            const commitTransform = (part: Partial<ComponentTransform>) => {
+              const next: ComponentTransform = {
+                rotation: part.rotation !== undefined ? part.rotation : transform?.rotation,
+                scale: part.scale !== undefined ? part.scale : transform?.scale,
+                origin: part.origin !== undefined ? part.origin : transform?.origin,
+              };
+              updateComponentWithScrollPreservation(component.id, {
+                transform: isDefaultTransform(next) ? undefined : next,
+              });
+            };
+
+            return (
+              <>
+                <div className="property-grid">
+                  <div className="property-field">
+                    <label>Rotation (deg)</label>
+                    <DebouncedInput
+                      type="number"
+                      value={rotation}
+                      onCommit={(val) => commitTransform({ rotation: parseInt(val) || 0 })}
+                    />
+                  </div>
+                  <div className="property-field">
+                    <label>Scale</label>
+                    <DebouncedInput
+                      type="number"
+                      step="0.01"
+                      value={scale}
+                      onCommit={(val) => {
+                        const parsed = parseFloat(val);
+                        const next = Number.isFinite(parsed) ? Math.max(0.01, parsed) : 1;
+                        commitTransform({ scale: next });
+                      }}
+                    />
                   </div>
                 </div>
-                {/* Grid-aligned scale options (both dimensions divisible by 10) */}
-                {(() => {
-                  const w = component.originalSize.width;
-                  const h = component.originalSize.height;
-
-                  // Find scales where both w*scale and h*scale are divisible by 10
-                  // Use GCD to find the denominator constraint for valid fractional scales
-                  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-                  const wDiv = w / gcd(w, 10);
-                  const hDiv = h / gcd(h, 10);
-                  const g = gcd(wDiv, hDiv);
-
-                  // Generate valid percentages between 20% and 100%
-                  const validScales: { pct: number; width: number; height: number }[] = [];
-                  for (let n = 1; n <= g * 5; n++) {
-                    const scale = n / g;
-                    if (scale < 0.2 || scale > 1.0) continue;
-                    const newW = Math.round(w * scale);
-                    const newH = Math.round(h * scale);
-                    if (newW % 10 === 0 && newH % 10 === 0) {
-                      const pct = Math.round(scale * 10000) / 100; // Round to 2 decimal places
-                      // Avoid duplicates
-                      if (!validScales.some(s => Math.abs(s.pct - pct) < 0.01)) {
-                        validScales.push({ pct, width: newW, height: newH });
-                      }
-                    }
-                    if (validScales.length >= 8) break;
-                  }
-
-                  // Sort by percentage
-                  validScales.sort((a, b) => a.pct - b.pct);
-
-                  if (validScales.length === 0) return null;
-
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '10px', color: '#666' }}>Grid (10px):</span>
-                      {validScales.map(({ pct, width: newW, height: newH }) => {
-                        const currentPct = Math.round((component.size.width / w) * 10000) / 100;
-                        return (
-                          <button
-                            key={pct}
-                            onClick={() => {
-                              updateComponentWithScrollPreservation(component.id, {
-                                size: { width: newW, height: newH }
-                              });
-                            }}
-                            style={{
-                              fontSize: '9px',
-                              padding: '2px 4px',
-                              backgroundColor: Math.abs(currentPct - pct) < 0.1 ? '#2196F3' : '#333',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer'
-                            }}
-                            title={`${newW} x ${newH}`}
-                          >
-                            {pct % 1 === 0 ? pct : pct.toFixed(1)}%
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-                <div style={{ fontSize: '11px', color: '#888', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>
-                    Original: {component.originalSize.width} x {component.originalSize.height}
-                  </span>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      onClick={() => {
-                        updateComponentWithScrollPreservation(component.id, {
-                          size: { ...component.originalSize! }
-                        });
-                      }}
-                      style={{ fontSize: '10px', padding: '2px 6px' }}
-                      title="Reset to original size"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      onClick={() => {
-                        updateComponentWithScrollPreservation(component.id, {
-                          originalSize: { ...component.size }
-                        });
-                      }}
-                      style={{ fontSize: '10px', padding: '2px 6px' }}
-                      title="Set current size as the new original"
-                    >
-                      Set as Original
-                    </button>
-                    <button
-                      onClick={() => {
-                        updateComponentWithScrollPreservation(component.id, {
-                          originalSize: undefined
-                        });
-                      }}
-                      style={{ fontSize: '10px', padding: '2px 6px' }}
-                      title="Remove original size reference"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  updateComponentWithScrollPreservation(component.id, {
-                    originalSize: { ...component.size }
-                  });
-                }}
-                style={{ fontSize: '11px', padding: '4px 8px' }}
-                title="Set current size as the original for percentage-based scaling"
-              >
-                Set Current as Original Size
-              </button>
-            )}
-          </div>
-
-          <div className="property-field" style={{ marginTop: '12px' }}>
-            <label>Resize Anchor</label>
-            <select
-              value={component?.scaleAnchor || 'corner'}
-              onChange={(e) => updateComponentWithScrollPreservation(component.id, {
-                scaleAnchor: e.target.value as any
-              })}
-            >
-              <option value="corner">Opposite Corner (default)</option>
-              <option value="center">Center</option>
-              <option value="top">Top Center</option>
-              <option value="bottom">Bottom Center</option>
-              <option value="left">Left Center</option>
-              <option value="right">Right Center</option>
-              <option value="top-left">Top Left</option>
-              <option value="top-right">Top Right</option>
-              <option value="bottom-left">Bottom Left</option>
-              <option value="bottom-right">Bottom Right</option>
-            </select>
-          </div>
-          {component?.originalAspectRatio && (
-            <div className="property-field" style={{ marginTop: '8px' }}>
-              <label>Aspect Ratio</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '12px', color: '#888' }}>
-                  {component.originalAspectRatio.toFixed(4)} ({Math.round(component.size.width)}:{Math.round(component.size.width / component.originalAspectRatio)})
-                </span>
-                <button
-                  onClick={() => updateComponentWithScrollPreservation(component.id, {
-                    originalAspectRatio: undefined
-                  })}
-                  style={{ fontSize: '10px', padding: '2px 6px' }}
-                  title="Clear locked aspect ratio"
+                <input
+                  type="range"
+                  min={-180}
+                  max={180}
+                  step={1}
+                  value={Math.min(180, Math.max(-180, rotation))}
+                  onPointerDown={() => onStartDragOperation?.()}
+                  onChange={(e) => commitTransform({ rotation: parseInt(e.target.value, 10) || 0 })}
+                  onPointerUp={() => onEndDragOperation?.('Rotate component')}
+                  onPointerCancel={() => onEndDragOperation?.('Rotate component')}
+                  onLostPointerCapture={() => onEndDragOperation?.('Rotate component')}
+                  style={{ width: '100%', marginBottom: '8px' }}
+                />
+                <label style={{ display: 'block', color: '#aaa', fontSize: '11px', marginBottom: '2px', marginTop: '8px' }}>
+                  Origin
+                </label>
+                <select
+                  value={origin}
+                  onChange={(e) => commitTransform({ origin: e.target.value as TransformOrigin })}
+                  style={{ width: '100%', marginBottom: '2px' }}
                 >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-          {!component?.originalAspectRatio && (
-            <div className="property-field" style={{ marginTop: '8px' }}>
-              <button
-                onClick={() => updateComponentWithScrollPreservation(component.id, {
-                  originalAspectRatio: component.size.width / component.size.height
-                })}
-                style={{ fontSize: '11px', padding: '4px 8px' }}
-                title="Lock current aspect ratio for precise scaling"
-              >
-                Lock Aspect Ratio
-              </button>
-            </div>
-          )}
+                  <option value="center">Center</option>
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                  <option value="top-left">Top Left</option>
+                  <option value="top-right">Top Right</option>
+                  <option value="bottom-left">Bottom Left</option>
+                  <option value="bottom-right">Bottom Right</option>
+                </select>
+                <small style={{ display: 'block', color: '#888', fontSize: '10px', marginBottom: '8px' }}>
+                  Pivot point for rotation and scale
+                </small>
+              </>
+            );
+          })()}
 
           {/* Z-Index / Layer Display */}
           <div className="property-field" style={{ marginTop: '12px' }}>
@@ -2684,7 +2539,6 @@ function PropertyPanel({
             </div>
           </div>
         </PropertySection>
-        )}
 
         {/* TEAM SECTION (if applicable) */}
         {component.team && (
