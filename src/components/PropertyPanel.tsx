@@ -14,7 +14,74 @@ import { getMultiStateBounds, collectDescendantIds } from '../utils/multiState';
 import ShapeProperties, { VertexInspector } from './ShapeProperties';
 import type { Vertex } from '../shared/utils/shapePath';
 import { ComponentTransform, TransformOrigin, isDefaultTransform } from '../shared/utils/componentTransform';
+import type { AnimatableProperty, AnimationTrack, Keyframe } from '../shared/utils/overlayTimeline';
+import { findTrack, insertKeyframe, removeKeyframe, sampleTrack } from '../shared/utils/overlayTimeline';
 import './PropertyPanel.css';
+
+const ANIMATABLE_PROPERTIES = ['x', 'y', 'width', 'height', 'scale', 'rotation', 'opacity', 'color', 'backgroundColor'] as const satisfies readonly AnimatableProperty[];
+type _AnimatablePropertiesExhaustive = AnimatableProperty extends (typeof ANIMATABLE_PROPERTIES)[number] ? true : never;
+const _animatablePropertiesExhaustive: _AnimatablePropertiesExhaustive = true;
+void _animatablePropertiesExhaustive;
+
+type KeyframeState = 'none' | 'key' | 'animated';
+
+function getKeyframeState(track: AnimationTrack | undefined, frame: number): KeyframeState {
+  if (!track || track.keyframes.length === 0) return 'none';
+  return track.keyframes.some(k => k.frame === frame) ? 'key' : 'animated';
+}
+
+function toggleTrackKeyframe(
+  onSetOverlayTracks: (updater: (tracks: AnimationTrack[]) => AnimationTrack[]) => void,
+  tracks: AnimationTrack[],
+  componentId: string,
+  property: AnimatableProperty,
+  frame: number,
+  defaultValue: number,
+) {
+  const state = getKeyframeState(findTrack(tracks, componentId, property), frame);
+  onSetOverlayTracks(current => {
+    if (state === 'key') {
+      return removeKeyframe(current, componentId, property, frame);
+    }
+    const keyframe: Keyframe = { frame, value: defaultValue, interpolation: 'linear' };
+    return insertKeyframe(current, componentId, property, keyframe);
+  });
+}
+
+const KeyframeToggle = React.memo(function KeyframeToggle({
+  state,
+  onToggle,
+  title,
+}: { state: KeyframeState; onToggle: () => void; title: string }) {
+  const background = state === 'key'
+    ? '#4CAF50'
+    : state === 'animated'
+      ? 'linear-gradient(135deg, #4CAF50 50%, transparent 50%)'
+      : 'transparent';
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={title}
+      aria-label={title}
+      aria-pressed={state === 'key'}
+      style={{
+        width: '12px',
+        height: '12px',
+        minWidth: '12px',
+        padding: 0,
+        margin: 0,
+        border: `1px solid ${state === 'none' ? '#777' : '#4CAF50'}`,
+        borderRadius: '2px',
+        background,
+        transform: 'rotate(45deg)',
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    />
+  );
+});
+KeyframeToggle.displayName = 'KeyframeToggle';
 
 // Helper to resolve image paths with BASE_URL for loading
 const resolveImagePath = (path: string): string => {
@@ -42,6 +109,10 @@ interface PropertyPanelProps {
   selectedVertices: number[];
   onStartDragOperation?: () => void;
   onEndDragOperation?: (description: string) => void;
+  documentKind?: 'layout' | 'overlay';
+  overlayTracks?: AnimationTrack[];
+  currentFrame?: number;
+  onSetOverlayTracks?: (updater: (tracks: AnimationTrack[]) => AnimationTrack[]) => void;
 }
 
 // Width threshold for two-column layout
@@ -138,8 +209,15 @@ function PropertyPanel({
   editingShapeId,
   selectedVertices,
   onStartDragOperation,
-  onEndDragOperation
+  onEndDragOperation,
+  documentKind,
+  overlayTracks,
+  currentFrame,
+  onSetOverlayTracks,
 }: PropertyPanelProps) {
+  const isOverlayMode = documentKind === 'overlay' && !!onSetOverlayTracks;
+  const activeOverlayTracks = overlayTracks ?? [];
+  const activeFrame = currentFrame ?? 0;
   const useTwoColumns = panelWidth >= TWO_COLUMN_THRESHOLD;
   // Skip heavy computation during drag operations to improve performance
   const [isDragging, setIsDragging] = useState(false);
@@ -2403,35 +2481,163 @@ function PropertyPanel({
                 )}
                 <div className="property-grid">
                   <div className="property-field">
-                    <label>X (px)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>X (px)</label>
+                      {isOverlayMode && !editingToggleState2 && (() => {
+                        const xTrack = findTrack(activeOverlayTracks, component.id, 'x');
+                        return (
+                          <KeyframeToggle
+                            state={getKeyframeState(xTrack, activeFrame)}
+                            title="Keyframe X position"
+                            onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'x', activeFrame, effPos.x)}
+                          />
+                        );
+                      })()}
+                    </div>
                     <DebouncedInput
                       type="number"
-                      value={Math.round(effPos.x)}
-                      onCommit={(val) => commitGeometry({ x: parseInt(val) || 0 })}
+                      value={(() => {
+                        if (!isOverlayMode || editingToggleState2) return Math.round(effPos.x);
+                        const xTrack = findTrack(activeOverlayTracks, component.id, 'x');
+                        if (!xTrack) return Math.round(effPos.x);
+                        const sampledX = sampleTrack(xTrack, activeFrame);
+                        return Math.round(typeof sampledX === 'number' ? sampledX : effPos.x);
+                      })()}
+                      onCommit={(val) => {
+                        const parsed = parseInt(val) || 0;
+                        const xTrack = isOverlayMode && !editingToggleState2
+                          ? findTrack(activeOverlayTracks, component.id, 'x')
+                          : undefined;
+                        if (xTrack) {
+                          const xKeyAtFrame = xTrack.keyframes.find(k => k.frame === activeFrame);
+                          const keyframe: Keyframe = xKeyAtFrame
+                            ? { ...xKeyAtFrame, value: parsed }
+                            : { frame: activeFrame, value: parsed, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'x', keyframe));
+                        } else {
+                          commitGeometry({ x: parsed });
+                        }
+                      }}
                     />
                   </div>
                   <div className="property-field">
-                    <label>Y (px)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>Y (px)</label>
+                      {isOverlayMode && !editingToggleState2 && (() => {
+                        const yTrack = findTrack(activeOverlayTracks, component.id, 'y');
+                        return (
+                          <KeyframeToggle
+                            state={getKeyframeState(yTrack, activeFrame)}
+                            title="Keyframe Y position"
+                            onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'y', activeFrame, effPos.y)}
+                          />
+                        );
+                      })()}
+                    </div>
                     <DebouncedInput
                       type="number"
-                      value={Math.round(effPos.y)}
-                      onCommit={(val) => commitGeometry({ y: parseInt(val) || 0 })}
+                      value={(() => {
+                        if (!isOverlayMode || editingToggleState2) return Math.round(effPos.y);
+                        const yTrack = findTrack(activeOverlayTracks, component.id, 'y');
+                        if (!yTrack) return Math.round(effPos.y);
+                        const sampledY = sampleTrack(yTrack, activeFrame);
+                        return Math.round(typeof sampledY === 'number' ? sampledY : effPos.y);
+                      })()}
+                      onCommit={(val) => {
+                        const parsed = parseInt(val) || 0;
+                        const yTrack = isOverlayMode && !editingToggleState2
+                          ? findTrack(activeOverlayTracks, component.id, 'y')
+                          : undefined;
+                        if (yTrack) {
+                          const yKeyAtFrame = yTrack.keyframes.find(k => k.frame === activeFrame);
+                          const keyframe: Keyframe = yKeyAtFrame
+                            ? { ...yKeyAtFrame, value: parsed }
+                            : { frame: activeFrame, value: parsed, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'y', keyframe));
+                        } else {
+                          commitGeometry({ y: parsed });
+                        }
+                      }}
                     />
                   </div>
                   <div className="property-field">
-                    <label>Width (px)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>Width (px)</label>
+                      {isOverlayMode && !editingToggleState2 && (() => {
+                        const widthTrack = findTrack(activeOverlayTracks, component.id, 'width');
+                        return (
+                          <KeyframeToggle
+                            state={getKeyframeState(widthTrack, activeFrame)}
+                            title="Keyframe Width"
+                            onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'width', activeFrame, effSize.width)}
+                          />
+                        );
+                      })()}
+                    </div>
                     <DebouncedInput
                       type="number"
-                      value={Math.round(effSize.width)}
-                      onCommit={(val) => commitGeometry({ width: parseInt(val) || 0 })}
+                      value={(() => {
+                        if (!isOverlayMode || editingToggleState2) return Math.round(effSize.width);
+                        const widthTrack = findTrack(activeOverlayTracks, component.id, 'width');
+                        if (!widthTrack) return Math.round(effSize.width);
+                        const sampledWidth = sampleTrack(widthTrack, activeFrame);
+                        return Math.round(typeof sampledWidth === 'number' ? sampledWidth : effSize.width);
+                      })()}
+                      onCommit={(val) => {
+                        const parsed = parseInt(val) || 0;
+                        const widthTrack = isOverlayMode && !editingToggleState2
+                          ? findTrack(activeOverlayTracks, component.id, 'width')
+                          : undefined;
+                        if (widthTrack) {
+                          const keyAtFrame = widthTrack.keyframes.find(k => k.frame === activeFrame);
+                          const keyframe: Keyframe = keyAtFrame
+                            ? { ...keyAtFrame, value: parsed }
+                            : { frame: activeFrame, value: parsed, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'width', keyframe));
+                        } else {
+                          commitGeometry({ width: parsed });
+                        }
+                      }}
                     />
                   </div>
                   <div className="property-field">
-                    <label>Height (px)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>Height (px)</label>
+                      {isOverlayMode && !editingToggleState2 && (() => {
+                        const heightTrack = findTrack(activeOverlayTracks, component.id, 'height');
+                        return (
+                          <KeyframeToggle
+                            state={getKeyframeState(heightTrack, activeFrame)}
+                            title="Keyframe Height"
+                            onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'height', activeFrame, effSize.height)}
+                          />
+                        );
+                      })()}
+                    </div>
                     <DebouncedInput
                       type="number"
-                      value={Math.round(effSize.height)}
-                      onCommit={(val) => commitGeometry({ height: parseInt(val) || 0 })}
+                      value={(() => {
+                        if (!isOverlayMode || editingToggleState2) return Math.round(effSize.height);
+                        const heightTrack = findTrack(activeOverlayTracks, component.id, 'height');
+                        if (!heightTrack) return Math.round(effSize.height);
+                        const sampledHeight = sampleTrack(heightTrack, activeFrame);
+                        return Math.round(typeof sampledHeight === 'number' ? sampledHeight : effSize.height);
+                      })()}
+                      onCommit={(val) => {
+                        const parsed = parseInt(val) || 0;
+                        const heightTrack = isOverlayMode && !editingToggleState2
+                          ? findTrack(activeOverlayTracks, component.id, 'height')
+                          : undefined;
+                        if (heightTrack) {
+                          const keyAtFrame = heightTrack.keyframes.find(k => k.frame === activeFrame);
+                          const keyframe: Keyframe = keyAtFrame
+                            ? { ...keyAtFrame, value: parsed }
+                            : { frame: activeFrame, value: parsed, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'height', keyframe));
+                        } else {
+                          commitGeometry({ height: parsed });
+                        }
+                      }}
                     />
                   </div>
                 </div>
@@ -2460,27 +2666,122 @@ function PropertyPanel({
               <>
                 <div className="property-grid">
                   <div className="property-field">
-                    <label>Rotation (deg)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>Rotation (deg)</label>
+                      {isOverlayMode && (() => {
+                        const rotationTrack = findTrack(activeOverlayTracks, component.id, 'rotation');
+                        return (
+                          <KeyframeToggle
+                            state={getKeyframeState(rotationTrack, activeFrame)}
+                            title="Keyframe rotation"
+                            onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'rotation', activeFrame, rotation)}
+                          />
+                        );
+                      })()}
+                    </div>
                     <DebouncedInput
                       type="number"
-                      value={rotation}
-                      onCommit={(val) => commitTransform({ rotation: parseInt(val) || 0 })}
+                      value={(() => {
+                        if (!isOverlayMode) return rotation;
+                        const rotationTrack = findTrack(activeOverlayTracks, component.id, 'rotation');
+                        if (!rotationTrack) return rotation;
+                        const sampledRotation = sampleTrack(rotationTrack, activeFrame);
+                        return typeof sampledRotation === 'number' ? sampledRotation : rotation;
+                      })()}
+                      onCommit={(val) => {
+                        const parsed = parseInt(val) || 0;
+                        const rotationTrack = isOverlayMode
+                          ? findTrack(activeOverlayTracks, component.id, 'rotation')
+                          : undefined;
+                        if (rotationTrack) {
+                          const rotationKeyAtFrame = rotationTrack.keyframes.find(k => k.frame === activeFrame);
+                          const keyframe: Keyframe = rotationKeyAtFrame
+                            ? { ...rotationKeyAtFrame, value: parsed }
+                            : { frame: activeFrame, value: parsed, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'rotation', keyframe));
+                        } else {
+                          commitTransform({ rotation: parsed });
+                        }
+                      }}
                     />
                   </div>
                   <div className="property-field">
-                    <label>Scale</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>Scale</label>
+                      {isOverlayMode && (() => {
+                        const scaleTrack = findTrack(activeOverlayTracks, component.id, 'scale');
+                        return (
+                          <KeyframeToggle
+                            state={getKeyframeState(scaleTrack, activeFrame)}
+                            title="Keyframe scale"
+                            onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'scale', activeFrame, scale)}
+                          />
+                        );
+                      })()}
+                    </div>
                     <DebouncedInput
                       type="number"
                       step="0.01"
-                      value={scale}
+                      value={(() => {
+                        if (!isOverlayMode) return scale;
+                        const scaleTrack = findTrack(activeOverlayTracks, component.id, 'scale');
+                        if (!scaleTrack) return scale;
+                        const sampledScale = sampleTrack(scaleTrack, activeFrame);
+                        return typeof sampledScale === 'number' ? sampledScale : scale;
+                      })()}
                       onCommit={(val) => {
                         const parsed = parseFloat(val);
                         const next = Number.isFinite(parsed) ? Math.max(0.01, parsed) : 1;
-                        commitTransform({ scale: next });
+                        const scaleTrack = isOverlayMode
+                          ? findTrack(activeOverlayTracks, component.id, 'scale')
+                          : undefined;
+                        if (scaleTrack) {
+                          const scaleKeyAtFrame = scaleTrack.keyframes.find(k => k.frame === activeFrame);
+                          const keyframe: Keyframe = scaleKeyAtFrame
+                            ? { ...scaleKeyAtFrame, value: next }
+                            : { frame: activeFrame, value: next, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'scale', keyframe));
+                        } else {
+                          commitTransform({ scale: next });
+                        }
                       }}
                     />
                   </div>
                 </div>
+                {isOverlayMode && (() => {
+                  const opacityTrack = findTrack(activeOverlayTracks, component.id, 'opacity');
+                  const opacityKeyAtFrame = opacityTrack?.keyframes.find(k => k.frame === activeFrame);
+                  const displayOpacity = opacityKeyAtFrame && typeof opacityKeyAtFrame.value === 'number'
+                    ? opacityKeyAtFrame.value
+                    : (opacityTrack ? (sampleTrack(opacityTrack, activeFrame) as number ?? 1) : 1);
+                  return (
+                    <div className="property-field">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label>Opacity</label>
+                        <KeyframeToggle
+                          state={getKeyframeState(opacityTrack, activeFrame)}
+                          title="Keyframe opacity"
+                          onToggle={() => toggleTrackKeyframe(onSetOverlayTracks!, activeOverlayTracks, component.id, 'opacity', activeFrame, 1)}
+                        />
+                      </div>
+                      <DebouncedInput
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="1"
+                        value={displayOpacity}
+                        onCommit={(val) => {
+                          const parsed = parseFloat(val);
+                          const next = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
+                          const keyframe: Keyframe = opacityKeyAtFrame
+                            ? { ...opacityKeyAtFrame, value: next }
+                            : { frame: activeFrame, value: next, interpolation: 'linear' };
+                          onSetOverlayTracks!(current => insertKeyframe(current, component.id, 'opacity', keyframe));
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
                 <input
                   type="range"
                   min={-180}

@@ -47,14 +47,6 @@ export const getImageSource = (
   mockBannerData: any,
   currentBannerIndex: number
 ): { uri: string } | null => {
-  // If user has explicitly set a local or URL image, use that for preview
-  if (imageSource === 'local' && imagePath) {
-    return { uri: resolveImagePath(imagePath) };
-  }
-  if (imageSource === 'url' && imageUrl) {
-    return { uri: imageUrl };
-  }
-
   // If dataPath points to an image URL, use the value from game data
   if (isImageDataPath(dataPath) && rawValue) {
     const imageUrlValue = String(rawValue);
@@ -67,6 +59,14 @@ export const getImageSource = (
     )) {
       return { uri: resolveImagePath(imageUrlValue) };
     }
+  }
+
+  // If user has explicitly set a local or URL image, use that for preview
+  if (imageSource === 'local' && imagePath) {
+    return { uri: resolveImagePath(imagePath) };
+  }
+  if (imageSource === 'url' && imageUrl) {
+    return { uri: imageUrl };
   }
 
   // Handle banner ads with mock data (only if no image explicitly set)

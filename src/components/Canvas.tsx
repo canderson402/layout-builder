@@ -4,12 +4,100 @@ import WebPreview from './WebPreview';
 import { isMultiStateGroup, resolveActiveStateId, evaluateConditionGroup, getNestedValue } from '../shared/conditions';
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 import { getSlotListBounds } from '../utils/slotListBounds';
-import { containsPoint } from '../utils/transformBounds';
+import { containsPoint, inverseTransformPoint } from '../utils/transformBounds';
 import VertexEditOverlay from './VertexEditOverlay';
 import { refitShapeGeometry } from '../shared/utils/shapePath';
 import { buildCssTransform, buildCssTransformOrigin, isIdentityTransform, isDefaultTransform, resolveOrigin } from '../shared/utils/componentTransform';
 import { pointerToLocal, positionAfterResize, movesEdges, ResizeHandle } from '../utils/resizeTransform';
+import { sampleTracks, AnimationTrack, SampledValues } from '../shared/utils/overlayTimeline';
+import { composePreview, DirtyChannel } from '../shared/utils/overlayPreview';
+import {
+  buildComponentTree,
+  ComponentTreeNode,
+  localOffset,
+  effectiveOpacity,
+  Point2D,
+} from '../shared/utils/componentHierarchy';
 import './Canvas.css';
+
+// Walk parentId up from `componentId`, immediate parent first, root last.
+// Cycle/missing-parent safe (mirrors componentHierarchy's own guard) so a
+// malformed layout can never spin this into an infinite loop.
+function getAncestorChain(componentId: string, components: ComponentConfig[]): ComponentConfig[] {
+  const byId = new Map(components.map(c => [c.id, c] as const));
+  const chain: ComponentConfig[] = [];
+  const visited = new Set<string>([componentId]);
+  let currentId = byId.get(componentId)?.parentId;
+  const maxSteps = components.length + 1;
+  for (let step = 0; step < maxSteps && currentId; step++) {
+    if (!byId.has(currentId) || visited.has(currentId)) break;
+    const parent = byId.get(currentId)!;
+    chain.push(parent);
+    visited.add(currentId);
+    currentId = parent.parentId;
+  }
+  return chain;
+}
+
+// Convert a canvas-space point into `target`'s own local space by inverting
+// the ancestor chain's transforms one level at a time, outermost (root)
+// first -- composing transformBounds.ts's single-transform inverse rather
+// than writing new matrix math. The result still needs target's own
+// transform inverted (containsPoint already does that internally), so this
+// only strips the ANCESTORS' transforms and each container's authored
+// offset, exactly mirroring how those offsets are applied when rendering.
+function pointToNestedLocalSpace(
+  canvasX: number,
+  canvasY: number,
+  target: ComponentConfig,
+  components: ComponentConfig[],
+  getDisplayRect: (c: ComponentConfig) => { left: number; top: number; width: number; height: number },
+): Point2D {
+  const rootFirst = [...getAncestorChain(target.id, components)].reverse();
+  let px = canvasX;
+  let py = canvasY;
+  let prevAuthored: Point2D | undefined;
+  for (const ancestor of rootFirst) {
+    const rect = getDisplayRect(ancestor);
+    const own = { x: rect.left, y: rect.top };
+    const offset = prevAuthored ? localOffset(own, prevAuthored) : own;
+    const local = inverseTransformPoint(px - offset.x, py - offset.y, ancestor.transform, rect.width, rect.height);
+    px = local.x;
+    py = local.y;
+    prevAuthored = ancestor.position;
+  }
+  const targetRect = getDisplayRect(target);
+  const targetOwn = { x: targetRect.left, y: targetRect.top };
+  const targetOffset = prevAuthored ? localOffset(targetOwn, prevAuthored) : targetOwn;
+  return { x: px - targetOffset.x, y: py - targetOffset.y };
+}
+
+// Convert a canvas-space DRAG DELTA into the local space of `target`'s
+// ancestor chain, same outermost-first composition as pointToNestedLocalSpace.
+// A delta is a vector, not a point, so only the transforms' linear part
+// (rotation + scale) applies -- translation/origin cancels out, which is why
+// this subtracts inverseTransformPoint(0,0,...) rather than adding a
+// translation term of its own (still just reusing the single-transform
+// helper, no new maths).
+function deltaToNestedLocalSpace(
+  dx: number,
+  dy: number,
+  target: ComponentConfig,
+  components: ComponentConfig[],
+  getDisplayRect: (c: ComponentConfig) => { left: number; top: number; width: number; height: number },
+): Point2D {
+  const rootFirst = [...getAncestorChain(target.id, components)].reverse();
+  let vx = dx;
+  let vy = dy;
+  for (const ancestor of rootFirst) {
+    const { width, height } = getDisplayRect(ancestor);
+    const p1 = inverseTransformPoint(vx, vy, ancestor.transform, width, height);
+    const p0 = inverseTransformPoint(0, 0, ancestor.transform, width, height);
+    vx = p1.x - p0.x;
+    vy = p1.y - p0.y;
+  }
+  return { x: vx, y: vy };
+}
 
 interface CanvasProps {
   layout: LayoutConfig;
@@ -30,6 +118,10 @@ interface CanvasProps {
   onSetEditingShape: (id: string | null) => void;
   selectedVertices: number[];
   onSelectVertices: (indices: number[]) => void;
+  documentKind?: 'layout' | 'overlay';
+  overlayTracks?: AnimationTrack[];
+  currentFrame?: number;
+  dirtyChannels?: Map<string, Set<DirtyChannel>>;
 }
 
 // Pixel-based grid settings
@@ -86,8 +178,17 @@ export default function Canvas({
   editingShapeId,
   onSetEditingShape,
   selectedVertices,
-  onSelectVertices
+  onSelectVertices,
+  documentKind,
+  overlayTracks,
+  currentFrame,
+  dirtyChannels
 }: CanvasProps) {
+  const sampledValues: Map<string, SampledValues> | undefined = React.useMemo(() => {
+    if (documentKind !== 'overlay' || !overlayTracks || overlayTracks.length === 0) return undefined;
+    return sampleTracks(overlayTracks, currentFrame ?? 0);
+  }, [documentKind, overlayTracks, currentFrame]);
+
   const canvasRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);
@@ -1454,10 +1555,24 @@ export default function Canvas({
       const snappedDeltaY = (snapResult.y - snapRawY) + rawDeltaY;
 
       // Update all selected components AND their descendants (position only, never size during move)
+      const movingIds = new Set(initialComponentPositions.keys());
       initialComponentPositions.forEach((initialPos, componentId) => {
+        const comp = layoutRef.current.components.find(c => c.id === componentId);
+        // A component whose own parent is ALSO moving in this drag is being
+        // carried rigidly -- both shift by the same raw canvas delta, so its
+        // offset from that parent (and the parent's own rotation/scale)
+        // never enters into it. Only a component being dragged while its
+        // parent chain stays put needs the delta re-expressed in that
+        // chain's local space, or it drifts off canvas axes instead of the
+        // parent's the moment that parent is rotated or scaled.
+        const isCarriedByMovingParent = !!comp?.parentId && movingIds.has(comp.parentId);
+        const delta = (!comp || !comp.parentId || isCarriedByMovingParent)
+          ? { x: snappedDeltaX, y: snappedDeltaY }
+          : deltaToNestedLocalSpace(snappedDeltaX, snappedDeltaY, comp, layoutRef.current.components, getDisplayRect);
+
         // Round to integers for pixel-perfect alignment
-        const newX = Math.round(initialPos.x + snappedDeltaX);
-        const newY = Math.round(initialPos.y + snappedDeltaY);
+        const newX = Math.round(initialPos.x + delta.x);
+        const newY = Math.round(initialPos.y + delta.y);
 
         onUpdateComponent(componentId, {
           position: { x: newX, y: newY }
@@ -1472,7 +1587,7 @@ export default function Canvas({
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
     }
-  }, [isDragging, isResizing, isRotating, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, isMarqueeSelecting, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides]);
+  }, [isDragging, isResizing, isRotating, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, isMarqueeSelecting, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides, getDisplayRect]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
     // Handle viewport panning end
@@ -2376,11 +2491,13 @@ export default function Canvas({
 
   // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
-    return (layout.components || [])
+    const components = layout.components || [];
+    return components
       .filter(component => isSelectableOnCanvas(component)) // Only what the preview draws
       .find(component => {
-        const { left, top, width, height } = getDisplayRect(component);
-        return containsPoint(x - left, y - top, component.transform, width, height);
+        const { width, height } = getDisplayRect(component);
+        const local = pointToNestedLocalSpace(x, y, component, components, getDisplayRect);
+        return containsPoint(local.x, local.y, component.transform, width, height);
       });
   }, [layout.components, isSelectableOnCanvas, getDisplayRect]);
 
@@ -2930,7 +3047,12 @@ export default function Canvas({
     return (flatOrder.length - position) * 10;
   };
 
-  const getComponentHandle = (component: ComponentConfig) => {
+  const getComponentHandle = (
+    component: ComponentConfig,
+    parentAuthoredPosition: Point2D | undefined = undefined,
+    opacityChain: Array<number | undefined> = [],
+    childrenContent: React.ReactNode = null
+  ) => {
     // Positions and sizes are already in pixels.
     // Container types (multiState, slotList) have no footprint of their own —
     // theirs is the bounding box of what they draw, so the selection box hugs
@@ -2948,12 +3070,33 @@ export default function Canvas({
     // Check if any border has width > 0
     const hasBorder = borderTopWidth > 0 || borderRightWidth > 0 || borderBottomWidth > 0 || borderLeftWidth > 0;
 
+    const sampled = sampledValues?.get(component.id);
+    const composed = sampled ? composePreview(component.position, component.size, component.transform, sampled, dirtyChannels?.get(component.id)) : undefined;
+    const animDX = composed ? composed.position.x - component.position.x : 0;
+    const animDY = composed ? composed.position.y - component.position.y : 0;
+    const animTransform = composed?.transform ?? component.transform;
+    const animOpacity = composed?.opacity;
+
+    // Nest the overlay exactly the way WebPreview nests the pixels: this
+    // node's own box sits at its EFFECTIVE (animated) position; a real
+    // parentId child is instead offset from the parent's AUTHORED position,
+    // so the offset stays stable while the parent animates -- the parent's
+    // own container carries that motion. See componentHierarchy.ts.
+    const effectivePosition: Point2D = { x: left + animDX, y: top + animDY };
+    const renderPosition = parentAuthoredPosition
+      ? localOffset(effectivePosition, parentAuthoredPosition)
+      : effectivePosition;
+    const chainedOpacity = opacityChain.length === 0
+      ? animOpacity
+      : effectiveOpacity([...opacityChain, animOpacity]);
+
     const baseStyle = {
       position: 'absolute' as const,
-      left,
-      top,
+      left: renderPosition.x,
+      top: renderPosition.y,
       width,
       height,
+      opacity: chainedOpacity,
       boxSizing: 'border-box' as const,  // Include border in width/height
       borderTopWidth: borderTopWidth,
       borderRightWidth: borderRightWidth,
@@ -2972,8 +3115,8 @@ export default function Canvas({
       justifyContent: 'center',
       cursor: 'move',
       userSelect: 'none' as const,
-      transform: buildCssTransform(component.transform),
-      transformOrigin: buildCssTransformOrigin(component.transform, width, height),
+      transform: buildCssTransform(animTransform),
+      transformOrigin: buildCssTransformOrigin(animTransform, width, height),
     };
 
     const isSelected = selectedComponents.includes(component.id);
@@ -3085,8 +3228,105 @@ export default function Canvas({
 
           </>
         )}
+        {childrenContent}
       </div>
     );
+  };
+
+  // Render the interaction overlay's tree the same way WebPreview nests the
+  // pixels: a selectable node's handle div carries its children as real DOM
+  // descendants (so CSS transform/opacity inheritance keeps the selection
+  // outline and resize handles glued to an animating or rotated parent). A
+  // multiState or group container -- neither draws a handle of its own --
+  // still needs an invisible pass-through box at its own effective geometry
+  // so its children inherit its transform, mirroring WebPreview's dashed
+  // msStyle box and its group container respectively.
+  const renderHandleTree = (
+    nodes: ComponentTreeNode[],
+    parentAuthoredPosition: Point2D | undefined,
+    opacityChain: Array<number | undefined>
+  ): React.ReactNode[] => {
+    const visible = nodes.filter(node =>
+      node.component.id !== editingShapeId &&
+      (node.component.type === 'multiState' || node.component.type === 'group' || isSelectableOnCanvas(node.component))
+    );
+    const sorted = [...visible].sort((a, b) => getEffectiveLayer(a.component) - getEffectiveLayer(b.component));
+
+    return sorted.map(node => {
+      const c = node.component;
+      const sampled = sampledValues?.get(c.id);
+      const composed = sampled ? composePreview(c.position, c.size, c.transform, sampled, dirtyChannels?.get(c.id)) : undefined;
+      const ownAnimOpacity = composed?.opacity;
+      const childrenContent = node.children.length > 0
+        ? renderHandleTree(node.children, c.position, [...opacityChain, ownAnimOpacity])
+        : null;
+
+      if (c.type === 'group') {
+        const { left, top, width, height } = getDisplayRect(c);
+        const animDX = composed ? composed.position.x - c.position.x : 0;
+        const animDY = composed ? composed.position.y - c.position.y : 0;
+        const animTransform = composed?.transform ?? c.transform;
+        const effectivePosition: Point2D = { x: left + animDX, y: top + animDY };
+        const renderPosition = parentAuthoredPosition
+          ? localOffset(effectivePosition, parentAuthoredPosition)
+          : effectivePosition;
+        const chainedOpacity = opacityChain.length === 0
+          ? ownAnimOpacity
+          : effectiveOpacity([...opacityChain, ownAnimOpacity]);
+        return (
+          <div
+            key={c.id}
+            style={{
+              position: 'absolute',
+              left: renderPosition.x,
+              top: renderPosition.y,
+              width,
+              height,
+              opacity: chainedOpacity,
+              transform: buildCssTransform(animTransform),
+              transformOrigin: buildCssTransformOrigin(animTransform, width, height),
+              pointerEvents: 'none',
+            }}
+          >
+            {childrenContent}
+          </div>
+        );
+      }
+
+      if (c.type === 'multiState') {
+        const { left, top, width, height } = getDisplayRect(c);
+        const animDX = composed ? composed.position.x - c.position.x : 0;
+        const animDY = composed ? composed.position.y - c.position.y : 0;
+        const animTransform = composed?.transform ?? c.transform;
+        const effectivePosition: Point2D = { x: left + animDX, y: top + animDY };
+        const renderPosition = parentAuthoredPosition
+          ? localOffset(effectivePosition, parentAuthoredPosition)
+          : effectivePosition;
+        const chainedOpacity = opacityChain.length === 0
+          ? ownAnimOpacity
+          : effectiveOpacity([...opacityChain, ownAnimOpacity]);
+        return (
+          <div
+            key={c.id}
+            style={{
+              position: 'absolute',
+              left: renderPosition.x,
+              top: renderPosition.y,
+              width,
+              height,
+              opacity: chainedOpacity,
+              transform: buildCssTransform(animTransform),
+              transformOrigin: buildCssTransformOrigin(animTransform, width, height),
+              pointerEvents: 'none',
+            }}
+          >
+            {childrenContent}
+          </div>
+        );
+      }
+
+      return getComponentHandle(c, parentAuthoredPosition, opacityChain, childrenContent);
+    });
   };
 
   const displayWidth = layout.dimensions.width * scale;
@@ -3661,6 +3901,8 @@ export default function Canvas({
             selectedComponents={selectedComponents}
             onSelectComponents={onSelectComponents}
             gameData={gameData}
+            sampledValues={sampledValues}
+            dirtyChannels={dirtyChannels}
           />
           {/* Vertex edit overlay for the shape being edited */}
           {editingShapeId && (() => {
@@ -3716,13 +3958,10 @@ export default function Canvas({
             />
           )}
           
-          {/* Overlay draggable handles - sorted by effective layer (considers parent hierarchy), only show visible components and those with visible ancestors, exclude groups */}
-          {[...(layout.components || [])]
-            .filter(component =>
-              component.id !== editingShapeId && isSelectableOnCanvas(component)
-            ) // Exclude the shape being vertex-edited and anything the preview isn't drawing
-            .sort((a, b) => getEffectiveLayer(a) - getEffectiveLayer(b))
-            .map(component => getComponentHandle(component))}
+          {/* Overlay draggable handles, nested the same way WebPreview nests the
+              pixels so a selection outline/resize handles follow a child inside
+              an animating or rotated parent. */}
+          {renderHandleTree(buildComponentTree(layout.components || []), undefined, [])}
 
           {/* Multi-select bounding box */}
           {selectedComponents.length > 1 && (() => {

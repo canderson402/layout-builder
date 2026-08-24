@@ -4,6 +4,18 @@
  */
 
 export const mockGameData = {
+  // Populated on the TV only while an accolade overlay is playing; sampled
+  // here so overlay authors see real text instead of blanks.
+  accolade: {
+    type: 'general_player',
+    team: 'HOME',
+    playerName: 'Jane Doe',
+    playerFirstName: 'Jane',
+    playerLastName: 'Doe',
+    jersey: '12',
+    imageUrl: 'https://storage.googleapis.com/svcloud-production-public/a1rgp69hqlrqw932qxwpdba7391s',
+    displayText: 'HOME #12 Jane Doe',
+  },
   gameSettings: {
     display_clock: '1',
     clock_type: 'scoreboard',

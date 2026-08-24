@@ -45,6 +45,21 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Timeline (Overlays)',
+    shortcuts: [
+      { keys: 'Click keyframe', description: 'Select keyframe' },
+      { keys: 'Arrow Keys', description: 'Move selected keyframe 1 frame (10 with Shift)' },
+      { keys: 'Ctrl/Cmd + C', description: 'Copy selected keyframe (takes priority over copying components)' },
+      { keys: 'Ctrl/Cmd + V', description: 'Paste keyframe at the playhead (when the timeline is focused)' },
+      { keys: 'Delete / Backspace', description: 'Delete selected keyframe' },
+      { keys: 'Drag a curve', description: 'Create a keyframe there and drag it (Graph view)' },
+      { keys: 'Wheel', description: 'Zoom the value axis (Graph view)' },
+      { keys: 'Drag background', description: 'Pan the value axis (Graph view)' },
+      { keys: 'Shift + Drag', description: 'Precision drag a keyframe (Graph view)' },
+      { keys: 'Home', description: 'Fit the value axis to the active channel' },
+    ],
+  },
+  {
     title: 'Transform',
     shortcuts: [
       { keys: 'S', description: 'Enter scale mode' },

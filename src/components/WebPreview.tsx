@@ -13,12 +13,23 @@ import {
 import { getMultiStateBounds, EMPTY_MULTISTATE_SIZE } from '../utils/multiState';
 import ShapeSvg from './ShapeSvg';
 import { buildCssTransform, buildCssTransformOrigin } from '../shared/utils/componentTransform';
+import { SampledValues } from '../shared/utils/overlayTimeline';
+import { composePreview, DirtyChannel } from '../shared/utils/overlayPreview';
+import {
+  buildComponentTree,
+  ComponentTreeNode,
+  localOffset,
+  effectiveOpacity,
+  Point2D,
+} from '../shared/utils/componentHierarchy';
 
 interface WebPreviewProps {
   layout: LayoutConfig;
   selectedComponents: string[];
   onSelectComponents: (ids: string[]) => void;
   gameData?: any;
+  sampledValues?: Map<string, SampledValues>;
+  dirtyChannels?: Map<string, Set<DirtyChannel>>;
 }
 
 // Mock game data for preview
@@ -127,45 +138,12 @@ const getNestedData = (obj: any, path: string): any => {
   }, obj);
 };
 
-// Calculate effective z-index based on exact position in flattened layer panel order.
-// This creates a 1:1 mapping: position in layer panel = z-index order.
-// Higher position in panel (top) = higher z-index = renders in front.
-const getEffectiveLayer = (component: ComponentConfig, allComponents: ComponentConfig[]): number => {
-  // Build the same hierarchy as LayerPanel
-  const rootComponents: ComponentConfig[] = [];
-  const childrenMap = new Map<string, ComponentConfig[]>();
-
-  allComponents.forEach(c => {
-    if (c.parentId) {
-      const siblings = childrenMap.get(c.parentId) || [];
-      siblings.push(c);
-      childrenMap.set(c.parentId, siblings);
-    } else {
-      rootComponents.push(c);
-    }
-  });
-
-  // Sort by layer (highest first) - same as LayerPanel
-  rootComponents.sort((a, b) => (b.layer || 0) - (a.layer || 0));
-  childrenMap.forEach(children => {
-    children.sort((a, b) => (b.layer || 0) - (a.layer || 0));
-  });
-
-  // Flatten tree in display order (depth-first traversal)
-  const flatOrder: string[] = [];
-  const traverse = (comp: ComponentConfig) => {
-    flatOrder.push(comp.id);
-    const children = childrenMap.get(comp.id) || [];
-    children.forEach(child => traverse(child));
-  };
-  rootComponents.forEach(comp => traverse(comp));
-
-  // Find position (0 = top of list = highest z-index)
-  const position = flatOrder.indexOf(component.id);
-  if (position === -1) return 0;
-
-  // Invert: top of list (position 0) gets highest z-index
-  return (flatOrder.length - position) * 10;
+// Layering is per-subtree once children render inside their parent's element:
+// a node only competes for stacking order with its own siblings. Sort siblings
+// highest-layer-first (same convention as LayerPanel) and hand out z-index
+// within that sibling group only.
+const sortSiblingsByLayerDesc = (nodes: ComponentTreeNode[]): ComponentTreeNode[] => {
+  return [...nodes].sort((a, b) => (b.component.layer || 0) - (a.component.layer || 0));
 };
 
 // Resolve the active state of a multi-state group. The editor can pin a
@@ -179,47 +157,40 @@ const getActiveStateId = (group: ComponentConfig, gameData: any): string | null 
   return resolveActiveStateId(group.props.states, gameData);
 };
 
-// Check if a component's ancestors are visible (for hard visibility cutoff)
-const areAncestorsVisible = (
-  component: ComponentConfig,
-  allComponents: ComponentConfig[],
+// Check if a child is visible under its immediate parent (hard visibility
+// cutoff). Ancestors further up are already accounted for by tree recursion:
+// we only ever descend into a node's children after the node itself passed
+// this same check, so checking one level here is equivalent to walking the
+// whole ancestor chain.
+const isChildVisibleUnderParent = (
+  parent: ComponentConfig,
+  child: ComponentConfig,
   gameData: any
 ): boolean => {
-  // Check all ancestors' visibilityPaths (for groups that control child visibility)
-  let child: ComponentConfig = component;
-  let parentId = component.parentId;
-  while (parentId) {
-    const parent = allComponents.find(c => c.id === parentId);
-    if (!parent) break;
-
-    // Conditional visibility overrides the simple path when present
-    const conditionResult = evaluateConditionGroup(parent.props?.visibilityCondition, gameData);
-    if (conditionResult === false) {
+  // Conditional visibility overrides the simple path when present
+  const conditionResult = evaluateConditionGroup(parent.props?.visibilityCondition, gameData);
+  if (conditionResult === false) {
+    return false;
+  }
+  // If parent has visibilityPath set, check if it evaluates to true
+  if (conditionResult === null && parent.props?.visibilityPath) {
+    const visibilityValue = getNestedData(gameData, parent.props.visibilityPath);
+    if (typeof visibilityValue === 'boolean' && !visibilityValue) {
       return false;
     }
-    // If parent has visibilityPath set, check if it evaluates to true
-    if (conditionResult === null && parent.props?.visibilityPath) {
-      const visibilityValue = getNestedData(gameData, parent.props.visibilityPath);
-      if (typeof visibilityValue === 'boolean' && !visibilityValue) {
+  }
+
+  // Multi-state group: each state owns one child container. A child that
+  // belongs to a state is only visible while that state is active. Direct
+  // children not linked to any state show in every state.
+  if (isMultiStateGroup(parent.props)) {
+    const stateEntry = (parent.props.states as any[]).find(s => s.childId === child.id);
+    if (stateEntry) {
+      const activeState = getActiveStateId(parent, gameData);
+      if (activeState && stateEntry.id !== activeState) {
         return false;
       }
     }
-
-    // Multi-state group: each state owns one child container. A child that
-    // belongs to a state is only visible while that state is active. Direct
-    // children not linked to any state show in every state.
-    if (isMultiStateGroup(parent.props)) {
-      const stateEntry = (parent.props.states as any[]).find(s => s.childId === child.id);
-      if (stateEntry) {
-        const activeState = getActiveStateId(parent, gameData);
-        if (activeState && stateEntry.id !== activeState) {
-          return false;
-        }
-      }
-    }
-
-    child = parent;
-    parentId = parent.parentId;
   }
 
   return true;
@@ -243,24 +214,51 @@ const getComponentVisibility = (
   return true;
 };
 
-function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }: WebPreviewProps) {
-  // Use provided gameData or fall back to mockGameData
-  const effectiveGameData = gameData || mockGameData;
+interface RenderCtx {
+  effectiveGameData: any;
+  sampledValues?: Map<string, SampledValues>;
+  dirtyChannels?: Map<string, Set<DirtyChannel>>;
+  layoutComponents: ComponentConfig[];
+}
 
-  // Helper to wrap content in a positioned div
-  const wrapContent = (
-    content: React.ReactNode,
-    baseStyle: React.CSSProperties,
-    key: string
-  ) => {
-    return (
-      <div key={key} style={baseStyle}>
-        {content}
-      </div>
-    );
-  };
+// Own animated opacity of a component (before any ancestor chaining), used
+// both by renderComponent for its own style and by renderTree to extend the
+// opacity chain handed to children.
+function getAnimatedOpacity(ctx: RenderCtx, config: ComponentConfig): number | undefined {
+  const sampled = ctx.sampledValues?.get(config.id);
+  const composed = sampled
+    ? composePreview(config.position, config.size, config.transform, sampled, ctx.dirtyChannels?.get(config.id))
+    : undefined;
+  return composed?.opacity;
+}
 
-  const renderComponent = (config: ComponentConfig, index: number, effectiveLayer: number, isVisible: boolean = true) => {
+// Helper to wrap content in a positioned div, with any real parentId
+// children appended after the component's own content.
+function wrapContent(
+  content: React.ReactNode,
+  baseStyle: React.CSSProperties,
+  key: string,
+  childrenContent?: React.ReactNode
+) {
+  return (
+    <div key={key} style={baseStyle}>
+      {content}
+      {childrenContent}
+    </div>
+  );
+}
+
+function renderComponent(
+  ctx: RenderCtx,
+  config: ComponentConfig,
+  index: number,
+  effectiveLayer: number,
+  isVisible: boolean = true,
+  parentAuthoredPosition: Point2D | undefined = undefined,
+  opacityChain: Array<number | undefined> = [],
+  childrenContent: React.ReactNode = null
+) {
+    const { effectiveGameData, sampledValues, dirtyChannels, layoutComponents } = ctx;
     const { type, position, size, props, team, id } = config;
 
     // Positions and sizes are already in pixels
@@ -276,22 +274,62 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
     const contentWidth = width - wrapBorderLeft - wrapBorderRight;
     const contentHeight = height - wrapBorderTop - wrapBorderBottom;
 
+    const sampled = sampledValues?.get(id);
+    const composed = sampled ? composePreview(position, config.size, config.transform, sampled, dirtyChannels?.get(id)) : undefined;
+    const animDX = composed ? composed.position.x - position.x : 0;
+    const animDY = composed ? composed.position.y - position.y : 0;
+    const animTransform = composed?.transform ?? config.transform;
+    const animStretch = composed?.stretch;
+    const animOpacity = composed?.opacity;
+
+    // Children keep their stored ABSOLUTE positions; a real parentId child is
+    // placed inside its parent's container, so its rendered left/top must be
+    // shifted from canvas-absolute to parent-local. The offset is measured
+    // against the parent's AUTHORED position (not its animated one) so the
+    // child's local offset stays stable while the parent animates - the
+    // parent's own container move (animDX/animDY on the parent) is what
+    // carries the child along.
+    const effectivePosition: Point2D = { x: left + animDX, y: top + animDY };
+    const renderPosition = parentAuthoredPosition
+      ? localOffset(effectivePosition, parentAuthoredPosition)
+      : effectivePosition;
+    const originOffsetX = renderPosition.x - effectivePosition.x;
+    const originOffsetY = renderPosition.y - effectivePosition.y;
+
+    // Opacity does NOT come free from nesting like position/rotation/scale
+    // do - it must be composed explicitly down the chain. For a root
+    // component (empty chain) this reduces to the exact original expression
+    // (raw, possibly-undefined animOpacity) so unparented, childless
+    // components are byte-identical to before.
+    const chainedOpacity = opacityChain.length === 0
+      ? animOpacity
+      : effectiveOpacity([...opacityChain, animOpacity]);
+
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
-      left,
-      top,
+      left: left + animDX + originOffsetX,
+      top: top + animDY + originOffsetY,
       width,
       height,
       zIndex: effectiveLayer,  // Use effective layer that considers parent hierarchy
       isolation: 'isolate',  // Create stacking context to contain borders
-      transform: buildCssTransform(config.transform),
-      transformOrigin: buildCssTransformOrigin(config.transform, width, height),
+      transform: buildCssTransform(animTransform, animStretch),
+      transformOrigin: buildCssTransformOrigin(animTransform, width, height, animStretch),
+      opacity: chainedOpacity,
     };
 
     // Use component ID as key for stable identity
     const componentKey = id;
 
     switch (type) {
+      case 'group': {
+        return (
+          <div key={componentKey} style={baseStyle}>
+            {childrenContent}
+          </div>
+        );
+      }
+
       case 'teamName': {
         // Derive dataPath from team property, but allow customText to override
         const teamNameDataPath = team === 'away' ? 'awayTeam.name' : 'homeTeam.name';
@@ -360,7 +398,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           teamNameBaseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -423,7 +462,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           scoreBaseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -483,7 +523,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           clockBaseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -542,7 +583,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           periodBaseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -605,7 +647,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           foulsBaseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -636,7 +679,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             gameData={effectiveGameData}
           />,
           baseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
 
       case 'shape': {
@@ -661,7 +705,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             gameData={effectiveGameData}
           />,
           baseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -695,7 +740,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             </span>
           </div>,
           baseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -751,12 +797,12 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         // Apply border to wrapper div to prevent z-index separation issues with react-native-web
         const customBaseStyle: React.CSSProperties = {
           ...baseStyle,
-          left: statePosition?.x ?? left,
-          top: statePosition?.y ?? top,
+          left: (statePosition?.x ?? left) + animDX + originOffsetX,
+          top: (statePosition?.y ?? top) + animDY + originOffsetY,
           width: customWidth,
           height: customHeight,
-          transform: buildCssTransform(config.transform),
-          transformOrigin: buildCssTransformOrigin(config.transform, customWidth, customHeight),
+          transform: buildCssTransform(animTransform, animStretch),
+          transformOrigin: buildCssTransformOrigin(animTransform, customWidth, customHeight, animStretch),
           boxSizing: 'border-box',
           borderWidth: effectiveProps.borderWidth || 0,
           borderColor: effectiveProps.borderColor || '#ffffff',
@@ -770,7 +816,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
           borderBottomLeftRadius: effectiveProps.borderBottomLeftRadius || 0,
           borderBottomRightRadius: effectiveProps.borderBottomRightRadius || 0,
           overflow: 'hidden',  // Clip content to border radius
-          opacity: isVisible ? 1 : 0,
+          opacity: isVisible ? (opacityChain.length === 0 ? (animOpacity ?? 1) : effectiveOpacity([...opacityChain, animOpacity])) : 0,
         };
         return wrapContent(
           <CustomDataDisplay
@@ -833,7 +879,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             isVisible={isVisible}
           />,
           customBaseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -847,19 +894,20 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         const activeId = getActiveStateId(config, effectiveGameData);
         const activeEntry = msStates.find(s => s.id === activeId);
         // State name = the container's layer-panel name
-        const activeName = (layout.components || []).find(c => c.id === activeEntry?.childId)?.displayName
+        const activeName = layoutComponents.find(c => c.id === activeEntry?.childId)?.displayName
           || activeEntry?.name;
-        const msBounds = getMultiStateBounds(config, layout.components || []);
+        const msBounds = getMultiStateBounds(config, layoutComponents);
         const msStyle: React.CSSProperties = {
           ...baseStyle,
-          left: msBounds ? msBounds.x : position.x,
-          top: msBounds ? msBounds.y : position.y,
+          left: (msBounds ? msBounds.x : position.x) + animDX + originOffsetX,
+          top: (msBounds ? msBounds.y : position.y) + animDY + originOffsetY,
           width: msBounds ? msBounds.width : EMPTY_MULTISTATE_SIZE.width,
           height: msBounds ? msBounds.height : EMPTY_MULTISTATE_SIZE.height,
           transformOrigin: buildCssTransformOrigin(
-            config.transform,
+            animTransform,
             msBounds ? msBounds.width : EMPTY_MULTISTATE_SIZE.width,
             msBounds ? msBounds.height : EMPTY_MULTISTATE_SIZE.height,
+            animStretch,
           ),
           pointerEvents: 'none' as const,
         };
@@ -889,7 +937,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             </div>
           </div>,
           msStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
       }
 
@@ -916,7 +965,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             cycleInterval={props.cycleInterval || 5000}
           />,
           baseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
 
       case 'slotList': {
@@ -970,7 +1020,8 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
               </div>
             </div>,
             baseStyle,
-            componentKey
+            componentKey,
+            childrenContent
           );
         }
 
@@ -1055,7 +1106,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             // Render the component - use template's layer + base effectiveLayer for proper z-ordering
             const componentLayer = effectiveLayer + (templateComp.layer || 0);
             const slotVisible = getComponentVisibility(previewComp, effectiveGameData);
-            const compElement = renderComponent(previewComp, slotIndex * 100 + compIndex, componentLayer, slotVisible);
+            const compElement = renderComponent(ctx, previewComp, slotIndex * 100 + compIndex, componentLayer, slotVisible);
             slotElements.push(compElement);
           });
         }
@@ -1066,10 +1117,11 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             ...baseStyle,
             width: naturalWidth,
             height: naturalHeight,
-            transformOrigin: buildCssTransformOrigin(config.transform, naturalWidth, naturalHeight),
+            transformOrigin: buildCssTransformOrigin(animTransform, naturalWidth, naturalHeight, animStretch),
             overflow: 'visible'
           }}>
             {slotElements}
+            {childrenContent}
           </div>
         );
       }
@@ -1096,39 +1148,61 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
             </Text>
           </div>,
           baseStyle,
-          componentKey
+          componentKey,
+          childrenContent
         );
     }
+}
+
+// Render a subtree of a component hierarchy. Each node's own content sits at
+// its EFFECTIVE (animated) position and carries its own effective transform
+// and opacity; its children render inside it, offset from the node's
+// AUTHORED position (see localOffset / renderComponent's originOffset*).
+// Position, rotation and scale inheritance come free from this DOM nesting -
+// only opacity needs explicit chaining (see effectiveOpacity below).
+function renderTree(
+  ctx: RenderCtx,
+  nodes: ComponentTreeNode[],
+  parentComponent: ComponentConfig | undefined,
+  parentAuthoredPosition: Point2D | undefined,
+  opacityChain: Array<number | undefined>
+): React.ReactNode[] {
+  const visibleNodes = nodes.filter(node => {
+    const c = node.component;
+    if (c.visible === false) return false;
+    if (parentComponent && !isChildVisibleUnderParent(parentComponent, c, ctx.effectiveGameData)) {
+      return false;
+    }
+    return true;
+  });
+
+  const sorted = sortSiblingsByLayerDesc(visibleNodes);
+
+  return sorted.map((node, idx) => {
+    const c = node.component;
+    const effectiveLayer = (sorted.length - idx) * 10;
+    const isVisible = getComponentVisibility(c, ctx.effectiveGameData);
+    const ownAnimOpacity = getAnimatedOpacity(ctx, c);
+    const childrenContent = node.children.length > 0
+      ? renderTree(ctx, node.children, c, c.position, [...opacityChain, ownAnimOpacity])
+      : null;
+    return renderComponent(ctx, c, idx, effectiveLayer, isVisible, parentAuthoredPosition, opacityChain, childrenContent);
+  });
+}
+
+function WebPreview({ layout, selectedComponents, onSelectComponents, gameData, sampledValues, dirtyChannels }: WebPreviewProps) {
+  // Use provided gameData or fall back to mockGameData
+  const effectiveGameData = gameData || mockGameData;
+
+  const ctx: RenderCtx = {
+    effectiveGameData,
+    sampledValues,
+    dirtyChannels,
+    layoutComponents: layout.components || [],
   };
 
-  // Sort components by effective layer to ensure correct DOM order AND z-index
-  const sortedComponents = [...(layout.components || [])]
-    .filter(component => {
-      // Don't show hidden components
-      if (component.visible === false) return false;
-      // Don't render layers/groups - they're organizational only
-      if (component.type === 'group') return false;
-      // Don't show if any ancestor is hidden (including static visibility)
-      let parentId = component.parentId;
-      while (parentId) {
-        const parent = (layout.components || []).find(c => c.id === parentId);
-        if (!parent) break;
-        if (parent.visible === false) return false;
-        parentId = parent.parentId;
-      }
-      // Don't show if ancestor has visibilityPath that evaluates to false
-      // (component's own visibilityPath is handled via opacity for smooth transitions)
-      if (!areAncestorsVisible(component, layout.components || [], effectiveGameData)) {
-        return false;
-      }
-      return true;
-    })
-    .map(component => ({
-      component,
-      effectiveLayer: getEffectiveLayer(component, layout.components || []),
-      isVisible: getComponentVisibility(component, effectiveGameData)
-    }))
-    .sort((a, b) => a.effectiveLayer - b.effectiveLayer);
+  const treeRoots = buildComponentTree(layout.components || []);
+  const renderedComponents = renderTree(ctx, treeRoots, undefined, undefined, []);
 
   return (
     <div
@@ -1141,9 +1215,7 @@ function WebPreview({ layout, selectedComponents, onSelectComponents, gameData }
         isolation: 'isolate',
       }}
     >
-      {sortedComponents.map(({ component, effectiveLayer, isVisible }, index) =>
-        renderComponent(component, index, effectiveLayer, isVisible)
-      )}
+      {renderedComponents}
     </div>
   );
 }

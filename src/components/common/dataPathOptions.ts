@@ -99,6 +99,7 @@ const GROUP_ORDER = [
   'Game Settings',
   'Trivia',
   'Sponsorship',
+  'Accolade',
 ];
 
 export const DATA_PATH_OPTIONS: PathOption[] = [
@@ -380,7 +381,20 @@ export function groupedOptionsForPurpose(
 
   const byGroup = new Map<string, PathOption[]>();
   filtered.forEach(o => {
-    const existing = byGroup.get(o.group) || [];
+    const existing = byGroup.get(o.group) || [
+  // ── Accolade ───────────────────────────────────────────────────────────
+  // Only populated while an accolade overlay is playing — these resolve from
+  // the triggering `accolade.show` message, not from game data.
+  { label: 'Accolade Player Name', value: 'accolade.playerName', group: 'Accolade', purposes: ['data'] },
+  { label: 'Accolade Player First Name', value: 'accolade.playerFirstName', group: 'Accolade', purposes: ['data'] },
+  { label: 'Accolade Player Last Name', value: 'accolade.playerLastName', group: 'Accolade', purposes: ['data'] },
+  { label: 'Accolade Player Jersey', value: 'accolade.jersey', group: 'Accolade', purposes: ['data'] },
+  // Ends in '.imageUrl', so isImagePath() routes it to the image renderer.
+  { label: 'Accolade Player Image', value: 'accolade.imageUrl', group: 'Accolade', purposes: ['data'] },
+  { label: 'Accolade Team', value: 'accolade.team', group: 'Accolade', purposes: ['data'] },
+  { label: 'Accolade Type', value: 'accolade.type', group: 'Accolade', purposes: ['data'] },
+  { label: 'Accolade Display Text', value: 'accolade.displayText', group: 'Accolade', purposes: ['data'] },
+];
     existing.push(o);
     byGroup.set(o.group, existing);
   });

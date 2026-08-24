@@ -1,15 +1,22 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig, LAYOUT_TYPES } from './types';
 import { resolveActiveStateId } from './shared/conditions';
+import type { OverlayConfig, AnimationTrack, AnimatableProperty } from './shared/utils/overlayTimeline';
+import { pruneTracksForComponent, retimeKeyframe, removeKeyframe, insertKeyframe, setKeyframeValue, setKeyframeHandle, setKeyframeEasing, setKeyframeHandleMode, insertKeyframeOnCurve, type Handle, type HandleMode, type Interpolation, type Keyframe } from './shared/utils/overlayTimeline';
+import { saveOverlay, OVERLAY_STORAGE_KEY } from './utils/overlayStorage';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import LayerPanel from './components/LayerPanel';
 import ExportModal from './components/ExportModal';
+import OverlayExportModal from './components/OverlayExportModal';
 import PresetModal from './components/PresetModal';
+import OverlayLibraryModal from './components/OverlayLibraryModal';
+import TimelinePanel from './components/TimelinePanel';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
 import { ToastProvider, useToast } from './components/Toast';
 import { repairTemplateReferences } from './utils/slotTemplates';
 import { SHAPE_PRESETS } from './utils/shapePresets';
+import { DirtyChannel } from './shared/utils/overlayPreview';
 import './App.css';
 
 // Panel resize constants
@@ -17,6 +24,11 @@ const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 600;
 const DEFAULT_LEFT_PANEL_WIDTH = 250;
 const DEFAULT_RIGHT_PANEL_WIDTH = 320;
+
+const TIMELINE_PANEL_HEIGHT_KEY = 'timeline-panel-height';
+const MIN_TIMELINE_PANEL_HEIGHT = 120;
+const MAX_TIMELINE_PANEL_HEIGHT = 640;
+const DEFAULT_TIMELINE_PANEL_HEIGHT = 180;
 
 const DEVICE_PRESETS = {
   '1080p TV (1920x1080)': { width: 1920, height: 1080 },
@@ -35,12 +47,64 @@ type UndoAction = {
   previousLayout: LayoutConfig;
 };
 
+function changedDirtyChannelsForUpdate(
+  prevComponent: ComponentConfig,
+  updates: Partial<ComponentConfig>,
+): DirtyChannel[] {
+  const changed: DirtyChannel[] = [];
+  if (updates.position) {
+    if (updates.position.x !== prevComponent.position.x) changed.push('x');
+    if (updates.position.y !== prevComponent.position.y) changed.push('y');
+  }
+  if (updates.size) {
+    if (updates.size.width !== prevComponent.size.width) changed.push('width');
+    if (updates.size.height !== prevComponent.size.height) changed.push('height');
+  }
+  if (updates.transform) {
+    const prevRotation = prevComponent.transform?.rotation ?? 0;
+    const prevScale = prevComponent.transform?.scale ?? 1;
+    const nextRotation = updates.transform.rotation ?? 0;
+    const nextScale = updates.transform.scale ?? 1;
+    if (nextRotation !== prevRotation) changed.push('rotation');
+    if (nextScale !== prevScale) changed.push('scale');
+  }
+  return changed;
+}
+
+function trackChannelKey(componentId: string, property: AnimatableProperty): string {
+  return `${componentId}:${property}`;
+}
+
+function findWrittenChannels(
+  prevTracks: AnimationTrack[],
+  nextTracks: AnimationTrack[],
+): Array<{ componentId: string; property: AnimatableProperty }> {
+  const prevByKey = new Map(prevTracks.map(t => [trackChannelKey(t.componentId, t.property), t]));
+  const written: Array<{ componentId: string; property: AnimatableProperty }> = [];
+  for (const track of nextTracks) {
+    const key = trackChannelKey(track.componentId, track.property);
+    const prevTrack = prevByKey.get(key);
+    if (!prevTrack || JSON.stringify(prevTrack.keyframes) !== JSON.stringify(track.keyframes)) {
+      written.push({ componentId: track.componentId, property: track.property });
+    }
+  }
+  return written;
+}
+
+function isDirtyEligibleProperty(property: AnimatableProperty): property is DirtyChannel {
+  return property === 'x' || property === 'y' || property === 'width' || property === 'height'
+    || property === 'rotation' || property === 'scale';
+}
+
 // Memoized child components to prevent unnecessary re-renders
 const MemoizedCanvas = React.memo(Canvas);
 const MemoizedLayerPanel = React.memo(LayerPanel);
 const MemoizedPropertyPanel = React.memo(PropertyPanel);
 const MemoizedExportModal = React.memo(ExportModal);
+const MemoizedOverlayExportModal = React.memo(OverlayExportModal);
 const MemoizedPresetModal = React.memo(PresetModal);
+const MemoizedOverlayLibraryModal = React.memo(OverlayLibraryModal);
+const MemoizedTimelinePanel = React.memo(TimelinePanel);
 const MemoizedKeyboardShortcutsModal = React.memo(KeyboardShortcutsModal);
 
 // Fake 404 overlay component for obfuscation
@@ -84,6 +148,67 @@ function App() {
     backgroundColor: '#000000',
     dimensions: DEFAULT_DIMENSIONS
   });
+
+  const [documentKind, setDocumentKind] = useState<'layout' | 'overlay'>('layout');
+  const [overlay, setOverlay] = useState<OverlayConfig | null>(null);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [dirtyChannels, setDirtyChannels] = useState<Map<string, Set<DirtyChannel>>>(new Map());
+
+  useEffect(() => {
+    setDirtyChannels(new Map());
+  }, [currentFrame]);
+
+  const markChannelsDirty = useCallback((componentId: string, channels: DirtyChannel[]) => {
+    if (channels.length === 0) return;
+    setDirtyChannels(prev => {
+      const next = new Map(prev);
+      const existing = next.get(componentId);
+      const set = existing ? new Set(existing) : new Set<DirtyChannel>();
+      for (const channel of channels) set.add(channel);
+      next.set(componentId, set);
+      return next;
+    });
+  }, []);
+  const playbackRafRef = useRef<number | null>(null);
+  const playbackLastTimeRef = useRef<number | null>(null);
+
+  const overlayAsLayoutView = useCallback((o: OverlayConfig): LayoutConfig => ({
+    name: o.name,
+    components: o.components as ComponentConfig[],
+    backgroundColor: o.backgroundColor,
+    dimensions: o.dimensions,
+  }), []);
+
+  const activeDocument: LayoutConfig = useMemo(() => {
+    if (documentKind === 'overlay' && overlay) {
+      return {
+        name: overlay.name,
+        components: overlay.components as ComponentConfig[],
+        backgroundColor: overlay.backgroundColor,
+        dimensions: overlay.dimensions,
+      };
+    }
+    return layout;
+  }, [documentKind, layout, overlay?.name, overlay?.components, overlay?.backgroundColor, overlay?.dimensions]);
+
+  const setActiveDocument = useCallback((updater: (prev: LayoutConfig) => LayoutConfig) => {
+    if (documentKind === 'overlay') {
+      setOverlay(prevOverlay => {
+        if (!prevOverlay) return prevOverlay;
+        const nextView = updater(overlayAsLayoutView(prevOverlay));
+        return {
+          ...prevOverlay,
+          name: nextView.name,
+          components: nextView.components,
+          backgroundColor: nextView.backgroundColor,
+          dimensions: nextView.dimensions,
+        };
+      });
+    } else {
+      setLayout(updater);
+    }
+  }, [documentKind, overlayAsLayoutView]);
 
   // Game data state for live preview
   const [gameData, setGameData] = useState({
@@ -325,11 +450,11 @@ function App() {
 
   // Leave edit mode automatically if the component disappears (undo, delete, import)
   useEffect(() => {
-    if (editingShapeId && !(layout.components || []).some(c => c.id === editingShapeId && c.type === 'shape')) {
+    if (editingShapeId && !(activeDocument.components || []).some(c => c.id === editingShapeId && c.type === 'shape')) {
       setEditingShapeId(null);
       setSelectedVertices([]);
     }
-  }, [editingShapeId, layout.components]);
+  }, [editingShapeId, activeDocument.components]);
 
   // Helper to get all descendants of a component (for group selection)
   const getAllDescendants = useCallback((parentId: string, components: ComponentConfig[]): string[] => {
@@ -353,8 +478,8 @@ function App() {
    */
   const handleSelectComponents = useCallback((ids: string[], options?: { autoPinState?: boolean }) => {
     const autoPinState = options?.autoPinState !== false;
-    // Get current layout components
-    const components = layout.components || [];
+    // Get current active document's components
+    const components = activeDocument.components || [];
 
     // Expand selection to include descendants of any selected groups
     const expandedIds = new Set<string>(ids);
@@ -394,7 +519,7 @@ function App() {
       }
     }
     if (pinUpdates.size > 0) {
-      setLayout(prev => ({
+      setActiveDocument(prev => ({
         ...prev,
         components: (prev.components || []).map(c =>
           pinUpdates.has(c.id)
@@ -405,7 +530,7 @@ function App() {
     }
 
     setSelectedComponents(Array.from(expandedIds));
-  }, [layout.components, getAllDescendants]);
+  }, [activeDocument.components, getAllDescendants, setActiveDocument]);
 
   /** Canvas selection: same expansion, but never re-pins the previewed state. */
   const handleSelectFromCanvas = useCallback((ids: string[]) => {
@@ -413,7 +538,9 @@ function App() {
   }, [handleSelectComponents]);
 
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showOverlayExportModal, setShowOverlayExportModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
+  const [showOverlayLibrary, setShowOverlayLibrary] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [templateRefreshKey, setTemplateRefreshKey] = useState(0);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
@@ -438,6 +565,18 @@ function App() {
   const [isResizingRight, setIsResizingRight] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
+
+  const [timelinePanelHeight, setTimelinePanelHeight] = useState<number>(() => {
+    const stored = localStorage.getItem(TIMELINE_PANEL_HEIGHT_KEY);
+    const parsed = stored ? parseInt(stored, 10) : NaN;
+    return Number.isFinite(parsed)
+      ? Math.min(MAX_TIMELINE_PANEL_HEIGHT, Math.max(MIN_TIMELINE_PANEL_HEIGHT, parsed))
+      : DEFAULT_TIMELINE_PANEL_HEIGHT;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(TIMELINE_PANEL_HEIGHT_KEY, String(timelinePanelHeight));
+  }, [timelinePanelHeight]);
 
   // Panel resize handlers
   const handleLeftResizeStart = useCallback((e: React.MouseEvent) => {
@@ -515,49 +654,49 @@ function App() {
   const undo = useCallback(() => {
     setUndoHistory(prev => {
       if (prev.length === 0) return prev;
-      
+
       const [lastAction, ...remainingHistory] = prev;
-      
+
       // Save current state to redo history before undoing
-      setLayout(currentLayout => {
+      setActiveDocument(currentDocument => {
         const currentRedoAction: UndoAction = {
           type: lastAction.type,
           description: lastAction.description,
-          previousLayout: structuredClone(currentLayout) // More efficient cloning
+          previousLayout: structuredClone(currentDocument) // More efficient cloning
         };
-        
+
         setRedoHistory(prevRedo => [currentRedoAction, ...prevRedo].slice(0, 50)); // Keep last 50 redo actions
         setSelectedComponents([]); // Clear selection after undo
         return lastAction.previousLayout;
       });
-      
+
       return remainingHistory;
     });
-  }, []);
+  }, [setActiveDocument]);
 
   // Redo function - optimized to avoid layout dependency
   const redo = useCallback(() => {
     setRedoHistory(prev => {
       if (prev.length === 0) return prev;
-      
+
       const [lastRedoAction, ...remainingRedoHistory] = prev;
-      
+
       // Save current state to undo history before redoing
-      setLayout(currentLayout => {
+      setActiveDocument(currentDocument => {
         const currentUndoAction: UndoAction = {
           type: lastRedoAction.type,
           description: lastRedoAction.description,
-          previousLayout: structuredClone(currentLayout) // More efficient cloning
+          previousLayout: structuredClone(currentDocument) // More efficient cloning
         };
-        
+
         setUndoHistory(prevUndo => [currentUndoAction, ...prevUndo].slice(0, 50)); // Keep last 50 undo actions
         setSelectedComponents([]); // Clear selection after redo
         return lastRedoAction.previousLayout;
       });
-      
+
       return remainingRedoHistory;
     });
-  }, []);
+  }, [setActiveDocument]);
 
   // Quick save preset function
   const quickSavePreset = useCallback(() => {
@@ -600,12 +739,222 @@ function App() {
     toast.success(`Preset "${nameToUse}" ${action} successfully!`);
   }, [layout, toast]);
 
+  const LAYOUT_AUTOSAVE_KEY = 'scoreboard-layout-autosave';
+  const OVERLAY_AUTOSAVE_KEY = 'sv-overlay-autosave';
+
+  const switchToLayout = useCallback(() => {
+    if (documentKind === 'layout') return;
+    if (overlay) {
+      localStorage.setItem(OVERLAY_AUTOSAVE_KEY, JSON.stringify(overlay));
+    }
+    const autosaved = localStorage.getItem(LAYOUT_AUTOSAVE_KEY);
+    if (autosaved) {
+      try {
+        setLayout(JSON.parse(autosaved));
+      } catch {}
+    }
+    setDocumentKind('layout');
+    setSelectedComponents([]);
+    setUndoHistory([]);
+    setRedoHistory([]);
+    setIsPlaying(false);
+    setCurrentFrame(0);
+  }, [documentKind, overlay]);
+
+  const saveCurrentOverlay = useCallback(() => {
+    if (!overlay) return;
+    saveOverlay(overlay, new Date().toISOString());
+    toast.success(`Overlay "${overlay.name}" saved`);
+  }, [overlay, toast]);
+
+  const loadOverlayFromLibrary = useCallback((loaded: OverlayConfig) => {
+    if (documentKind === 'layout') {
+      localStorage.setItem(LAYOUT_AUTOSAVE_KEY, JSON.stringify(layout));
+    } else if (overlay) {
+      localStorage.setItem(OVERLAY_AUTOSAVE_KEY, JSON.stringify(overlay));
+    }
+    let next = loaded;
+    const autosaved = localStorage.getItem(OVERLAY_AUTOSAVE_KEY);
+    if (autosaved) {
+      try {
+        const parsed = JSON.parse(autosaved) as OverlayConfig;
+        if (parsed.id === loaded.id) {
+          next = parsed;
+        }
+      } catch {}
+    }
+    setOverlay(next);
+    setDocumentKind('overlay');
+    setSelectedComponents([]);
+    setUndoHistory([]);
+    setRedoHistory([]);
+    setIsPlaying(false);
+    setCurrentFrame(0);
+  }, [documentKind, layout, overlay]);
+
+  useEffect(() => {
+    if (!isPlaying || documentKind !== 'overlay' || !overlay) {
+      return;
+    }
+    const fps = overlay.fps;
+    const startFrame = overlay.startFrame;
+    const endFrame = overlay.endFrame;
+    const cycleLength = endFrame - startFrame + 1;
+    playbackLastTimeRef.current = null;
+
+    const step = (time: number) => {
+      if (playbackLastTimeRef.current === null) {
+        playbackLastTimeRef.current = time;
+      }
+      const elapsedSeconds = (time - playbackLastTimeRef.current) / 1000;
+      playbackLastTimeRef.current = time;
+      setCurrentFrame(prev => {
+        if (cycleLength <= 0) return startFrame;
+        const next = prev + elapsedSeconds * fps;
+        return next > endFrame ? startFrame + ((next - startFrame) % cycleLength) : next;
+      });
+      playbackRafRef.current = requestAnimationFrame(step);
+    };
+
+    playbackRafRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (playbackRafRef.current !== null) {
+        cancelAnimationFrame(playbackRafRef.current);
+        playbackRafRef.current = null;
+      }
+    };
+  }, [isPlaying, documentKind, overlay?.fps, overlay?.startFrame, overlay?.endFrame]);
+
+  useEffect(() => {
+    if (documentKind !== 'overlay') {
+      setIsPlaying(false);
+    }
+  }, [documentKind]);
+
+  const handleScrubFrame = useCallback((frame: number) => {
+    setCurrentFrame(frame);
+  }, []);
+
+  const handleCommitFps = useCallback((fps: number) => {
+    setOverlay(prev => (prev ? { ...prev, fps } : prev));
+  }, []);
+
+  const handleCommitStartFrame = useCallback((startFrame: number) => {
+    setOverlay(prev => (prev ? { ...prev, startFrame: Math.min(startFrame, prev.endFrame) } : prev));
+    setCurrentFrame(prev => Math.max(prev, startFrame));
+  }, []);
+
+  const handleCommitEndFrame = useCallback((endFrame: number) => {
+    setOverlay(prev => (prev ? { ...prev, endFrame: Math.max(endFrame, prev.startFrame) } : prev));
+    setCurrentFrame(prev => Math.min(prev, endFrame));
+  }, []);
+
+  const setOverlayTracks = useCallback((updater: (tracks: AnimationTrack[]) => AnimationTrack[]) => {
+    setOverlay(prev => (prev ? { ...prev, tracks: updater(prev.tracks) } : prev));
+  }, []);
+
+  const setOverlayTracksAndClearDirty = useCallback((updater: (tracks: AnimationTrack[]) => AnimationTrack[]) => {
+    setOverlay(prev => {
+      if (!prev) return prev;
+      const nextTracks = updater(prev.tracks);
+      const written = findWrittenChannels(prev.tracks, nextTracks);
+      if (written.length > 0) {
+        setDirtyChannels(prevDirty => {
+          let nextDirty = prevDirty;
+          for (const { componentId, property } of written) {
+            if (!isDirtyEligibleProperty(property)) continue;
+            const set = nextDirty.get(componentId);
+            if (!set || !set.has(property)) continue;
+            if (nextDirty === prevDirty) nextDirty = new Map(prevDirty);
+            const nextSet = new Set(set);
+            nextSet.delete(property);
+            if (nextSet.size > 0) nextDirty.set(componentId, nextSet);
+            else nextDirty.delete(componentId);
+          }
+          return nextDirty;
+        });
+      }
+      return { ...prev, tracks: nextTracks };
+    });
+  }, []);
+
+  const handleRetimeKeyframe = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    fromFrame: number,
+    toFrame: number,
+  ) => {
+    setOverlayTracks(tracks => retimeKeyframe(tracks, componentId, property, fromFrame, toFrame));
+  }, [setOverlayTracks]);
+
+  const handleRemoveKeyframe = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+  ) => {
+    setOverlayTracks(tracks => removeKeyframe(tracks, componentId, property, frame));
+  }, [setOverlayTracks]);
+
+  const handleSetKeyframeValue = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+    value: number,
+  ) => {
+    setOverlayTracks(tracks => setKeyframeValue(tracks, componentId, property, frame, value));
+  }, [setOverlayTracks]);
+
+  const handleInsertOnCurve = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+  ) => {
+    setOverlayTracks(tracks => insertKeyframeOnCurve(tracks, componentId, property, frame));
+  }, [setOverlayTracks]);
+
+  const handleSetKeyframeHandle = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+    side: 'in' | 'out',
+    handle: Handle,
+  ) => {
+    setOverlayTracks(tracks => setKeyframeHandle(tracks, componentId, property, frame, side, handle));
+  }, [setOverlayTracks]);
+
+  const handleSetKeyframeInterpolation = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+    interpolation: Interpolation,
+  ) => {
+    setOverlayTracks(tracks => setKeyframeEasing(tracks, componentId, property, frame, interpolation));
+  }, [setOverlayTracks]);
+
+  const handleSetKeyframeHandleMode = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+    handleMode: HandleMode,
+  ) => {
+    setOverlayTracks(tracks => setKeyframeHandleMode(tracks, componentId, property, frame, handleMode));
+  }, [setOverlayTracks]);
+
+  const handlePasteKeyframe = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    keyframe: Keyframe,
+  ) => {
+    setOverlayTracks(tracks => insertKeyframe(tracks, componentId, property, keyframe));
+  }, [setOverlayTracks]);
+
   /**
    * Unified bundle format — one file holds presets + both template types
-   * + canvas bg. Parsed JSON arrays (not stringified) so the file is
-   * human-inspectable.
+   * + canvas bg + overlays. Parsed JSON arrays (not stringified) so the
+   * file is human-inspectable.
    */
-  const BUNDLE_VERSION = 1;
+  const BUNDLE_VERSION = 2;
 
   const exportLocalStorage = useCallback(() => {
     const readArray = (key: string): unknown[] => {
@@ -625,6 +974,7 @@ function App() {
       presets: readArray('scoreboard-layout-presets'),
       slotTemplates: readArray('sv-slot-templates'),
       componentTemplates: readArray('sv-component-templates'),
+      overlays: readArray(OVERLAY_STORAGE_KEY),
       canvasBackgroundImage: localStorage.getItem('canvas-background-image') || null,
       canvasBackgroundVisible: localStorage.getItem('canvas-background-visible') || null,
     };
@@ -642,8 +992,9 @@ function App() {
     const total =
       bundle.presets.length +
       bundle.slotTemplates.length +
-      bundle.componentTemplates.length;
-    toast.success(`Exported bundle (${bundle.presets.length} presets, ${bundle.slotTemplates.length} slot templates, ${bundle.componentTemplates.length} component templates — ${total} items total)`);
+      bundle.componentTemplates.length +
+      bundle.overlays.length;
+    toast.success(`Exported bundle (${bundle.presets.length} presets, ${bundle.slotTemplates.length} slot templates, ${bundle.componentTemplates.length} component templates, ${bundle.overlays.length} overlays — ${total} items total)`);
   }, [toast]);
 
   const importLocalStorage = useCallback(() => {
@@ -658,8 +1009,8 @@ function App() {
       reader.onload = (event) => {
         try {
           const data = JSON.parse(event.target?.result as string);
-          if (!data || typeof data !== 'object' || data.version !== BUNDLE_VERSION) {
-            toast.error('Unrecognized bundle file — expected a v1 layout-builder bundle.');
+          if (!data || typeof data !== 'object' || typeof data.version !== 'number' || data.version < 1 || data.version > BUNDLE_VERSION) {
+            toast.error('Unrecognized bundle file — expected a layout-builder bundle.');
             return;
           }
 
@@ -670,6 +1021,7 @@ function App() {
           writeArray('scoreboard-layout-presets', data.presets);
           writeArray('sv-slot-templates', data.slotTemplates);
           writeArray('sv-component-templates', data.componentTemplates);
+          writeArray(OVERLAY_STORAGE_KEY, data.overlays);
           if (typeof data.canvasBackgroundImage === 'string') {
             localStorage.setItem('canvas-background-image', data.canvasBackgroundImage);
           }
@@ -680,7 +1032,8 @@ function App() {
           const presets = Array.isArray(data.presets) ? data.presets.length : 0;
           const slots = Array.isArray(data.slotTemplates) ? data.slotTemplates.length : 0;
           const comps = Array.isArray(data.componentTemplates) ? data.componentTemplates.length : 0;
-          toast.success(`Imported bundle (${presets} presets, ${slots} slot templates, ${comps} component templates). Refreshing…`);
+          const overlaysCount = Array.isArray(data.overlays) ? data.overlays.length : 0;
+          toast.success(`Imported bundle (${presets} presets, ${slots} slot templates, ${comps} component templates, ${overlaysCount} overlays). Refreshing…`);
           setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
           toast.error('Failed to import bundle: invalid JSON file');
@@ -718,7 +1071,7 @@ function App() {
    * something at the root. Saves dragging every new element into its layer.
    */
   const inferParentId = useCallback((): string | undefined => {
-    const components = layout.components || [];
+    const components = activeDocument.components || [];
     // Nothing selected: fall back to the container last worked in, which
     // survives a deselect (clicking empty canvas, Escape).
     if (selectedComponents.length === 0) {
@@ -753,7 +1106,7 @@ function App() {
     }
 
     return context;
-  }, [layout.components, selectedComponents, gameData]);
+  }, [activeDocument.components, selectedComponents, gameData]);
 
   // Remember the container the selection sat in, for the empty-selection case.
   const lastContainerRef = useRef<string | undefined>(undefined);
@@ -777,7 +1130,7 @@ function App() {
     const componentId = customId || generateComponentId(type);
     const resolvedParentId = parentId ?? inferParentId();
 
-    setLayout(prev => {
+    setActiveDocument(prev => {
       // Save current state for undo
       saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
 
@@ -825,7 +1178,7 @@ function App() {
     });
 
     return componentId;
-  }, [saveStateForUndo, generateComponentId, inferParentId]);
+  }, [saveStateForUndo, generateComponentId, inferParentId, setActiveDocument]);
 
   const addShape = useCallback((presetKey: string) => {
     const preset = SHAPE_PRESETS[presetKey];
@@ -864,7 +1217,7 @@ function App() {
       };
     }
 
-    setLayout(prev => {
+    setActiveDocument(prev => {
       const component = (prev.components || []).find(c => c.id === id);
       if (component) {
         // Check if this is a position/size update (drag/resize operation)
@@ -873,6 +1226,11 @@ function App() {
         if (isPropertyUpdate && !isDraggingRef.current) {
           // Property updates always save undo state
           saveStateForUndo('UPDATE_COMPONENT', `Update ${component.type} properties`, prev);
+        }
+
+        if (documentKind === 'overlay') {
+          const changed = changedDirtyChannelsForUpdate(component, roundedUpdates);
+          if (changed.length > 0) markChannelsDirty(id, changed);
         }
       }
 
@@ -883,19 +1241,19 @@ function App() {
         )
       };
     });
-  }, [saveStateForUndo]);
+  }, [saveStateForUndo, setActiveDocument, documentKind, markChannelsDirty]);
 
   // Function to start a drag operation (save initial state) - optimized
   const startDragOperation = useCallback(() => {
     if (!isDraggingRef.current) {
-      // Use functional update to access current layout without dependency
-      setLayout(currentLayout => {
-        dragStartStateRef.current = structuredClone(currentLayout); // More efficient cloning
+      // Use functional update to access the current active document without dependency
+      setActiveDocument(currentDocument => {
+        dragStartStateRef.current = structuredClone(currentDocument); // More efficient cloning
         isDraggingRef.current = true;
-        return currentLayout; // Return unchanged
+        return currentDocument; // Return unchanged
       });
     }
-  }, []);
+  }, [setActiveDocument]);
 
   // Function to end a drag operation (save final state for undo)
   const endDragOperation = useCallback((description: string) => {
@@ -907,23 +1265,33 @@ function App() {
   }, [saveStateForUndo]);
 
   const deleteComponent = useCallback((id: string) => {
-    setLayout(prev => {
+    setActiveDocument(prev => {
       const component = (prev.components || []).find(c => c.id === id);
       if (component) {
         saveStateForUndo('DELETE_COMPONENT', `Delete ${component.type} component`, prev);
       }
-      
+
       setSelectedComponents(prevSelected => prevSelected.filter(compId => compId !== id));
-      
+
       return {
         ...prev,
         components: (prev.components || []).filter(comp => comp.id !== id)
       };
     });
-  }, [saveStateForUndo]);
+
+    if (documentKind === 'overlay') {
+      setOverlay(prevOverlay => {
+        if (!prevOverlay) return prevOverlay;
+        return {
+          ...prevOverlay,
+          tracks: pruneTracksForComponent(prevOverlay.tracks, id),
+        };
+      });
+    }
+  }, [saveStateForUndo, setActiveDocument, documentKind]);
 
   const duplicateComponent = useCallback((id: string) => {
-    setLayout(prev => {
+    setActiveDocument(prev => {
       const original = (prev.components || []).find(comp => comp.id === id);
       if (original) {
         saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, prev);
@@ -968,13 +1336,13 @@ function App() {
       }
       return prev;
     });
-  }, [saveStateForUndo, generateComponentId]);
+  }, [saveStateForUndo, generateComponentId, setActiveDocument]);
 
   // Duplicate multiple components for copy-drag operation (returns map of old ID to new ID)
   const copyDragComponents = useCallback((ids: string[]): Map<string, string> => {
     const idMapping = new Map<string, string>();
 
-    setLayout(prev => {
+    setActiveDocument(prev => {
       const components = prev.components || [];
 
       // Helper to get all descendants of a component
@@ -1077,13 +1445,13 @@ function App() {
     });
 
     return idMapping;
-  }, [saveStateForUndo, generateComponentId]);
+  }, [saveStateForUndo, generateComponentId, setActiveDocument]);
 
   // Copy selected components (and their children) to clipboard
   const copyComponents = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
-    const components = layout.components || [];
+    const components = activeDocument.components || [];
 
     // Helper to get all descendants of a component
     const getDescendants = (parentId: string): ComponentConfig[] => {
@@ -1135,13 +1503,13 @@ function App() {
 
     // Deep clone the components for clipboard
     setClipboard(structuredClone(componentsToCopy));
-  }, [selectedComponents, layout.components]);
+  }, [selectedComponents, activeDocument.components]);
 
   // Paste components from clipboard
   const pasteComponents = useCallback(() => {
     if (!clipboard || clipboard.length === 0) return;
 
-    setLayout(prev => {
+    setActiveDocument(prev => {
       saveStateForUndo('DUPLICATE_COMPONENT', `Paste ${clipboard.length} component(s)`, prev);
 
       const existingNames = new Set(
@@ -1207,13 +1575,13 @@ function App() {
         components: [...(prev.components || []), ...newComponents]
       };
     });
-  }, [clipboard, saveStateForUndo, generateComponentId]);
+  }, [clipboard, saveStateForUndo, generateComponentId, setActiveDocument]);
 
   // Group selected components together
   const groupSelectedComponents = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
-    setLayout(prev => {
+    setActiveDocument(prev => {
       const components = prev.components || [];
       const selectedComps = components.filter(c => selectedComponents.includes(c.id));
 
@@ -1275,13 +1643,13 @@ function App() {
         components: [...updatedComponents, groupComponent]
       };
     });
-  }, [selectedComponents, saveStateForUndo, generateComponentId]);
+  }, [selectedComponents, saveStateForUndo, generateComponentId, setActiveDocument]);
 
   // Ungroup selected groups - move children to root level
   const ungroupSelectedComponents = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
-    setLayout(prev => {
+    setActiveDocument(prev => {
       const components = prev.components || [];
       const selectedGroups = components.filter(
         c => selectedComponents.includes(c.id) && c.type === 'group'
@@ -1320,7 +1688,7 @@ function App() {
         components: updatedComponents
       };
     });
-  }, [selectedComponents, saveStateForUndo]);
+  }, [selectedComponents, saveStateForUndo, setActiveDocument]);
 
   // Global keyboard handler for copy/paste/group and keyboard shortcuts
   useEffect(() => {
@@ -1403,13 +1771,13 @@ function App() {
 
   // Handler to properly merge partial layout updates (used by Canvas for resolution changes)
   const handleUpdateLayout = useCallback((updates: Partial<LayoutConfig>) => {
-    setLayout(prev => ({
+    setActiveDocument(prev => ({
       ...prev,
       ...updates,
       // Deep merge dimensions if provided
       dimensions: updates.dimensions ? { ...prev.dimensions, ...updates.dimensions } : prev.dimensions
     }));
-  }, []);
+  }, [setActiveDocument]);
 
   // Show fake 404 if not unlocked
   if (!isUnlocked) {
@@ -1424,36 +1792,73 @@ function App() {
         <div className="header-section header-branding">
           <h1 className="header-title">Layout Builder</h1>
           <div className="header-divider" aria-hidden="true" />
-          <label htmlFor="layout-type-select" className="sr-only">Layout Type</label>
-          <select
-            id="layout-type-select"
-            value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
-            onChange={(e) => {
-              if (e.target.value === '__custom__') {
-                if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
-                  setLayout(prev => ({ ...prev, name: '' }));
-                }
-              } else {
-                setLayout(prev => ({ ...prev, name: e.target.value }));
-              }
-            }}
-            className="header-select"
-            aria-label="Select layout type"
-          >
-            {LAYOUT_TYPES.map(type => (
-              <option key={type.value} value={type.value}>{type.label}</option>
-            ))}
-            <option value="__custom__">Custom...</option>
-          </select>
-          {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
-            <input
-              type="text"
-              value={layout.name}
-              onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
-              className="header-input"
-              placeholder="Custom type"
-              aria-label="Custom layout type identifier"
-            />
+          {documentKind === 'overlay' ? (
+            <>
+              <label htmlFor="overlay-name-input" className="sr-only">Overlay name</label>
+              <input
+                id="overlay-name-input"
+                type="text"
+                value={overlay?.name || ''}
+                onChange={(e) => setOverlay(prev => prev ? { ...prev, name: e.target.value } : prev)}
+                className="header-input"
+                placeholder="Overlay name"
+                aria-label="Overlay name"
+              />
+            </>
+          ) : (
+            <span
+              className="header-btn header-btn-secondary"
+              style={{ cursor: 'default' }}
+              role="status"
+              aria-label={`Currently editing layout: ${layout.name || 'Untitled Layout'}`}
+            >
+              {`Layout: ${layout.name || 'Untitled Layout'}`}
+            </span>
+          )}
+          {documentKind === 'layout' ? null : (
+            <button
+              onClick={switchToLayout}
+              className="header-btn header-btn-secondary"
+              aria-label="Save overlay and switch back to editing the layout"
+            >
+              Back to Layout
+            </button>
+          )}
+          <div className="header-divider" aria-hidden="true" />
+          {documentKind === 'layout' && (
+            <>
+              <label htmlFor="layout-type-select" className="sr-only">Layout Type</label>
+              <select
+                id="layout-type-select"
+                value={LAYOUT_TYPES.some(t => t.value === layout.name) ? layout.name : '__custom__'}
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    if (LAYOUT_TYPES.some(t => t.value === layout.name)) {
+                      setLayout(prev => ({ ...prev, name: '' }));
+                    }
+                  } else {
+                    setLayout(prev => ({ ...prev, name: e.target.value }));
+                  }
+                }}
+                className="header-select"
+                aria-label="Select layout type"
+              >
+                {LAYOUT_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+                <option value="__custom__">Custom...</option>
+              </select>
+              {!LAYOUT_TYPES.some(t => t.value === layout.name) && (
+                <input
+                  type="text"
+                  value={layout.name}
+                  onChange={(e) => setLayout(prev => ({ ...prev, name: e.target.value }))}
+                  className="header-input"
+                  placeholder="Custom type"
+                  aria-label="Custom layout type identifier"
+                />
+              )}
+            </>
           )}
         </div>
 
@@ -1481,27 +1886,57 @@ function App() {
 
         {/* Right: File & Export Operations */}
         <div className="header-section header-file" role="toolbar" aria-label="File operations">
+            {documentKind === 'layout' && (
+              <>
+                <button
+                  onClick={quickSavePreset}
+                  className="header-btn header-btn-primary"
+                  aria-label="Quick save current layout as a preset"
+                  aria-keyshortcuts="Control+S"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setShowPresetModal(true)}
+                  className="header-btn header-btn-secondary"
+                  aria-label="Open preset manager"
+                >
+                  Presets
+                </button>
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="header-btn header-btn-accent"
+                  aria-label="Export layout as JSON"
+                >
+                  Export
+                </button>
+              </>
+            )}
+            {documentKind === 'overlay' && overlay && (
+              <>
+                <button
+                  onClick={saveCurrentOverlay}
+                  className="header-btn header-btn-primary"
+                  aria-label="Save current overlay"
+                  aria-keyshortcuts="Control+S"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setShowOverlayExportModal(true)}
+                  className="header-btn header-btn-accent"
+                  aria-label="Export overlay as JSON"
+                >
+                  Export
+                </button>
+              </>
+            )}
             <button
-              onClick={quickSavePreset}
-              className="header-btn header-btn-primary"
-              aria-label="Quick save current layout as a preset"
-              aria-keyshortcuts="Control+S"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setShowPresetModal(true)}
+              onClick={() => setShowOverlayLibrary(true)}
               className="header-btn header-btn-secondary"
-              aria-label="Open preset manager"
+              aria-label="Open overlay library"
             >
-              Presets
-            </button>
-            <button
-              onClick={() => setShowExportModal(true)}
-              className="header-btn header-btn-accent"
-              aria-label="Export layout as JSON"
-            >
-              Export
+              Overlays
             </button>
             <span style={{ width: '1px', height: '20px', backgroundColor: '#444', margin: '0 4px' }} aria-hidden="true" />
             <button
@@ -1524,7 +1959,7 @@ function App() {
               aria-label="Layers panel"
             >
               <MemoizedLayerPanel
-                layout={layout}
+                layout={activeDocument}
                 selectedComponents={selectedComponents}
                 onSelectComponents={handleSelectComponents}
                 onUpdateComponent={updateComponent}
@@ -1548,7 +1983,7 @@ function App() {
             </aside>
 
             <MemoizedCanvas
-              layout={layout}
+              layout={activeDocument}
               selectedComponents={selectedComponents}
               onSelectComponents={handleSelectFromCanvas}
               onUpdateComponent={updateComponent}
@@ -1566,6 +2001,10 @@ function App() {
               onSetEditingShape={setEditingShapeId}
               selectedVertices={selectedVertices}
               onSelectVertices={setSelectedVertices}
+              documentKind={documentKind}
+              overlayTracks={documentKind === 'overlay' ? overlay?.tracks : undefined}
+              currentFrame={currentFrame}
+              dirtyChannels={documentKind === 'overlay' ? dirtyChannels : undefined}
             />
 
             <aside
@@ -1582,7 +2021,7 @@ function App() {
                 aria-label="Resize properties panel"
               />
               <MemoizedPropertyPanel
-                layout={layout}
+                layout={activeDocument}
                 selectedComponents={selectedComponents}
                 onUpdateComponent={updateComponent}
                 onUpdateLayout={handleUpdateLayout}
@@ -1594,9 +2033,41 @@ function App() {
                 selectedVertices={selectedVertices}
                 onStartDragOperation={startDragOperation}
                 onEndDragOperation={endDragOperation}
+                documentKind={documentKind}
+                overlayTracks={documentKind === 'overlay' ? overlay?.tracks : undefined}
+                currentFrame={currentFrame}
+                onSetOverlayTracks={setOverlayTracksAndClearDirty}
               />
             </aside>
       </main>
+
+      {documentKind === 'overlay' && overlay && (
+        <MemoizedTimelinePanel
+          overlay={overlay}
+          currentFrame={currentFrame}
+          isPlaying={isPlaying}
+          onScrub={handleScrubFrame}
+          onPlayPause={setIsPlaying}
+          onCommitFps={handleCommitFps}
+          onCommitStartFrame={handleCommitStartFrame}
+          onCommitEndFrame={handleCommitEndFrame}
+          components={activeDocument.components || []}
+          selectedComponentIds={selectedComponents}
+          onRetimeKeyframe={handleRetimeKeyframe}
+          onRemoveKeyframe={handleRemoveKeyframe}
+          onPasteKeyframe={handlePasteKeyframe}
+          onSetKeyframeValue={handleSetKeyframeValue}
+          onInsertOnCurve={handleInsertOnCurve}
+          onSetKeyframeHandle={handleSetKeyframeHandle}
+          onSetKeyframeInterpolation={handleSetKeyframeInterpolation}
+          onSetKeyframeHandleMode={handleSetKeyframeHandleMode}
+          editingShapeId={editingShapeId}
+          panelHeight={timelinePanelHeight}
+          onPanelHeightChange={setTimelinePanelHeight}
+          minPanelHeight={MIN_TIMELINE_PANEL_HEIGHT}
+          maxPanelHeight={MAX_TIMELINE_PANEL_HEIGHT}
+        />
+      )}
 
       {showExportModal && (
         <MemoizedExportModal
@@ -1605,13 +2076,29 @@ function App() {
         />
       )}
 
+      {showOverlayExportModal && overlay && (
+        <MemoizedOverlayExportModal
+          overlay={overlay}
+          onClose={() => setShowOverlayExportModal(false)}
+        />
+      )}
+
       {showPresetModal && (
         <MemoizedPresetModal
           layout={layout}
           onClose={() => setShowPresetModal(false)}
           onLoadPreset={loadCustomPreset}
+          onLoadOverlay={loadOverlayFromLibrary}
           onBackup={exportLocalStorage}
           onRestore={importLocalStorage}
+        />
+      )}
+
+      {showOverlayLibrary && (
+        <MemoizedOverlayLibraryModal
+          dimensions={layout.dimensions}
+          onClose={() => setShowOverlayLibrary(false)}
+          onLoadOverlay={loadOverlayFromLibrary}
         />
       )}
 

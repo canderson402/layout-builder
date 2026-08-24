@@ -7,7 +7,7 @@
 // same table, so a fitted size is identical on both.
 //
 // Glyph coverage gaps (these characters fall back to the widest known advance):
- *  Score-Regular has no glyph for: ! " # $ % & ' ( ) * + , - ; < = > ? @ [ \ ] ^ _ ` { | }
+//  Score-Regular has no glyph for: ! " # $ % & ' ( ) * + , - ; < = > ? @ [ \ ] ^ _ ` { | }
 
 export interface FontMetrics {
   /** Advance width per character, in em units (multiply by font size). */

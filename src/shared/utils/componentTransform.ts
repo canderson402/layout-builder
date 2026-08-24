@@ -12,7 +12,9 @@ export type NativeTransformEntry =
   | { translateX: number }
   | { translateY: number }
   | { rotate: string }
-  | { scale: number };
+  | { scale: number }
+  | { scaleX: number }
+  | { scaleY: number };
 
 const ORIGIN_FACTORS: Record<TransformOrigin, { fx: number; fy: number }> = {
   'top-left': { fx: 0, fy: 0 },
@@ -72,17 +74,35 @@ export function buildNativeTransform(
   ];
 }
 
-export function buildCssTransform(t: ComponentTransform | undefined): string | undefined {
-  if (isIdentityTransform(t)) return undefined;
-  return `rotate(${t!.rotation ?? 0}deg) scale(${t!.scale ?? 1})`;
+export interface Stretch {
+  x: number;
+  y: number;
+}
+
+function hasStretch(stretch: Stretch | undefined): boolean {
+  return stretch !== undefined && (stretch.x !== 1 || stretch.y !== 1);
+}
+
+export function buildCssTransform(
+  t: ComponentTransform | undefined,
+  stretch?: Stretch,
+): string | undefined {
+  const stretched = hasStretch(stretch);
+  if (isIdentityTransform(t) && !stretched) return undefined;
+  const parts = [`rotate(${t?.rotation ?? 0}deg)`, `scale(${t?.scale ?? 1})`];
+  if (stretched) {
+    parts.push(`scaleX(${stretch!.x})`, `scaleY(${stretch!.y})`);
+  }
+  return parts.join(' ');
 }
 
 export function buildCssTransformOrigin(
   t: ComponentTransform | undefined,
   width: number,
   height: number,
+  stretch?: Stretch,
 ): string | undefined {
-  if (isIdentityTransform(t)) return undefined;
-  const origin = resolveOrigin(t!.origin, width, height);
+  if (isIdentityTransform(t) && !hasStretch(stretch)) return undefined;
+  const origin = resolveOrigin(t?.origin, width, height);
   return `${origin.x}px ${origin.y}px`;
 }

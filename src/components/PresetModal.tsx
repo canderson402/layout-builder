@@ -1,14 +1,25 @@
 import { useState, useEffect } from 'react';
 import { LayoutConfig, SlotTemplate, ComponentGroupTemplate } from '../types';
+import type { OverlayConfig } from '../shared/utils/overlayTimeline';
 import { useToast } from './Toast';
 import { loadTemplates } from '../utils/slotTemplates';
 import { loadComponentTemplates } from '../utils/componentTemplates';
+import {
+  listOverlays,
+  saveOverlay,
+  deleteOverlay,
+  loadOverlay as loadSavedOverlay,
+  overlayIds,
+  SavedOverlay,
+} from '../utils/overlayStorage';
+import { parseOverlayImport } from '../utils/overlayImport';
 import './PresetModal.css';
 
 interface PresetModalProps {
   layout: LayoutConfig;
   onClose: () => void;
   onLoadPreset: (layout: LayoutConfig) => void;
+  onLoadOverlay: (overlay: OverlayConfig) => void;
   onBackup: () => void;
   onRestore: () => void;
 }
@@ -23,12 +34,16 @@ interface SavedPreset {
 
 const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
 
-function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: PresetModalProps) {
+function PresetModal({ layout, onClose, onLoadPreset, onLoadOverlay, onBackup, onRestore }: PresetModalProps) {
   const toast = useToast();
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
   const [presetName, setPresetName] = useState(layout.name || 'My Layout');
-  const [activeTab, setActiveTab] = useState<'load' | 'json' | 'templates'>('load');
+  const [activeTab, setActiveTab] = useState<'load' | 'json'>('load');
+  const [presetKind, setPresetKind] = useState<'layouts' | 'overlays' | 'templates'>('layouts');
+  const [jsonKind, setJsonKind] = useState<'layout' | 'overlay'>('layout');
   const [jsonInput, setJsonInput] = useState('');
+  const [savedOverlays, setSavedOverlays] = useState<SavedOverlay[]>([]);
+  const [overlayJsonInput, setOverlayJsonInput] = useState('');
   const [slotTemplates, setSlotTemplates] = useState<SlotTemplate[]>([]);
   const [componentTemplates, setComponentTemplates] = useState<ComponentGroupTemplate[]>([]);
 
@@ -47,6 +62,7 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: Pre
     // Load templates
     setSlotTemplates(loadTemplates());
     setComponentTemplates(loadComponentTemplates());
+    setSavedOverlays(listOverlays());
   }, []);
 
   const savePreset = () => {
@@ -109,6 +125,57 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: Pre
   };
 
 
+  const refreshOverlays = () => setSavedOverlays(listOverlays());
+
+  const loadOverlayFromList = (saved: SavedOverlay) => {
+    const confirmed = window.confirm(`Load overlay "${saved.name}"? This will replace your current overlay.`);
+    if (!confirmed) return;
+    const fresh = loadSavedOverlay(saved.id) ?? saved;
+    onLoadOverlay(fresh.overlay);
+    onClose();
+  };
+
+  const deleteOverlayFromList = (saved: SavedOverlay) => {
+    const confirmed = window.confirm(`Delete overlay "${saved.name}"? This action cannot be undone.`);
+    if (!confirmed) return;
+    deleteOverlay(saved.id);
+    refreshOverlays();
+  };
+
+  const importOverlayText = (text: string, thenLoad = false) => {
+    const existing = overlayIds();
+    const probe = parseOverlayImport(text, existing, 'copy');
+    if (!probe.ok) {
+      toast.error(probe.error);
+      return;
+    }
+
+    let result = probe;
+    if (probe.collided) {
+      const replace = window.confirm(
+        `An overlay with id "${probe.originalId}" already exists.\n\nOK = replace it.\nCancel = import as a copy ("${probe.overlay.id}").`,
+      );
+      if (replace) {
+        const asReplace = parseOverlayImport(text, existing, 'replace');
+        if (!asReplace.ok) {
+          toast.error(asReplace.error);
+          return;
+        }
+        result = asReplace;
+      }
+    }
+
+    saveOverlay(result.overlay, new Date().toISOString());
+    refreshOverlays();
+    setOverlayJsonInput('');
+    toast.success(`Imported overlay "${result.overlay.name}"`);
+
+    if (thenLoad) {
+      onLoadOverlay(result.overlay);
+      onClose();
+    }
+  };
+
   const loadFromJson = () => {
     if (!jsonInput.trim()) {
       toast.warning('Please enter JSON layout data');
@@ -162,13 +229,7 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: Pre
             className={`tab ${activeTab === 'load' ? 'active' : ''}`}
             onClick={() => setActiveTab('load')}
           >
-            Presets ({savedPresets.length})
-          </button>
-          <button
-            className={`tab ${activeTab === 'templates' ? 'active' : ''}`}
-            onClick={() => setActiveTab('templates')}
-          >
-            Templates
+            Presets
           </button>
           <button
             className={`tab ${activeTab === 'json' ? 'active' : ''}`}
@@ -180,6 +241,29 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: Pre
 
         <div className="preset-modal-content">
           {activeTab === 'load' && (
+            <div className="preset-tabs preset-subtabs">
+              <button
+                className={`tab ${presetKind === 'layouts' ? 'active' : ''}`}
+                onClick={() => setPresetKind('layouts')}
+              >
+                Layouts ({savedPresets.length})
+              </button>
+              <button
+                className={`tab ${presetKind === 'overlays' ? 'active' : ''}`}
+                onClick={() => setPresetKind('overlays')}
+              >
+                Overlays ({savedOverlays.length})
+              </button>
+              <button
+                className={`tab ${presetKind === 'templates' ? 'active' : ''}`}
+                onClick={() => setPresetKind('templates')}
+              >
+                Templates
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'load' && presetKind === 'layouts' && (
             <div className="load-preset-section">
               {savedPresets.length === 0 ? (
                 <div className="no-presets">
@@ -222,7 +306,7 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: Pre
             </div>
           )}
 
-          {activeTab === 'templates' && (
+          {activeTab === 'load' && presetKind === 'templates' && (
             <div className="templates-section">
               <p className="templates-description">
                 Templates are bundled into the Export All / Import All file at the top of this modal.
@@ -254,25 +338,99 @@ function PresetModal({ layout, onClose, onLoadPreset, onBackup, onRestore }: Pre
             </div>
           )}
 
+          {activeTab === 'load' && presetKind === 'overlays' && (
+            <div className="load-preset-section">
+              {savedOverlays.length === 0 ? (
+                <div className="no-presets">
+                  <p>No saved overlays found.</p>
+                  <p>Import one from the Load JSON tab, or create a new overlay from the Overlays button in the header.</p>
+                </div>
+              ) : (
+                <div className="presets-grid">
+                  {savedOverlays
+                    .slice()
+                    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                    .map((saved) => (
+                      <div key={saved.id} className="preset-card">
+                        <button
+                          onClick={() => deleteOverlayFromList(saved)}
+                          className="preset-delete-btn"
+                          title="Delete overlay"
+                        >
+                          ×
+                        </button>
+                        <div className="preset-card-header">
+                          <h4>{saved.name}</h4>
+                        </div>
+                        <div className="preset-card-meta">
+                          <span>{(saved.overlay.components || []).length} components</span>
+                          <span>{saved.overlay.dimensions.width}×{saved.overlay.dimensions.height}</span>
+                          <span className="preset-date">{new Date(saved.updatedAt).toLocaleDateString()}</span>
+                        </div>
+                        <div className="preset-card-actions">
+                          <button
+                            onClick={() => loadOverlayFromList(saved)}
+                            className="load-button"
+                          >
+                            Load
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+            </div>
+          )}
+
           {activeTab === 'json' && (
             <div className="json-input-section">
               <div className="input-group">
-                <label>Paste JSON Layout:</label>
+                <label htmlFor="json-kind">Type:</label>
+                <select
+                  id="json-kind"
+                  value={jsonKind}
+                  onChange={(e) => setJsonKind(e.target.value as 'layout' | 'overlay')}
+                  className="json-kind-select"
+                >
+                  <option value="layout">Layout</option>
+                  <option value="overlay">Overlay</option>
+                </select>
+              </div>
+
+              <div className="input-group">
+                <label>{jsonKind === 'layout' ? 'Paste JSON Layout:' : 'Paste JSON Overlay:'}</label>
                 <textarea
-                  value={jsonInput}
-                  onChange={(e) => setJsonInput(e.target.value)}
-                  placeholder="Paste your JSON layout here..."
+                  value={jsonKind === 'layout' ? jsonInput : overlayJsonInput}
+                  onChange={(e) =>
+                    jsonKind === 'layout'
+                      ? setJsonInput(e.target.value)
+                      : setOverlayJsonInput(e.target.value)
+                  }
+                  placeholder={
+                    jsonKind === 'layout'
+                      ? 'Paste your JSON layout here...'
+                      : 'Paste a single exported overlay here...'
+                  }
                   className="json-textarea"
                   rows={12}
                   autoFocus
                 />
               </div>
-          
+
               <div className="modal-actions">
-                <button onClick={loadFromJson} className="load-button">
-                  Load Layout
+                <button
+                  onClick={() =>
+                    jsonKind === 'layout' ? loadFromJson() : importOverlayText(overlayJsonInput, true)
+                  }
+                  className="load-button"
+                >
+                  {jsonKind === 'layout' ? 'Load Layout' : 'Load Overlay'}
                 </button>
-                <button onClick={() => setJsonInput('')} className="clear-button">
+                <button
+                  onClick={() => (jsonKind === 'layout' ? setJsonInput('') : setOverlayJsonInput(''))}
+                  className="clear-button"
+                >
                   Clear
                 </button>
                 <button onClick={onClose} className="cancel-button">

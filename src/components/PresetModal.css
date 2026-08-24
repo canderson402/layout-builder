@@ -520,3 +520,21 @@
 .template-list li:hover {
   background: #3a3a3a;
 }
+.preset-tabs.preset-subtabs {
+  border-bottom: 1px solid #404040;
+  margin: -8px 0 20px;
+}
+
+.preset-tabs.preset-subtabs .tab {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.json-kind-select {
+  padding: 8px 10px;
+  background: #2a2a2a;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+}

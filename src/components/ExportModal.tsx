@@ -7,7 +7,7 @@ import { measureTextBearings, getSampleTextForBearing } from '../utils/textBeari
 import './ExportModal.css';
 
 // Clean up component props to remove unnecessary/default values
-function cleanComponentProps(component: ComponentConfig): ComponentConfig {
+export function cleanComponentProps(component: ComponentConfig): ComponentConfig {
   // Round position and size values to prevent sub-pixel rendering differences
   const roundedComponent = {
     ...component,
@@ -152,7 +152,7 @@ function cleanComponentProps(component: ComponentConfig): ComponentConfig {
 
 // Normalize layer values so siblings have unique values reflecting their visual order
 // This ensures the TV app renders components in the same z-order as the Layout Builder
-function normalizeLayerValues(components: ComponentConfig[]): ComponentConfig[] {
+export function normalizeLayerValues(components: ComponentConfig[]): ComponentConfig[] {
   // Group components by parentId
   const byParent = new Map<string | undefined, ComponentConfig[]>();
 
