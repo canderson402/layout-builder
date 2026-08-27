@@ -71,28 +71,13 @@ function validateOverlayComponents(raw: unknown, overlayId: string): OverlayComp
   return out;
 }
 
-/**
- * Validates an overlay loaded from a bundled JSON file. Never throws: any
- * malformed field is logged and either dropped (component/track/keyframe
- * level) or, if the overlay is unusable as a whole, causes this function to
- * return null so the caller can skip the overlay entirely.
- *
- * Handles: the JSON not being an object at all; missing/wrong-typed id,
- * name, dimensions, fps, startFrame/endFrame; a non-array or missing
- * components/tracks list; components with missing/duplicate ids; a
- * component's parentId pointing at a non-existent id (logged, left in place
- * — buildComponentTree already treats an unresolvable parentId as a root,
- * so this degrades safely rather than crashing); non-finite keyframe frames
- * or values; unsorted or duplicate-frame keyframes; tracks referencing a
- * component that isn't in the overlay.
- */
 export function validateOverlay(raw: unknown): ValidatedOverlay | null {
   if (!isPlainObject(raw)) {
     console.warn('Overlay: skipping overlay that is not a JSON object');
     return null;
   }
 
-  const { id, name, components, dimensions, fps, startFrame, endFrame, tracks, backgroundColor } = raw;
+  const { id, name, components, dimensions, fps, startFrame, endFrame, isTransition, switchFrame, tracks, backgroundColor } = raw;
 
   if (typeof id !== 'string' || id.length === 0) {
     console.warn('Overlay: skipping overlay with missing/invalid "id"');
@@ -148,6 +133,8 @@ export function validateOverlay(raw: unknown): ValidatedOverlay | null {
     fps,
     startFrame,
     endFrame,
+    ...(isTransition === true ? { isTransition: true } : {}),
+    ...(typeof switchFrame === 'number' && Number.isFinite(switchFrame) ? { switchFrame } : {}),
     tracks: validTracks,
   };
 }

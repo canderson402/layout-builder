@@ -1,8 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ComponentConfig, LayoutConfig, LAYOUT_TYPES } from './types';
 import { resolveActiveStateId } from './shared/conditions';
-import type { OverlayConfig, AnimationTrack, AnimatableProperty } from './shared/utils/overlayTimeline';
-import { pruneTracksForComponent, retimeKeyframe, removeKeyframe, insertKeyframe, setKeyframeValue, setKeyframeHandle, setKeyframeEasing, setKeyframeHandleMode, insertKeyframeOnCurve, type Handle, type HandleMode, type Interpolation, type Keyframe } from './shared/utils/overlayTimeline';
+import type { OverlayConfig, AnimationTrack, AnimatableProperty, Easing } from './shared/utils/overlayTimeline';
+import type { DocumentSnapshot, HistoryEntry } from './utils/documentHistory';
+import { useDocumentHistory } from './hooks/useDocumentHistory';
+import { collectWithDescendants } from './utils/componentSelection';
+import { isTextEntryTarget, matchesRedoShortcut, matchesUndoShortcut } from './utils/undoShortcut';
+import { pruneTracksForComponent, remapTracksForComponents, setSwitchFrame, retimeKeyframe, removeKeyframe, insertKeyframe, setKeyframeValue, setKeyframeHandle, setKeyframeInterpolationMode, setKeyframeHandleMode, setKeyframeEasingSpec, insertKeyframeOnCurve, type Handle, type HandleMode, type Interpolation, type Keyframe } from './shared/utils/overlayTimeline';
 import { saveOverlay, OVERLAY_STORAGE_KEY } from './utils/overlayStorage';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
@@ -19,7 +23,6 @@ import { SHAPE_PRESETS } from './utils/shapePresets';
 import { DirtyChannel } from './shared/utils/overlayPreview';
 import './App.css';
 
-// Panel resize constants
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 600;
 const DEFAULT_LEFT_PANEL_WIDTH = 250;
@@ -32,19 +35,16 @@ const DEFAULT_TIMELINE_PANEL_HEIGHT = 180;
 
 const DEVICE_PRESETS = {
   '1080p TV (1920x1080)': { width: 1920, height: 1080 },
-  '4K TV (3840x2160)': { width: 1920, height: 1080 }, // Scaled down for display
+  '4K TV (3840x2160)': { width: 1920, height: 1080 },
   'HD TV (1280x720)': { width: 1280, height: 720 },
   'Custom 16:9': { width: 1600, height: 900 }
 } as const;
 
-// Pre-computed default dimensions to avoid object recreation
 const DEFAULT_DIMENSIONS = DEVICE_PRESETS['1080p TV (1920x1080)'];
 
-// Undo action types
-type UndoAction = {
-  type: 'UPDATE_LAYOUT' | 'ADD_COMPONENT' | 'UPDATE_COMPONENT' | 'DELETE_COMPONENT' | 'DUPLICATE_COMPONENT' | 'LOAD_PRESET';
-  description: string;
-  previousLayout: LayoutConfig;
+type ClipboardContents = {
+  components: ComponentConfig[];
+  tracks: AnimationTrack[];
 };
 
 function changedDirtyChannelsForUpdate(
@@ -96,7 +96,6 @@ function isDirtyEligibleProperty(property: AnimatableProperty): property is Dirt
     || property === 'rotation' || property === 'scale';
 }
 
-// Memoized child components to prevent unnecessary re-renders
 const MemoizedCanvas = React.memo(Canvas);
 const MemoizedLayerPanel = React.memo(LayerPanel);
 const MemoizedPropertyPanel = React.memo(PropertyPanel);
@@ -107,7 +106,6 @@ const MemoizedOverlayLibraryModal = React.memo(OverlayLibraryModal);
 const MemoizedTimelinePanel = React.memo(TimelinePanel);
 const MemoizedKeyboardShortcutsModal = React.memo(KeyboardShortcutsModal);
 
-// Fake 404 overlay component for obfuscation
 const Fake404Overlay = ({ onDismiss }: { onDismiss: () => void }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -132,7 +130,6 @@ const Fake404Overlay = ({ onDismiss }: { onDismiss: () => void }) => {
 };
 
 function App() {
-  // Obfuscation state - check sessionStorage to persist during session
   const [isUnlocked, setIsUnlocked] = useState(() => {
     return sessionStorage.getItem('layout-builder-unlocked') === 'true';
   });
@@ -143,7 +140,7 @@ function App() {
   }, []);
 
   const [layout, setLayout] = useState<LayoutConfig>({
-    name: 'basketball', // Layout type identifier used by TV app
+    name: 'basketball',
     components: [],
     backgroundColor: '#000000',
     dimensions: DEFAULT_DIMENSIONS
@@ -210,7 +207,6 @@ function App() {
     }
   }, [documentKind, overlayAsLayoutView]);
 
-  // Game data state for live preview
   const [gameData, setGameData] = useState({
     homeTeam: {
       name: 'HOME',
@@ -221,9 +217,9 @@ function App() {
       doubleBonus: false,
       possession: false,
       color: '#c41e3a',
-      hits: 0,        // Baseball
-      errors: 0,      // Baseball
-      cornerKicks: 0  // Soccer
+      hits: 0,
+      errors: 0,
+      cornerKicks: 0
     },
     awayTeam: {
       name: 'AWAY',
@@ -234,9 +230,9 @@ function App() {
       doubleBonus: true,
       possession: true,
       color: '#003f7f',
-      hits: 0,        // Baseball
-      errors: 0,      // Baseball
-      cornerKicks: 0  // Soccer
+      hits: 0,
+      errors: 0,
+      cornerKicks: 0
     },
     gameClock: '5:42',
     activityClock: '1:30',
@@ -245,17 +241,15 @@ function App() {
     timerName: 'Timer Name',
     sessionName: 'Session Name',
     nextUp: 'Next Up',
-    period: '4',  // Can be number or text like 'OT', 'SD', '2OT'
+    period: '4',
     shotClock: 14,
     quarter: 4,
     half: 2,
     set: 3,
-    isOvertimeActive: true,  // Boolean for visibility toggling when in overtime
-    // Football
+    isOvertimeActive: true,
     down: 1,
     yardsToGo: 10,
     ballOn: 35,
-    // Baseball
     balls: 0,
     strikes: 0,
     outs: 0,
@@ -294,12 +288,10 @@ function App() {
     away_player_name: 'Red',
     home_team_color: '#c41e3a',
     away_team_color: '#003f7f',
-    // Lacrosse/Hockey shots and saves
     home_shots: 0,
     away_shots: 0,
     home_saves: 0,
     away_saves: 0,
-    // Rugby
     home_tries: 0,
     away_tries: 0,
     home_penalty_goals: 0,
@@ -308,7 +300,6 @@ function App() {
     away_dropped_goals: 0,
     home_conversions: 0,
     away_conversions: 0,
-    // Penalty slots for lacrosse/hockey preview
     penaltySlots: {
       home: {
         count: 0,
@@ -331,7 +322,6 @@ function App() {
         slot2: { jersey: 8, time: '2:30', active: false },
       },
     },
-    // Shootout slots for soccer/hockey/water polo preview
     home_shootout_made: 0,
     away_shootout_made: 0,
     shootoutSlots: [
@@ -341,9 +331,6 @@ function App() {
       { round: 4, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
       { round: 5, homeActive: false, awayActive: false, homeState: 0, awayState: 0, isCurrentRound: false },
     ],
-    // Leaderboard slots for player stats preview (includes both basketball and volleyball stats)
-    // Engage trivia. `questionKind` drives slot-list variant templates, so
-    // switching it in Preview Data swaps the row design the way the TV will.
     trivia: {
       phase: 'question',
       questionKind: 'multiple_choice',
@@ -404,7 +391,6 @@ function App() {
         slot5: { jersey: '24', name: 'T. Bailey', points: 2, fouls: 0, isTopScorer: false, active: true, aces: 1, kills: 6, blocks: 3 },
       },
     },
-    // Volleyball leaderboard slots for player stats preview (aces, kills, blocks)
     volleyballLeaderboardSlots: {
       home: {
         count: 5,
@@ -435,20 +421,16 @@ function App() {
         slot4: { jersey: '5', name: 'C. Brown', aces: 3, kills: 11, blocks: 1, active: true },
       },
     },
-    // Current player for featured player display (leaderboard cycling)
     currentPlayer: {
       home: { jersey: '23', name: 'M. Jordan', points: 30, fouls: 2, isTopScorer: true, imageUrl: '/images/test_leaderboard/player_home_1.png', aces: 5, kills: 18, blocks: 2 },
       away: { jersey: '32', name: 'K. Malone', points: 28, fouls: 3, isTopScorer: true, imageUrl: '/images/test_leaderboard/player_away_1.png', aces: 4, kills: 15, blocks: 3 },
     }
   });
 
-  // Remove expensive console.log - causes performance issues
-
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
   const [editingShapeId, setEditingShapeId] = useState<string | null>(null);
   const [selectedVertices, setSelectedVertices] = useState<number[]>([]);
 
-  // Leave edit mode automatically if the component disappears (undo, delete, import)
   useEffect(() => {
     if (editingShapeId && !(activeDocument.components || []).some(c => c.id === editingShapeId && c.type === 'shape')) {
       setEditingShapeId(null);
@@ -456,7 +438,6 @@ function App() {
     }
   }, [editingShapeId, activeDocument.components]);
 
-  // Helper to get all descendants of a component (for group selection)
   const getAllDescendants = useCallback((parentId: string, components: ComponentConfig[]): string[] => {
     const children = components.filter(c => c.parentId === parentId);
     const descendants: string[] = [];
@@ -467,27 +448,14 @@ function App() {
     return descendants;
   }, []);
 
-  /**
-   * Wrapper for setSelectedComponents that auto-selects children of groups.
-   *
-   * `autoPinState` controls whether selecting something inside a multi-state
-   * container flips the preview to that state. The Layer Panel wants that --
-   * clicking a state is how you switch to it. The canvas must not: it only
-   * offers what the preview is already drawing, and re-pinning from there
-   * would swap the canvas out from under the click.
-   */
   const handleSelectComponents = useCallback((ids: string[], options?: { autoPinState?: boolean }) => {
     const autoPinState = options?.autoPinState !== false;
-    // Get current active document's components
     const components = activeDocument.components || [];
 
-    // Expand selection to include descendants of any selected groups
     const expandedIds = new Set<string>(ids);
     for (const id of ids) {
       const component = components.find(c => c.id === id);
       if (component?.type === 'group') {
-        // State containers of a multi-state parent select as a single unit so
-        // the panel shows the state's own properties, not multi-select UI
         const parent = component.parentId ? components.find(c => c.id === component.parentId) : undefined;
         const isStateContainer = parent?.type === 'multiState' &&
           Array.isArray(parent.props?.states) &&
@@ -498,11 +466,7 @@ function App() {
       }
     }
 
-    // Selecting a state (or anything inside one) activates it: pin the
-    // multi-state parent's preview to that state so designers flip between
-    // states just by clicking them in the layer panel. Preview-only prop —
-    // stripped on export, so no undo entry needed.
-    const pinUpdates = new Map<string, string>(); // parentId -> stateId
+    const pinUpdates = new Map<string, string>();
     for (const id of autoPinState ? ids : []) {
       let node = components.find(c => c.id === id);
       while (node?.parentId) {
@@ -532,7 +496,6 @@ function App() {
     setSelectedComponents(Array.from(expandedIds));
   }, [activeDocument.components, getAllDescendants, setActiveDocument]);
 
-  /** Canvas selection: same expansion, but never re-pins the previewed state. */
   const handleSelectFromCanvas = useCallback((ids: string[]) => {
     handleSelectComponents(ids, { autoPinState: false });
   }, [handleSelectComponents]);
@@ -545,20 +508,13 @@ function App() {
   const [templateRefreshKey, setTemplateRefreshKey] = useState(0);
   const [draggedComponent, setDraggedComponent] = useState<ComponentConfig | null>(null);
 
-  // Clipboard state for copy/paste
-  const [clipboard, setClipboard] = useState<ComponentConfig[] | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardContents | null>(null);
 
-  // Toast notifications
   const toast = useToast();
   
-  // Undo/Redo system - keep track of last 50 actions each
-  const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
-  const [redoHistory, setRedoHistory] = useState<UndoAction[]>([]);
   
-  // Component naming counter system
   
 
-  // Panel resize state
   const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_PANEL_WIDTH);
   const [rightPanelWidth, setRightPanelWidth] = useState(DEFAULT_RIGHT_PANEL_WIDTH);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
@@ -578,7 +534,6 @@ function App() {
     localStorage.setItem(TIMELINE_PANEL_HEIGHT_KEY, String(timelinePanelHeight));
   }, [timelinePanelHeight]);
 
-  // Panel resize handlers
   const handleLeftResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizingLeft(true);
@@ -626,84 +581,69 @@ function App() {
     };
   }, [isResizingLeft, isResizingRight]);
 
-  // Generate unique component ID using UUID
   const generateComponentId = useCallback((type: ComponentConfig['type']) => {
     const uuid = crypto.randomUUID();
     return `${type}_${uuid}`;
   }, []);
 
-  // Save state for undo - optimized to avoid deep cloning
-  const saveStateForUndo = useCallback((actionType: UndoAction['type'], description: string, currentLayout: LayoutConfig) => {
-    setUndoHistory(prev => {
-      const newAction: UndoAction = {
-        type: actionType,
-        description,
-        previousLayout: structuredClone(currentLayout) // More efficient than JSON parse/stringify
-      };
-      
-      // Keep only last 50 actions
-      const newHistory = [newAction, ...prev].slice(0, 50);
-      return newHistory;
-    });
-    
-    // Clear redo history when a new action is performed
-    setRedoHistory([]);
+  const documentKindRef = useRef(documentKind);
+  documentKindRef.current = documentKind;
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const overlayRef = useRef(overlay);
+  overlayRef.current = overlay;
+  const selectionRef = useRef(selectedComponents);
+  selectionRef.current = selectedComponents;
+
+  const getHistorySnapshot = useCallback((): DocumentSnapshot => {
+    if (documentKindRef.current === 'overlay' && overlayRef.current) {
+      return { kind: 'overlay', document: structuredClone(overlayRef.current) };
+    }
+    return { kind: 'layout', document: structuredClone(layoutRef.current) };
   }, []);
 
-  // Undo function - optimized to avoid layout dependency
-  const undo = useCallback(() => {
-    setUndoHistory(prev => {
-      if (prev.length === 0) return prev;
+  const getHistorySelection = useCallback(() => selectionRef.current, []);
 
-      const [lastAction, ...remainingHistory] = prev;
+  const currentComponents = useCallback((): ComponentConfig[] => {
+    if (documentKindRef.current === 'overlay' && overlayRef.current) {
+      return (overlayRef.current.components as ComponentConfig[]) || [];
+    }
+    return layoutRef.current.components || [];
+  }, []);
 
-      // Save current state to redo history before undoing
-      setActiveDocument(currentDocument => {
-        const currentRedoAction: UndoAction = {
-          type: lastAction.type,
-          description: lastAction.description,
-          previousLayout: structuredClone(currentDocument) // More efficient cloning
-        };
+  const restoreHistoryEntry = useCallback((entry: HistoryEntry) => {
+    const { snapshot } = entry;
+    if (snapshot.kind !== documentKindRef.current) return;
 
-        setRedoHistory(prevRedo => [currentRedoAction, ...prevRedo].slice(0, 50)); // Keep last 50 redo actions
-        setSelectedComponents([]); // Clear selection after undo
-        return lastAction.previousLayout;
-      });
+    if (snapshot.kind === 'overlay') {
+      setOverlay(structuredClone(snapshot.document));
+    } else {
+      setLayout(structuredClone(snapshot.document));
+    }
+    setSelectedComponents(entry.selection);
+    setDirtyChannels(new Map());
+  }, []);
 
-      return remainingHistory;
-    });
-  }, [setActiveDocument]);
+  const history = useDocumentHistory({
+    getSnapshot: getHistorySnapshot,
+    getSelection: getHistorySelection,
+    onRestore: restoreHistoryEntry,
+  });
 
-  // Redo function - optimized to avoid layout dependency
-  const redo = useCallback(() => {
-    setRedoHistory(prev => {
-      if (prev.length === 0) return prev;
+  const {
+    capture: captureHistory,
+    captureCoalesced: captureHistoryCoalesced,
+    begin: beginHistoryTransaction,
+    commit: commitHistoryTransaction,
+    undo,
+    redo,
+    reset: resetHistory,
+  } = history;
 
-      const [lastRedoAction, ...remainingRedoHistory] = prev;
-
-      // Save current state to undo history before redoing
-      setActiveDocument(currentDocument => {
-        const currentUndoAction: UndoAction = {
-          type: lastRedoAction.type,
-          description: lastRedoAction.description,
-          previousLayout: structuredClone(currentDocument) // More efficient cloning
-        };
-
-        setUndoHistory(prevUndo => [currentUndoAction, ...prevUndo].slice(0, 50)); // Keep last 50 undo actions
-        setSelectedComponents([]); // Clear selection after redo
-        return lastRedoAction.previousLayout;
-      });
-
-      return remainingRedoHistory;
-    });
-  }, [setActiveDocument]);
-
-  // Quick save preset function
   const quickSavePreset = useCallback(() => {
     const PRESETS_STORAGE_KEY = 'scoreboard-layout-presets';
     const nameToUse = layout.name || 'Untitled Layout';
     
-    // Get existing presets
     const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
     const savedPresets = saved ? JSON.parse(saved) : [];
     
@@ -715,12 +655,10 @@ function App() {
       updatedAt: new Date().toISOString()
     };
 
-    // Check if preset with same name exists
     const existingIndex = savedPresets.findIndex((p: any) => p.name === newPreset.name);
     let updatedPresets;
 
     if (existingIndex >= 0) {
-      // Update existing preset
       updatedPresets = [...savedPresets];
       updatedPresets[existingIndex] = { 
         ...newPreset, 
@@ -728,13 +666,11 @@ function App() {
         createdAt: savedPresets[existingIndex].createdAt 
       };
     } else {
-      // Add new preset
       updatedPresets = [...savedPresets, newPreset];
     }
 
     localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updatedPresets));
 
-    // Show brief feedback
     const action = existingIndex >= 0 ? 'updated' : 'saved';
     toast.success(`Preset "${nameToUse}" ${action} successfully!`);
   }, [layout, toast]);
@@ -755,11 +691,10 @@ function App() {
     }
     setDocumentKind('layout');
     setSelectedComponents([]);
-    setUndoHistory([]);
-    setRedoHistory([]);
+    resetHistory();
     setIsPlaying(false);
     setCurrentFrame(0);
-  }, [documentKind, overlay]);
+  }, [documentKind, overlay, resetHistory]);
 
   const saveCurrentOverlay = useCallback(() => {
     if (!overlay) return;
@@ -786,11 +721,10 @@ function App() {
     setOverlay(next);
     setDocumentKind('overlay');
     setSelectedComponents([]);
-    setUndoHistory([]);
-    setRedoHistory([]);
+    resetHistory();
     setIsPlaying(false);
     setCurrentFrame(0);
-  }, [documentKind, layout, overlay]);
+  }, [documentKind, layout, overlay, resetHistory]);
 
   useEffect(() => {
     if (!isPlaying || documentKind !== 'overlay' || !overlay) {
@@ -837,24 +771,33 @@ function App() {
   }, []);
 
   const handleCommitFps = useCallback((fps: number) => {
+    captureHistory('Change frame rate');
     setOverlay(prev => (prev ? { ...prev, fps } : prev));
-  }, []);
+  }, [captureHistory]);
 
   const handleCommitStartFrame = useCallback((startFrame: number) => {
+    captureHistory('Change start frame');
     setOverlay(prev => (prev ? { ...prev, startFrame: Math.min(startFrame, prev.endFrame) } : prev));
     setCurrentFrame(prev => Math.max(prev, startFrame));
-  }, []);
+  }, [captureHistory]);
 
   const handleCommitEndFrame = useCallback((endFrame: number) => {
+    captureHistory('Change end frame');
     setOverlay(prev => (prev ? { ...prev, endFrame: Math.max(endFrame, prev.startFrame) } : prev));
     setCurrentFrame(prev => Math.min(prev, endFrame));
-  }, []);
+  }, [captureHistory]);
+
+  const handleCommitSwitchFrame = useCallback((switchFrame: number | null) => {
+    captureHistory(switchFrame === null ? 'Clear switch frame' : 'Change switch frame');
+    setOverlay(prev => (prev ? setSwitchFrame(prev, switchFrame) : prev));
+  }, [captureHistory]);
 
   const setOverlayTracks = useCallback((updater: (tracks: AnimationTrack[]) => AnimationTrack[]) => {
     setOverlay(prev => (prev ? { ...prev, tracks: updater(prev.tracks) } : prev));
   }, []);
 
   const setOverlayTracksAndClearDirty = useCallback((updater: (tracks: AnimationTrack[]) => AnimationTrack[]) => {
+    captureHistory('Edit keyframes');
     setOverlay(prev => {
       if (!prev) return prev;
       const nextTracks = updater(prev.tracks);
@@ -877,7 +820,21 @@ function App() {
       }
       return { ...prev, tracks: nextTracks };
     });
-  }, []);
+  }, [captureHistory]);
+
+  const keyframeGestureRef = useRef(false);
+
+  const beginKeyframeGesture = useCallback(() => {
+    if (keyframeGestureRef.current) return;
+    keyframeGestureRef.current = true;
+    beginHistoryTransaction('Edit keyframe');
+  }, [beginHistoryTransaction]);
+
+  const endKeyframeGesture = useCallback(() => {
+    if (!keyframeGestureRef.current) return;
+    keyframeGestureRef.current = false;
+    commitHistoryTransaction('Edit keyframe');
+  }, [commitHistoryTransaction]);
 
   const handleRetimeKeyframe = useCallback((
     componentId: string,
@@ -885,16 +842,20 @@ function App() {
     fromFrame: number,
     toFrame: number,
   ) => {
+    if (!keyframeGestureRef.current) {
+      captureHistoryCoalesced(`retime:${componentId}:${property}`, 'Move keyframe');
+    }
     setOverlayTracks(tracks => retimeKeyframe(tracks, componentId, property, fromFrame, toFrame));
-  }, [setOverlayTracks]);
+  }, [captureHistoryCoalesced, setOverlayTracks]);
 
   const handleRemoveKeyframe = useCallback((
     componentId: string,
     property: AnimatableProperty,
     frame: number,
   ) => {
+    captureHistory('Delete keyframe');
     setOverlayTracks(tracks => removeKeyframe(tracks, componentId, property, frame));
-  }, [setOverlayTracks]);
+  }, [captureHistory, setOverlayTracks]);
 
   const handleSetKeyframeValue = useCallback((
     componentId: string,
@@ -902,16 +863,20 @@ function App() {
     frame: number,
     value: number,
   ) => {
+    if (!keyframeGestureRef.current) {
+      captureHistoryCoalesced(`value:${componentId}:${property}:${frame}`, 'Change keyframe value');
+    }
     setOverlayTracks(tracks => setKeyframeValue(tracks, componentId, property, frame, value));
-  }, [setOverlayTracks]);
+  }, [captureHistoryCoalesced, setOverlayTracks]);
 
   const handleInsertOnCurve = useCallback((
     componentId: string,
     property: AnimatableProperty,
     frame: number,
   ) => {
+    captureHistory('Add keyframe');
     setOverlayTracks(tracks => insertKeyframeOnCurve(tracks, componentId, property, frame));
-  }, [setOverlayTracks]);
+  }, [captureHistory, setOverlayTracks]);
 
   const handleSetKeyframeHandle = useCallback((
     componentId: string,
@@ -920,8 +885,11 @@ function App() {
     side: 'in' | 'out',
     handle: Handle,
   ) => {
+    if (!keyframeGestureRef.current) {
+      captureHistoryCoalesced(`handle:${componentId}:${property}:${frame}:${side}`, 'Adjust keyframe handle');
+    }
     setOverlayTracks(tracks => setKeyframeHandle(tracks, componentId, property, frame, side, handle));
-  }, [setOverlayTracks]);
+  }, [captureHistoryCoalesced, setOverlayTracks]);
 
   const handleSetKeyframeInterpolation = useCallback((
     componentId: string,
@@ -929,8 +897,32 @@ function App() {
     frame: number,
     interpolation: Interpolation,
   ) => {
-    setOverlayTracks(tracks => setKeyframeEasing(tracks, componentId, property, frame, interpolation));
-  }, [setOverlayTracks]);
+    captureHistory('Change keyframe easing');
+    setOverlayTracks(tracks => setKeyframeInterpolationMode(tracks, componentId, property, frame, interpolation));
+  }, [captureHistory, setOverlayTracks]);
+
+  const handleSetKeyframeEasing = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+    easing: Easing | null,
+  ) => {
+    captureHistory('Change keyframe easing');
+    setOverlayTracks(tracks => setKeyframeEasingSpec(tracks, componentId, property, frame, easing));
+  }, [captureHistory, setOverlayTracks]);
+
+  const handleSetKeyframeEasingParams = useCallback((
+    componentId: string,
+    property: AnimatableProperty,
+    frame: number,
+    easing: Easing,
+  ) => {
+    captureHistoryCoalesced(
+      `easing:${componentId}:${property}:${frame}`,
+      'Adjust keyframe easing',
+    );
+    setOverlayTracks(tracks => setKeyframeEasingSpec(tracks, componentId, property, frame, easing));
+  }, [captureHistoryCoalesced, setOverlayTracks]);
 
   const handleSetKeyframeHandleMode = useCallback((
     componentId: string,
@@ -938,22 +930,19 @@ function App() {
     frame: number,
     handleMode: HandleMode,
   ) => {
+    captureHistory('Change handle mode');
     setOverlayTracks(tracks => setKeyframeHandleMode(tracks, componentId, property, frame, handleMode));
-  }, [setOverlayTracks]);
+  }, [captureHistory, setOverlayTracks]);
 
   const handlePasteKeyframe = useCallback((
     componentId: string,
     property: AnimatableProperty,
     keyframe: Keyframe,
   ) => {
+    captureHistory('Paste keyframe');
     setOverlayTracks(tracks => insertKeyframe(tracks, componentId, property, keyframe));
-  }, [setOverlayTracks]);
+  }, [captureHistory, setOverlayTracks]);
 
-  /**
-   * Unified bundle format — one file holds presets + both template types
-   * + canvas bg + overlays. Parsed JSON arrays (not stringified) so the
-   * file is human-inspectable.
-   */
   const BUNDLE_VERSION = 2;
 
   const exportLocalStorage = useCallback(() => {
@@ -1044,36 +1033,36 @@ function App() {
     input.click();
   }, [toast]);
 
-  // Listen for canvas undo/redo events
-  React.useEffect(() => {
-    const handleCanvasUndo = () => {
-      undo();
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isTextEntryTarget(document.activeElement)) return;
+
+      if (matchesUndoShortcut(event)) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (matchesRedoShortcut(event)) {
+        event.preventDefault();
+        redo();
+      }
     };
-    
-    const handleCanvasRedo = () => {
-      redo();
-    };
-    
+
+    const handleCanvasUndo = () => undo();
+    const handleCanvasRedo = () => redo();
+
+    document.addEventListener('keydown', handleKeyDown);
     window.addEventListener('canvas-undo', handleCanvasUndo);
     window.addEventListener('canvas-redo', handleCanvasRedo);
     return () => {
+      document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('canvas-undo', handleCanvasUndo);
       window.removeEventListener('canvas-redo', handleCanvasRedo);
     };
   }, [undo, redo]);
 
-  /**
-   * Where should a newly created component go?
-   *
-   * Whatever is selected defines the context you are working in: a group (or a
-   * multi-state's state container) means "inside this", any other component
-   * means "beside this, under the same parent". Only an empty selection puts
-   * something at the root. Saves dragging every new element into its layer.
-   */
   const inferParentId = useCallback((): string | undefined => {
     const components = activeDocument.components || [];
-    // Nothing selected: fall back to the container last worked in, which
-    // survives a deselect (clicking empty canvas, Escape).
     if (selectedComponents.length === 0) {
       const remembered = lastContainerRef.current;
       return remembered && components.some(c => c.id === remembered) ? remembered : undefined;
@@ -1082,19 +1071,15 @@ function App() {
     const parentOf = (id: string): string | undefined => {
       const component = components.find(c => c.id === id);
       if (!component) return undefined;
-      // A container is the context itself; anything else contributes its parent.
       return component.type === 'group' ? component.id : component.parentId;
     };
 
     const contexts = new Set(selectedComponents.map(parentOf));
-    // A mixed selection has no single home -- fall back to the root.
     if (contexts.size !== 1) return undefined;
 
     const context = contexts.values().next().value;
     if (!context) return undefined;
 
-    // A multi-state parent can only hold state containers, so redirect into
-    // the state currently being previewed.
     const container = components.find(c => c.id === context);
     if (container?.type === 'multiState' && Array.isArray(container.props?.states)) {
       const states = container.props.states;
@@ -1108,7 +1093,6 @@ function App() {
     return context;
   }, [activeDocument.components, selectedComponents, gameData]);
 
-  // Remember the container the selection sat in, for the empty-selection case.
   const lastContainerRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (selectedComponents.length === 0) return;
@@ -1124,17 +1108,14 @@ function App() {
     parentId?: string,
     customId?: string,
     customLayer?: number,
-    extraProps?: Partial<ComponentConfig> // Additional properties like originalSize, originalAspectRatio, etc.
+    extraProps?: Partial<ComponentConfig>
   ): string => {
-    // Generate ID outside setLayout so we can return it
     const componentId = customId || generateComponentId(type);
     const resolvedParentId = parentId ?? inferParentId();
 
-    setActiveDocument(prev => {
-      // Save current state for undo
-      saveStateForUndo('ADD_COMPONENT', `Add ${type} component`, prev);
+    captureHistory(`Add ${type} component`);
 
-      // Generate unique display name
+    setActiveDocument(prev => {
       const baseName = customDisplayName || getDefaultDisplayName(type);
       const existingNames = new Set(
         (prev.components || [])
@@ -1144,7 +1125,6 @@ function App() {
 
       let uniqueName = baseName;
       if (existingNames.has(uniqueName)) {
-        // Try baseName2, baseName3, etc.
         let counter = 2;
         while (existingNames.has(`${baseName}${counter}`)) {
           counter++;
@@ -1152,8 +1132,6 @@ function App() {
         uniqueName = `${baseName}${counter}`;
       }
 
-      // Place the new component on top of its siblings -- the components
-      // sharing its parent, which is the root set when it has none.
       const siblings = (prev.components || []).filter(c => c.parentId === resolvedParentId);
       const maxRootLayer = siblings.reduce((max, comp) => Math.max(max, comp.layer || 0), -1);
 
@@ -1161,13 +1139,12 @@ function App() {
         id: componentId,
         displayName: uniqueName,
         type,
-        position: customPosition || { x: 192, y: 108 }, // 192px from left, 108px from top
+        position: customPosition || { x: 192, y: 108 },
         size: customSize || getDefaultSize(type),
         layer: customLayer !== undefined ? customLayer : maxRootLayer + 1,
         props: customProps || getDefaultProps(type),
         team: needsTeam(type) ? 'home' : undefined,
         parentId: resolvedParentId,
-        // Merge in extra properties (originalSize, originalAspectRatio, scaleAnchor, visible, etc.)
         ...extraProps
       };
 
@@ -1178,7 +1155,7 @@ function App() {
     });
 
     return componentId;
-  }, [saveStateForUndo, generateComponentId, inferParentId, setActiveDocument]);
+  }, [captureHistory, generateComponentId, inferParentId, setActiveDocument]);
 
   const addShape = useCallback((presetKey: string) => {
     const preset = SHAPE_PRESETS[presetKey];
@@ -1196,13 +1173,9 @@ function App() {
     );
   }, [addComponent]);
 
-  // Add a ref to track if we're currently dragging to batch position updates
   const isDraggingRef = React.useRef(false);
-  const dragStartStateRef = React.useRef<LayoutConfig | null>(null);
 
   const updateComponent = useCallback((id: string, updates: Partial<ComponentConfig>) => {
-    // Round position and size values to integers to prevent sub-pixel rendering differences
-    // between web (CSS) and React Native (tvOS)
     const roundedUpdates = { ...updates };
     if (roundedUpdates.position) {
       roundedUpdates.position = {
@@ -1217,23 +1190,24 @@ function App() {
       };
     }
 
-    setActiveDocument(prev => {
-      const component = (prev.components || []).find(c => c.id === id);
-      if (component) {
-        // Check if this is a position/size update (drag/resize operation)
-        const isPropertyUpdate = Object.keys(roundedUpdates).some(key => !['position', 'size'].includes(key));
-
-        if (isPropertyUpdate && !isDraggingRef.current) {
-          // Property updates always save undo state
-          saveStateForUndo('UPDATE_COMPONENT', `Update ${component.type} properties`, prev);
-        }
-
-        if (documentKind === 'overlay') {
-          const changed = changedDirtyChannelsForUpdate(component, roundedUpdates);
-          if (changed.length > 0) markChannelsDirty(id, changed);
-        }
+    const existing = currentComponents().find(c => c.id === id);
+    if (existing) {
+      const changedKeys = Object.keys(roundedUpdates);
+      const isPropertyUpdate = changedKeys.some(key => !['position', 'size'].includes(key));
+      if (isPropertyUpdate && !isDraggingRef.current) {
+        captureHistoryCoalesced(
+          `update:${changedKeys.sort().join(',')}`,
+          `Update ${existing.type} properties`,
+        );
       }
 
+      if (documentKind === 'overlay') {
+        const changed = changedDirtyChannelsForUpdate(existing, roundedUpdates);
+        if (changed.length > 0) markChannelsDirty(id, changed);
+      }
+    }
+
+    setActiveDocument(prev => {
       return {
         ...prev,
         components: (prev.components || []).map(comp =>
@@ -1241,438 +1215,237 @@ function App() {
         )
       };
     });
-  }, [saveStateForUndo, setActiveDocument, documentKind, markChannelsDirty]);
+  }, [captureHistoryCoalesced, currentComponents, setActiveDocument, documentKind, markChannelsDirty]);
 
-  // Function to start a drag operation (save initial state) - optimized
   const startDragOperation = useCallback(() => {
-    if (!isDraggingRef.current) {
-      // Use functional update to access the current active document without dependency
-      setActiveDocument(currentDocument => {
-        dragStartStateRef.current = structuredClone(currentDocument); // More efficient cloning
-        isDraggingRef.current = true;
-        return currentDocument; // Return unchanged
-      });
-    }
-  }, [setActiveDocument]);
+    if (isDraggingRef.current) return;
+    isDraggingRef.current = true;
+    beginHistoryTransaction('Move component');
+  }, [beginHistoryTransaction]);
 
-  // Function to end a drag operation (save final state for undo)
-  const endDragOperation = useCallback((description: string) => {
-    if (isDraggingRef.current && dragStartStateRef.current) {
-      saveStateForUndo('UPDATE_COMPONENT', description, dragStartStateRef.current);
-      isDraggingRef.current = false;
-      dragStartStateRef.current = null;
-    }
-  }, [saveStateForUndo]);
+  const endDragOperation = useCallback((description: string, mergeKey?: string) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    commitHistoryTransaction(description, mergeKey);
+  }, [commitHistoryTransaction]);
 
   const deleteComponent = useCallback((id: string) => {
-    setActiveDocument(prev => {
-      const component = (prev.components || []).find(c => c.id === id);
-      if (component) {
-        saveStateForUndo('DELETE_COMPONENT', `Delete ${component.type} component`, prev);
-      }
+    const component = currentComponents().find(c => c.id === id);
+    if (!component) return;
 
-      setSelectedComponents(prevSelected => prevSelected.filter(compId => compId !== id));
+    captureHistoryCoalesced('delete-components', `Delete ${component.type} component`);
+    setSelectedComponents(prevSelected => prevSelected.filter(compId => compId !== id));
 
-      return {
-        ...prev,
-        components: (prev.components || []).filter(comp => comp.id !== id)
-      };
-    });
+    setActiveDocument(prev => ({
+      ...prev,
+      components: (prev.components || []).filter(comp => comp.id !== id),
+    }));
 
     if (documentKind === 'overlay') {
-      setOverlay(prevOverlay => {
-        if (!prevOverlay) return prevOverlay;
-        return {
-          ...prevOverlay,
-          tracks: pruneTracksForComponent(prevOverlay.tracks, id),
-        };
-      });
+      setOverlayTracks(tracks => pruneTracksForComponent(tracks, id));
     }
-  }, [saveStateForUndo, setActiveDocument, documentKind]);
+  }, [captureHistoryCoalesced, currentComponents, setActiveDocument, documentKind, setOverlayTracks]);
+
+  const copyTracksForNewComponents = useCallback((
+    idMapping: Map<string, string>,
+    sourceTracks?: AnimationTrack[],
+  ) => {
+    if (documentKind !== 'overlay' || idMapping.size === 0) return;
+    setOverlayTracks(tracks => {
+      const additions = remapTracksForComponents(sourceTracks ?? tracks, idMapping);
+      return additions.length === 0 ? tracks : [...tracks, ...additions];
+    });
+  }, [documentKind, setOverlayTracks]);
+
+  const uniqueDisplayName = useCallback((baseName: string, taken: Set<string>): string => {
+    if (!taken.has(baseName)) return baseName;
+    let counter = 2;
+    while (taken.has(`${baseName}${counter}`)) counter++;
+    return `${baseName}${counter}`;
+  }, []);
 
   const duplicateComponent = useCallback((id: string) => {
-    setActiveDocument(prev => {
-      const original = (prev.components || []).find(comp => comp.id === id);
-      if (original) {
-        saveStateForUndo('DUPLICATE_COMPONENT', `Duplicate ${original.type} component`, prev);
+    const components = currentComponents();
+    const original = components.find(comp => comp.id === id);
+    if (!original) return;
 
-        const duplicateId = generateComponentId(original.type);
+    const duplicateId = generateComponentId(original.type);
+    const taken = new Set(components.map(c => c.displayName || c.type).filter(Boolean));
+    const duplicate: ComponentConfig = {
+      ...original,
+      id: duplicateId,
+      displayName: uniqueDisplayName(original.displayName || original.type, taken),
+      position: { ...original.position },
+    };
 
-        // Generate unique display name
-        const baseName = original.displayName || original.type;
-        const existingNames = new Set(
-          (prev.components || [])
-            .map(c => c.displayName || c.type)
-            .filter(Boolean)
-        );
+    captureHistoryCoalesced('duplicate-components', `Duplicate ${original.type} component`);
+    setActiveDocument(prev => ({
+      ...prev,
+      components: [...(prev.components || []), duplicate],
+    }));
+    copyTracksForNewComponents(new Map([[id, duplicateId]]));
+    setSelectedComponents([duplicateId]);
+  }, [captureHistoryCoalesced, currentComponents, generateComponentId, uniqueDisplayName, setActiveDocument, copyTracksForNewComponents]);
 
-        let uniqueName = baseName;
-        if (existingNames.has(uniqueName)) {
-          // Try baseName2, baseName3, etc.
-          let counter = 2;
-          while (existingNames.has(`${baseName}${counter}`)) {
-            counter++;
-          }
-          uniqueName = `${baseName}${counter}`;
-        }
-
-        const duplicate: ComponentConfig = {
-          ...original,
-          id: duplicateId,
-          displayName: uniqueName,
-          position: {
-            x: original.position.x, // Exact same position (no offset, no grid snap)
-            y: original.position.y
-          }
-        };
-
-        // Auto-select the newly duplicated component
-        setTimeout(() => setSelectedComponents([duplicateId]), 0);
-
-        return {
-          ...prev,
-          components: [...(prev.components || []), duplicate]
-        };
-      }
-      return prev;
-    });
-  }, [saveStateForUndo, generateComponentId, setActiveDocument]);
-
-  // Duplicate multiple components for copy-drag operation (returns map of old ID to new ID)
-  const copyDragComponents = useCallback((ids: string[]): Map<string, string> => {
+  const cloneComponents = useCallback((
+    source: ComponentConfig[],
+    existing: ComponentConfig[],
+  ): { clones: ComponentConfig[]; idMapping: Map<string, string> } => {
     const idMapping = new Map<string, string>();
+    for (const comp of source) {
+      idMapping.set(comp.id, generateComponentId(comp.type));
+    }
 
-    setActiveDocument(prev => {
-      const components = prev.components || [];
+    const existingIds = new Set(existing.map(c => c.id));
+    const taken = new Set(existing.map(c => c.displayName || c.type).filter(Boolean));
 
-      // Helper to get all descendants of a component
-      const getDescendants = (parentId: string): ComponentConfig[] => {
-        const children = components.filter(c => c.parentId === parentId);
-        const descendants: ComponentConfig[] = [];
-        for (const child of children) {
-          descendants.push(child);
-          descendants.push(...getDescendants(child.id));
-        }
-        return descendants;
-      };
-
-      // Helper to check if a component is a descendant of another
-      const isDescendantOf = (componentId: string, potentialAncestorId: string): boolean => {
-        const component = components.find(c => c.id === componentId);
-        if (!component || !component.parentId) return false;
-        if (component.parentId === potentialAncestorId) return true;
-        return isDescendantOf(component.parentId, potentialAncestorId);
-      };
-
-      // Filter out selected components that are already descendants of other selected components
-      const rootSelectedIds = ids.filter(id => {
-        return !ids.some(otherId => otherId !== id && isDescendantOf(id, otherId));
-      });
-
-      // Collect all components to copy (root selected + their descendants)
-      const componentsToCopy: ComponentConfig[] = [];
-      const addedIds = new Set<string>();
-
-      for (const id of rootSelectedIds) {
-        const component = components.find(c => c.id === id);
-        if (component && !addedIds.has(id)) {
-          componentsToCopy.push(component);
-          addedIds.add(id);
-
-          const descendants = getDescendants(id);
-          for (const desc of descendants) {
-            if (!addedIds.has(desc.id)) {
-              componentsToCopy.push(desc);
-              addedIds.add(desc.id);
-            }
-          }
-        }
-      }
-
-      if (componentsToCopy.length === 0) return prev;
-
-      saveStateForUndo('COPY_DRAG', `Copy-drag ${componentsToCopy.length} component(s)`, prev);
-
-      const existingNames = new Set(
-        components.map(c => c.displayName || c.type).filter(Boolean)
-      );
-
-      // Generate new IDs for all components
-      for (const comp of componentsToCopy) {
-        idMapping.set(comp.id, generateComponentId(comp.type));
-      }
-
-      // Create new components with updated IDs and parent references.
-      // A parent inside the copied set remaps to its copy; a parent outside
-      // it (e.g. copying a component inside a group/state container) is kept
-      // so the copy lands at the same place in the hierarchy.
-      const newComponents: ComponentConfig[] = componentsToCopy.map(comp => {
-        const newId = idMapping.get(comp.id)!;
-        const newParentId = comp.parentId
-          ? (idMapping.get(comp.parentId)
-              ?? (components.some(c => c.id === comp.parentId) ? comp.parentId : undefined))
-          : undefined;
-
-        // Generate unique display name
-        const baseName = comp.displayName || comp.type;
-        let uniqueName = baseName;
-        if (existingNames.has(uniqueName)) {
-          let counter = 2;
-          while (existingNames.has(`${baseName}${counter}`)) {
-            counter++;
-          }
-          uniqueName = `${baseName}${counter}`;
-        }
-        existingNames.add(uniqueName);
-
-        return {
-          ...comp,
-          id: newId,
-          displayName: uniqueName,
-          parentId: newParentId,
-          position: { ...comp.position } // Same position
-        };
-      });
-
-      // Select the new root components
-      const newRootIds = rootSelectedIds.map(id => idMapping.get(id)!);
-      setTimeout(() => setSelectedComponents(newRootIds), 0);
+    const clones = source.map(comp => {
+      const displayName = uniqueDisplayName(comp.displayName || comp.type, taken);
+      taken.add(displayName);
 
       return {
-        ...prev,
-        components: [...components, ...newComponents]
+        ...comp,
+        id: idMapping.get(comp.id)!,
+        displayName,
+        parentId: comp.parentId
+          ? (idMapping.get(comp.parentId) ?? (existingIds.has(comp.parentId) ? comp.parentId : undefined))
+          : undefined,
+        position: { ...comp.position },
       };
     });
 
-    return idMapping;
-  }, [saveStateForUndo, generateComponentId, setActiveDocument]);
+    return { clones, idMapping };
+  }, [generateComponentId, uniqueDisplayName]);
 
-  // Copy selected components (and their children) to clipboard
+  const copyDragComponents = useCallback((ids: string[]): Map<string, string> => {
+    const components = currentComponents();
+    const { rootIds, collected } = collectWithDescendants(components, ids);
+    if (collected.length === 0) return new Map();
+
+    const { clones, idMapping } = cloneComponents(collected, components);
+
+    captureHistory(`Copy-drag ${collected.length} component(s)`);
+    setActiveDocument(prev => ({
+      ...prev,
+      components: [...(prev.components || []), ...clones],
+    }));
+    copyTracksForNewComponents(idMapping);
+    setSelectedComponents(rootIds.map(id => idMapping.get(id)!));
+
+    return idMapping;
+  }, [captureHistory, currentComponents, cloneComponents, setActiveDocument, copyTracksForNewComponents]);
+
   const copyComponents = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
-    const components = activeDocument.components || [];
+    const { collected } = collectWithDescendants(currentComponents(), selectedComponents);
+    if (collected.length === 0) return;
 
-    // Helper to get all descendants of a component
-    const getDescendants = (parentId: string): ComponentConfig[] => {
-      const children = components.filter(c => c.parentId === parentId);
-      const descendants: ComponentConfig[] = [];
-      for (const child of children) {
-        descendants.push(child);
-        descendants.push(...getDescendants(child.id));
-      }
-      return descendants;
-    };
+    const copiedIds = new Set(collected.map(c => c.id));
+    const copiedTracks = documentKind === 'overlay' && overlayRef.current
+      ? overlayRef.current.tracks.filter(t => copiedIds.has(t.componentId))
+      : [];
 
-    // Helper to check if a component is a descendant of another
-    const isDescendantOf = (componentId: string, potentialAncestorId: string): boolean => {
-      const component = components.find(c => c.id === componentId);
-      if (!component || !component.parentId) return false;
-      if (component.parentId === potentialAncestorId) return true;
-      return isDescendantOf(component.parentId, potentialAncestorId);
-    };
-
-    // Filter out selected components that are already descendants of other selected components
-    // This prevents duplicates when both a parent and its child are selected
-    const rootSelectedIds = selectedComponents.filter(id => {
-      return !selectedComponents.some(otherId =>
-        otherId !== id && isDescendantOf(id, otherId)
-      );
+    setClipboard({
+      components: structuredClone(collected),
+      tracks: structuredClone(copiedTracks),
     });
+  }, [selectedComponents, currentComponents, documentKind]);
 
-    // Collect all components to copy (root selected + their descendants)
-    const componentsToCopy: ComponentConfig[] = [];
-    const addedIds = new Set<string>();
-
-    for (const id of rootSelectedIds) {
-      const component = components.find(c => c.id === id);
-      if (component && !addedIds.has(id)) {
-        componentsToCopy.push(component);
-        addedIds.add(id);
-
-        // Add all descendants
-        const descendants = getDescendants(id);
-        for (const desc of descendants) {
-          if (!addedIds.has(desc.id)) {
-            componentsToCopy.push(desc);
-            addedIds.add(desc.id);
-          }
-        }
-      }
-    }
-
-    // Deep clone the components for clipboard
-    setClipboard(structuredClone(componentsToCopy));
-  }, [selectedComponents, activeDocument.components]);
-
-  // Paste components from clipboard
   const pasteComponents = useCallback(() => {
-    if (!clipboard || clipboard.length === 0) return;
+    if (!clipboard || clipboard.components.length === 0) return;
 
-    setActiveDocument(prev => {
-      saveStateForUndo('DUPLICATE_COMPONENT', `Paste ${clipboard.length} component(s)`, prev);
+    const components = currentComponents();
+    const { clones, idMapping } = cloneComponents(clipboard.components, components);
 
-      const existingNames = new Set(
-        (prev.components || [])
-          .map(c => c.displayName || c.type)
-          .filter(Boolean)
-      );
+    captureHistory(`Paste ${clipboard.components.length} component(s)`);
+    setActiveDocument(prev => ({
+      ...prev,
+      components: [...(prev.components || []), ...clones],
+    }));
+    copyTracksForNewComponents(idMapping, clipboard.tracks);
 
-      // Create ID mapping for parent-child relationships
-      const idMapping = new Map<string, string>();
+    const clipboardIds = new Set(clipboard.components.map(c => c.id));
+    const rootIds = clipboard.components
+      .filter(c => !c.parentId || !clipboardIds.has(c.parentId))
+      .map(c => idMapping.get(c.id)!);
+    setSelectedComponents(rootIds);
+  }, [clipboard, currentComponents, cloneComponents, captureHistory, setActiveDocument, copyTracksForNewComponents]);
 
-      // Generate new IDs for all clipboard components
-      for (const comp of clipboard) {
-        idMapping.set(comp.id, generateComponentId(comp.type));
-      }
-
-      // Find which components in clipboard are "root" (their parent is not in clipboard)
-      const clipboardIds = new Set(clipboard.map(c => c.id));
-      const rootComponents = clipboard.filter(c => !c.parentId || !clipboardIds.has(c.parentId));
-
-      // Create new components with updated IDs and positions.
-      // A parent inside the clipboard remaps to its copy; a parent outside it
-      // (e.g. copying a component inside a group/state container) is kept —
-      // if it still exists — so the paste lands at the same place in the
-      // hierarchy instead of the root level.
-      const newComponents: ComponentConfig[] = clipboard.map(comp => {
-        const newId = idMapping.get(comp.id)!;
-        const newParentId = comp.parentId
-          ? (idMapping.get(comp.parentId)
-              ?? ((prev.components || []).some(c => c.id === comp.parentId) ? comp.parentId : undefined))
-          : undefined;
-
-        // Generate unique display name
-        const baseName = comp.displayName || comp.type;
-        let uniqueName = baseName;
-        if (existingNames.has(uniqueName)) {
-          let counter = 2;
-          while (existingNames.has(`${baseName}${counter}`)) {
-            counter++;
-          }
-          uniqueName = `${baseName}${counter}`;
-        }
-        existingNames.add(uniqueName);
-
-        // Keep position exactly the same (no offset, no grid snap)
-        const position = { ...comp.position };
-
-        return {
-          ...comp,
-          id: newId,
-          displayName: uniqueName,
-          parentId: newParentId,
-          position
-        };
-      });
-
-      // Select the newly pasted root components
-      const newRootIds = rootComponents.map(r => idMapping.get(r.id)!);
-      setTimeout(() => setSelectedComponents(newRootIds), 0);
-
-      return {
-        ...prev,
-        components: [...(prev.components || []), ...newComponents]
-      };
-    });
-  }, [clipboard, saveStateForUndo, generateComponentId, setActiveDocument]);
-
-  // Group selected components together
   const groupSelectedComponents = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
+    const components = currentComponents();
+    const selectedComps = components.filter(c => selectedComponents.includes(c.id));
+    if (selectedComps.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    selectedComps.forEach(c => {
+      minX = Math.min(minX, c.position.x);
+      minY = Math.min(minY, c.position.y);
+      maxX = Math.max(maxX, c.position.x + c.size.width);
+      maxY = Math.max(maxY, c.position.y + c.size.height);
+    });
+
+    const groupId = generateComponentId('group');
+    const groupName = uniqueDisplayName(
+      'Group',
+      new Set(components.map(c => c.displayName || c.type).filter(Boolean)),
+    );
+
+    const maxSelectedLayer = selectedComps.reduce((max, c) => Math.max(max, c.layer || 0), 0);
+
+    const groupComponent: ComponentConfig = {
+      id: groupId,
+      type: 'group',
+      displayName: groupName,
+      position: { x: Math.round(minX), y: Math.round(minY) },
+      size: { width: Math.round(maxX - minX), height: Math.round(maxY - minY) },
+      layer: maxSelectedLayer
+    };
+
+    captureHistory(`Group ${selectedComps.length} components`);
+
     setActiveDocument(prev => {
-      const components = prev.components || [];
-      const selectedComps = components.filter(c => selectedComponents.includes(c.id));
-
-      if (selectedComps.length === 0) return prev;
-
-      saveStateForUndo('GROUP_COMPONENTS', `Group ${selectedComps.length} components`, prev);
-
-      // Calculate bounding box of selected components
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      selectedComps.forEach(c => {
-        minX = Math.min(minX, c.position.x);
-        minY = Math.min(minY, c.position.y);
-        maxX = Math.max(maxX, c.position.x + c.size.width);
-        maxY = Math.max(maxY, c.position.y + c.size.height);
-      });
-
-      // Generate group ID and name
-      const groupId = generateComponentId('group');
-      const existingNames = new Set(components.map(c => c.displayName || c.type).filter(Boolean));
-      let groupName = 'Group';
-      if (existingNames.has(groupName)) {
-        let counter = 2;
-        while (existingNames.has(`Group${counter}`)) counter++;
-        groupName = `Group${counter}`;
-      }
-
-      // Find the highest layer among selected components (topmost position)
-      // This ensures the group stays at the same visual position as the topmost selected item
-      const maxSelectedLayer = selectedComps.reduce((max, c) => Math.max(max, c.layer || 0), 0);
-
-      // Create the group component
-      const groupComponent: ComponentConfig = {
-        id: groupId,
-        type: 'group',
-        displayName: groupName,
-        position: { x: Math.round(minX), y: Math.round(minY) },
-        size: { width: Math.round(maxX - minX), height: Math.round(maxY - minY) },
-        layer: maxSelectedLayer
-      };
-
-      // Update selected components to be children of the group
-      // Also store their relative position within the group
-      const updatedComponents = components.map(c => {
+      const updatedComponents = (prev.components || []).map(c => {
         if (selectedComponents.includes(c.id)) {
           return {
             ...c,
             parentId: groupId,
-            // Position is now relative to group (but we keep absolute for now)
           };
         }
         return c;
       });
-
-      // Select the new group
-      setTimeout(() => setSelectedComponents([groupId]), 0);
 
       return {
         ...prev,
         components: [...updatedComponents, groupComponent]
       };
     });
-  }, [selectedComponents, saveStateForUndo, generateComponentId, setActiveDocument]);
 
-  // Ungroup selected groups - move children to root level
+    setSelectedComponents([groupId]);
+  }, [selectedComponents, currentComponents, captureHistory, generateComponentId, uniqueDisplayName, setActiveDocument]);
+
   const ungroupSelectedComponents = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
+    const groups = currentComponents().filter(
+      c => selectedComponents.includes(c.id) && c.type === 'group'
+    );
+    if (groups.length === 0) return;
+
+    captureHistory(`Ungroup ${groups.length} group(s)`);
+
+    const groupIds = new Set(groups.map(g => g.id));
+    const childrenIds = currentComponents()
+      .filter(c => c.parentId && groupIds.has(c.parentId))
+      .map(c => c.id);
+
     setActiveDocument(prev => {
       const components = prev.components || [];
-      const selectedGroups = components.filter(
-        c => selectedComponents.includes(c.id) && c.type === 'group'
-      );
 
-      if (selectedGroups.length === 0) return prev;
-
-      saveStateForUndo('UNGROUP_COMPONENTS', `Ungroup ${selectedGroups.length} group(s)`, prev);
-
-      const groupIds = new Set(selectedGroups.map(g => g.id));
-
-      // Find all children of the selected groups
-      const childrenIds: string[] = [];
-      components.forEach(c => {
-        if (c.parentId && groupIds.has(c.parentId)) {
-          childrenIds.push(c.id);
-        }
-      });
-
-      // Update children to remove parent reference (move to root)
-      // and remove the group components
       const updatedComponents = components
-        .filter(c => !groupIds.has(c.id)) // Remove group components
+        .filter(c => !groupIds.has(c.id))
         .map(c => {
           if (c.parentId && groupIds.has(c.parentId)) {
             return { ...c, parentId: undefined };
@@ -1680,33 +1453,28 @@ function App() {
           return c;
         });
 
-      // Select the former children
-      setTimeout(() => setSelectedComponents(childrenIds), 0);
-
       return {
         ...prev,
         components: updatedComponents
       };
     });
-  }, [selectedComponents, saveStateForUndo, setActiveDocument]);
 
-  // Global keyboard handler for copy/paste/group and keyboard shortcuts
+    setSelectedComponents(childrenIds);
+  }, [selectedComponents, currentComponents, captureHistory, setActiveDocument]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle if we're in an input field
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
 
-      // ? key - show keyboard shortcuts modal
       if (e.key === '?' || (e.shiftKey && e.key === '/')) {
         e.preventDefault();
         setShowKeyboardShortcuts(prev => !prev);
         return;
       }
 
-      // Copy: Ctrl+C or Cmd+C
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
         if (selectedComponents.length > 0) {
           e.preventDefault();
@@ -1714,15 +1482,13 @@ function App() {
         }
       }
 
-      // Paste: Ctrl+V or Cmd+V
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-        if (clipboard && clipboard.length > 0) {
+        if (clipboard && clipboard.components.length > 0) {
           e.preventDefault();
           pasteComponents();
         }
       }
 
-      // Group: Ctrl+G or Cmd+G
       if ((e.ctrlKey || e.metaKey) && e.key === 'g' && !e.shiftKey) {
         if (selectedComponents.length > 0) {
           e.preventDefault();
@@ -1730,7 +1496,6 @@ function App() {
         }
       }
 
-      // Ungroup: Ctrl+Shift+G or Cmd+Shift+G
       if ((e.ctrlKey || e.metaKey) && e.key === 'G' && e.shiftKey) {
         if (selectedComponents.length > 0) {
           e.preventDefault();
@@ -1743,22 +1508,16 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedComponents, clipboard, copyComponents, pasteComponents, groupSelectedComponents, ungroupSelectedComponents]);
 
-
-
   const loadCustomPreset = useCallback((customLayout: LayoutConfig) => {
-    // Repair template references for slotList components (helps when templates were imported separately)
     const { components: repairedComponents, repaired, brokenRefs } = repairTemplateReferences(customLayout.components || []);
 
-    setLayout(prev => {
-      saveStateForUndo('LOAD_PRESET', `Load custom preset "${customLayout.name}"`, prev);
-      setSelectedComponents([]);
-      return {
-        ...customLayout,
-        components: repairedComponents,
-      };
+    captureHistory(`Load custom preset "${customLayout.name}"`);
+    setSelectedComponents([]);
+    setLayout({
+      ...customLayout,
+      components: repairedComponents,
     });
 
-    // Show notifications after state update
     if (repaired > 0) {
       console.log(`Repaired ${repaired} template reference(s) in loaded layout`);
       toast.success(`Auto-repaired ${repaired} template reference(s)`);
@@ -1767,19 +1526,16 @@ function App() {
       console.warn(`${brokenRefs.length} slotList component(s) have missing templates`);
       toast.warning(`${brokenRefs.length} slot list(s) have missing templates. Select templates in the property panel.`, 6000);
     }
-  }, [saveStateForUndo, toast]);
+  }, [captureHistory, toast]);
 
-  // Handler to properly merge partial layout updates (used by Canvas for resolution changes)
   const handleUpdateLayout = useCallback((updates: Partial<LayoutConfig>) => {
     setActiveDocument(prev => ({
       ...prev,
       ...updates,
-      // Deep merge dimensions if provided
       dimensions: updates.dimensions ? { ...prev.dimensions, ...updates.dimensions } : prev.dimensions
     }));
   }, [setActiveDocument]);
 
-  // Show fake 404 if not unlocked
   if (!isUnlocked) {
     return <Fake404Overlay onDismiss={handleUnlock} />;
   }
@@ -1788,7 +1544,6 @@ function App() {
     <div className="app" role="application" aria-label="Layout Builder">
       <a href="#main-canvas" className="skip-link">Skip to canvas</a>
       <header className="app-header" role="banner">
-        {/* Left: Branding & Layout Type */}
         <div className="header-section header-branding">
           <h1 className="header-title">Layout Builder</h1>
           <div className="header-divider" aria-hidden="true" />
@@ -1862,29 +1617,27 @@ function App() {
           )}
         </div>
 
-        {/* Center: Edit Operations */}
         <div className="header-section header-edit" role="toolbar" aria-label="Edit operations">
             <button
               onClick={undo}
-              disabled={undoHistory.length === 0}
+              disabled={!history.canUndo}
               className="header-btn header-btn-secondary"
-              aria-label={undoHistory.length > 0 ? `Undo: ${undoHistory[0].description}` : 'Nothing to undo'}
+              aria-label={history.undoLabel ? `Undo: ${history.undoLabel}` : 'Nothing to undo'}
               aria-keyshortcuts="Control+Z"
             >
-              Undo {undoHistory.length > 0 && <span className="btn-badge" aria-label={`${undoHistory.length} actions`}>{undoHistory.length}</span>}
+              Undo {history.undoDepth > 0 && <span className="btn-badge" aria-label={`${history.undoDepth} actions`}>{history.undoDepth}</span>}
             </button>
             <button
               onClick={redo}
-              disabled={redoHistory.length === 0}
+              disabled={!history.canRedo}
               className="header-btn header-btn-secondary"
-              aria-label={redoHistory.length > 0 ? `Redo: ${redoHistory[0].description}` : 'Nothing to redo'}
+              aria-label={history.redoLabel ? `Redo: ${history.redoLabel}` : 'Nothing to redo'}
               aria-keyshortcuts="Control+Shift+Z"
             >
-              Redo {redoHistory.length > 0 && <span className="btn-badge" aria-label={`${redoHistory.length} actions`}>{redoHistory.length}</span>}
+              Redo {history.redoDepth > 0 && <span className="btn-badge" aria-label={`${history.redoDepth} actions`}>{history.redoDepth}</span>}
             </button>
           </div>
 
-        {/* Right: File & Export Operations */}
         <div className="header-section header-file" role="toolbar" aria-label="File operations">
             {documentKind === 'layout' && (
               <>
@@ -1970,7 +1723,7 @@ function App() {
                 onEndDragOperation={endDragOperation}
                 onCopyComponents={copyComponents}
                 onPasteComponents={pasteComponents}
-                hasClipboard={clipboard !== null && clipboard.length > 0}
+                hasClipboard={clipboard !== null && clipboard.components.length > 0}
                 templateRefreshKey={templateRefreshKey}
               />
               <div
@@ -2051,15 +1804,20 @@ function App() {
           onCommitFps={handleCommitFps}
           onCommitStartFrame={handleCommitStartFrame}
           onCommitEndFrame={handleCommitEndFrame}
+          onCommitSwitchFrame={handleCommitSwitchFrame}
           components={activeDocument.components || []}
           selectedComponentIds={selectedComponents}
           onRetimeKeyframe={handleRetimeKeyframe}
+          onBeginKeyframeGesture={beginKeyframeGesture}
+          onEndKeyframeGesture={endKeyframeGesture}
           onRemoveKeyframe={handleRemoveKeyframe}
           onPasteKeyframe={handlePasteKeyframe}
           onSetKeyframeValue={handleSetKeyframeValue}
           onInsertOnCurve={handleInsertOnCurve}
           onSetKeyframeHandle={handleSetKeyframeHandle}
           onSetKeyframeInterpolation={handleSetKeyframeInterpolation}
+          onSetKeyframeEasing={handleSetKeyframeEasing}
+          onSetKeyframeEasingParams={handleSetKeyframeEasingParams}
           onSetKeyframeHandleMode={handleSetKeyframeHandleMode}
           editingShapeId={editingShapeId}
           panelHeight={timelinePanelHeight}
@@ -2111,19 +1869,18 @@ function App() {
 }
 
 function getDefaultSize(type: ComponentConfig['type']) {
-  // Return pixel-based sizes for 1920x1080 base resolution
   const sizes = {
-    teamName: { width: 480, height: 130 },  // 480px width, 130px height
-    score: { width: 288, height: 194 },     // 288px width, 194px height
-    clock: { width: 384, height: 162 },     // 384px width, 162px height
-    period: { width: 230, height: 162 },    // 230px width, 162px height
-    fouls: { width: 192, height: 130 },     // 192px width, 130px height
-    timeouts: { width: 384, height: 86 },   // 384px width, 86px height
-    bonus: { width: 154, height: 130 },     // 154px width, 130px height
-    custom: { width: 192, height: 108 },    // 192px width, 108px height
-    dynamicList: { width: 300, height: 60 }, // 300px width, 60px height
-    leaderboardList: { width: 300, height: 340 }, // 300px width, 340px height
-    multiState: { width: 0, height: 0 }, // no own size — footprint is the children's bounding box
+    teamName: { width: 480, height: 130 },
+    score: { width: 288, height: 194 },
+    clock: { width: 384, height: 162 },
+    period: { width: 230, height: 162 },
+    fouls: { width: 192, height: 130 },
+    timeouts: { width: 384, height: 86 },
+    bonus: { width: 154, height: 130 },
+    custom: { width: 192, height: 108 },
+    dynamicList: { width: 300, height: 60 },
+    leaderboardList: { width: 300, height: 340 },
+    multiState: { width: 0, height: 0 },
     shape: { width: 384, height: 216 },
     qrCode: { width: 240, height: 240 },
   };
@@ -2197,8 +1954,6 @@ function getDefaultProps(type: ComponentConfig['type']) {
       cycleDuration: 500
     },
     qrCode: {
-      // The URL to encode. Deliberately not an '.imageUrl' path -- that suffix
-      // routes to the image renderer, which would fetch the page as a picture.
       dataPath: 'trivia.joinUrl',
       color: '#000000',
       backgroundColor: '#ffffff',
@@ -2219,7 +1974,6 @@ function getDefaultProps(type: ComponentConfig['type']) {
 }
 
 function getDefaultDisplayName(type: ComponentConfig['type']) {
-  // Return "Layer" for group type, otherwise return the type
   if (type === 'group') return 'Layer';
   if (type === 'multiState') return 'Multi-State';
   return type;
@@ -2229,7 +1983,6 @@ function needsTeam(type: ComponentConfig['type']): boolean {
   return ['teamName', 'score', 'fouls', 'timeouts', 'bonus'].includes(type);
 }
 
-// Wrap App with ToastProvider for global toast access
 function AppWithToast() {
   return (
     <ToastProvider>

@@ -1,7 +1,17 @@
 import React from 'react';
-import type { OverlayConfig, AnimatableProperty, AnimationTrack, Handle, HandleMode, Interpolation, Keyframe } from '../shared/utils/overlayTimeline';
+import type { OverlayConfig, AnimatableProperty, AnimationTrack, Handle, HandleMode, Interpolation, Keyframe, Easing } from '../shared/utils/overlayTimeline';
+import { EASING_DIRECTIONS, type EasingDirection } from '../shared/utils/easing';
 import GraphEditor, { channelColor, type ChannelRef } from './GraphEditor';
 import { useCollapsibleState } from './common/CollapsibleSection';
+import {
+  CURVE_GROUPS,
+  DEFAULT_EASING_DIRECTION,
+  EASING_DIRECTION_LABELS,
+  curveValueFor,
+  easingSupportsAmplitude,
+  easingSupportsPeriod,
+  parseCurveValue,
+} from '../utils/easingCurves';
 
 const MIN_PIXELS_PER_FRAME = 1;
 const MAX_PIXELS_PER_FRAME = 20;
@@ -425,6 +435,24 @@ const FrameRuler = React.memo(React.forwardRef<HTMLDivElement, {
 
 FrameRuler.displayName = 'FrameRuler';
 
+interface SwitchMarkerProps {
+  switchFrame: number;
+  frameOffset: number;
+  pixelsPerFrame: number;
+}
+
+const SwitchMarker = React.memo(({ switchFrame, frameOffset, pixelsPerFrame }: SwitchMarkerProps) => {
+  return (
+    <div
+      className="timeline-switch-marker"
+      style={{ left: LABEL_COLUMN_WIDTH + frameToPixels(switchFrame + frameOffset, pixelsPerFrame) }}
+      title={`Layout swaps at frame ${switchFrame}`}
+    />
+  );
+});
+
+SwitchMarker.displayName = 'SwitchMarker';
+
 export interface TimelinePanelProps {
   overlay: OverlayConfig;
   currentFrame: number;
@@ -434,6 +462,7 @@ export interface TimelinePanelProps {
   onCommitFps: (fps: number) => void;
   onCommitStartFrame: (startFrame: number) => void;
   onCommitEndFrame: (endFrame: number) => void;
+  onCommitSwitchFrame: (switchFrame: number | null) => void;
   components: ComponentLabel[];
   selectedComponentIds: string[];
   onRetimeKeyframe: (componentId: string, property: AnimatableProperty, fromFrame: number, toFrame: number) => void;
@@ -442,7 +471,11 @@ export interface TimelinePanelProps {
   onSetKeyframeValue: (componentId: string, property: AnimatableProperty, frame: number, value: number) => void;
   onInsertOnCurve: (componentId: string, property: AnimatableProperty, frame: number) => void;
   onSetKeyframeHandle: (componentId: string, property: AnimatableProperty, frame: number, side: 'in' | 'out', handle: Handle) => void;
+  onBeginKeyframeGesture: () => void;
+  onEndKeyframeGesture: () => void;
   onSetKeyframeInterpolation: (componentId: string, property: AnimatableProperty, frame: number, interpolation: Interpolation) => void;
+  onSetKeyframeEasing: (componentId: string, property: AnimatableProperty, frame: number, easing: Easing | null) => void;
+  onSetKeyframeEasingParams: (componentId: string, property: AnimatableProperty, frame: number, easing: Easing) => void;
   onSetKeyframeHandleMode: (componentId: string, property: AnimatableProperty, frame: number, handleMode: HandleMode) => void;
   editingShapeId?: string | null;
   panelHeight: number;
@@ -460,6 +493,7 @@ const TimelinePanel = ({
   onCommitFps,
   onCommitStartFrame,
   onCommitEndFrame,
+  onCommitSwitchFrame,
   components,
   selectedComponentIds,
   onRetimeKeyframe,
@@ -468,7 +502,11 @@ const TimelinePanel = ({
   onSetKeyframeValue,
   onInsertOnCurve,
   onSetKeyframeHandle,
+  onBeginKeyframeGesture,
+  onEndKeyframeGesture,
   onSetKeyframeInterpolation,
+  onSetKeyframeEasing,
+  onSetKeyframeEasingParams,
   onSetKeyframeHandleMode,
   editingShapeId,
   panelHeight,
@@ -492,6 +530,10 @@ const TimelinePanel = ({
   const panelResizeRef = React.useRef<{ startY: number; startHeight: number } | null>(null);
   const dragRef = React.useRef<{ componentId: string; property: AnimatableProperty; lastFrame: number } | null>(null);
   const { fps, startFrame, endFrame, tracks } = overlay;
+  const isTransition = overlay.isTransition === true;
+  const switchFrame = isTransition && typeof overlay.switchFrame === 'number' && Number.isFinite(overlay.switchFrame)
+    ? clampFrame(Math.round(overlay.switchFrame), Math.min(startFrame, endFrame), Math.max(startFrame, endFrame))
+    : null;
   const padFrames = React.useMemo(() => computeOutOfRangePad(endFrame - startFrame), [startFrame, endFrame]);
   const rangeStart = startFrame - padFrames;
   const rangeEnd = endFrame + padFrames;
@@ -590,7 +632,8 @@ const TimelinePanel = ({
     lane?.setPointerCapture(e.pointerId);
     setSelectedKeyframe({ componentId, property, frame });
     dragRef.current = { componentId, property, lastFrame: frame };
-  }, []);
+    onBeginKeyframeGesture();
+  }, [onBeginKeyframeGesture]);
 
   const handleLanePointerMove = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
@@ -606,12 +649,16 @@ const TimelinePanel = ({
     if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     }
+    const wasDragging = dragRef.current !== null;
     dragRef.current = null;
-  }, []);
+    if (wasDragging) onEndKeyframeGesture();
+  }, [onEndKeyframeGesture]);
 
   const handleLanePointerCancel = React.useCallback(() => {
+    const wasDragging = dragRef.current !== null;
     dragRef.current = null;
-  }, []);
+    if (wasDragging) onEndKeyframeGesture();
+  }, [onEndKeyframeGesture]);
 
   const handleLaneLostPointerCapture = React.useCallback(() => {
     dragRef.current = null;
@@ -945,6 +992,42 @@ const TimelinePanel = ({
             aria-label="End frame"
           />
         </div>
+        {isTransition && (
+        <div className="timeline-field" role="group" aria-label="Switch frame">
+          <label>Switch</label>
+          {switchFrame === null ? (
+            <button
+              type="button"
+              className="header-btn header-btn-secondary"
+              onClick={() => onCommitSwitchFrame(Math.round(currentFrame))}
+              title="Mark the frame where a layout transition swaps the layout behind this overlay"
+              aria-label="Set switch frame"
+            >
+              Set
+            </button>
+          ) : (
+            <>
+              <DebouncedNumberInput
+                value={switchFrame}
+                min={Math.min(startFrame, endFrame)}
+                max={Math.max(startFrame, endFrame)}
+                onCommit={onCommitSwitchFrame}
+                className="timeline-number-input"
+                aria-label="Switch frame"
+              />
+              <button
+                type="button"
+                className="header-btn header-btn-secondary"
+                onClick={() => onCommitSwitchFrame(null)}
+                title="Clear the switch frame (falls back to the timeline midpoint)"
+                aria-label="Clear switch frame"
+              >
+                x
+              </button>
+            </>
+          )}
+        </div>
+        )}
         <div className="timeline-keyframe-inspector" role="group" aria-label="Active keyframe">
           {selectedKf && selectedKeyframe ? (
             <>
@@ -982,22 +1065,94 @@ const TimelinePanel = ({
                 </label>
               )}
               <label className="tki-field">
-                <span>Easing</span>
+                <span>Interpolation</span>
                 <select
-                  value={selectedKf.interpolation}
-                  onChange={(e) => onSetKeyframeInterpolation(
-                    selectedKeyframe.componentId,
-                    selectedKeyframe.property,
-                    selectedKeyframe.frame,
-                    e.target.value as Interpolation,
-                  )}
+                  value={curveValueFor(selectedKf.interpolation, selectedKf.easing)}
+                  onChange={(e) => {
+                    const parsed = parseCurveValue(e.target.value);
+                    if (parsed.fn) {
+                      onSetKeyframeEasing(
+                        selectedKeyframe.componentId,
+                        selectedKeyframe.property,
+                        selectedKeyframe.frame,
+                        {
+                          fn: parsed.fn,
+                          direction: selectedKf.easing?.direction ?? DEFAULT_EASING_DIRECTION,
+                        },
+                      );
+                      return;
+                    }
+                    onSetKeyframeInterpolation(
+                      selectedKeyframe.componentId,
+                      selectedKeyframe.property,
+                      selectedKeyframe.frame,
+                      parsed.interpolation,
+                    );
+                  }}
                   aria-label="Keyframe interpolation"
                 >
-                  <option value="linear">Linear</option>
-                  <option value="bezier">Bezier</option>
-                  <option value="constant">Constant</option>
+                  {CURVE_GROUPS.map(group => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </label>
+              {selectedKf.interpolation === 'eased' && selectedKf.easing && (
+                <label className="tki-field">
+                  <span>Direction</span>
+                  <select
+                    value={selectedKf.easing.direction}
+                    onChange={(e) => onSetKeyframeEasing(
+                      selectedKeyframe.componentId,
+                      selectedKeyframe.property,
+                      selectedKeyframe.frame,
+                      { ...selectedKf.easing!, direction: e.target.value as EasingDirection },
+                    )}
+                    aria-label="Keyframe easing direction"
+                  >
+                    {EASING_DIRECTIONS.map(direction => (
+                      <option key={direction} value={direction}>
+                        {EASING_DIRECTION_LABELS[direction]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {selectedKf.easing && easingSupportsAmplitude(selectedKf.easing.fn) && (
+                <label className="tki-field">
+                  <span>Amount</span>
+                  <DebouncedNumberInput
+                    value={selectedKf.easing.amplitude ?? 1}
+                    min={0}
+                    onCommit={(next) => onSetKeyframeEasingParams(
+                      selectedKeyframe.componentId,
+                      selectedKeyframe.property,
+                      selectedKeyframe.frame,
+                      { ...selectedKf.easing!, amplitude: next },
+                    )}
+                    aria-label="Easing amount"
+                  />
+                </label>
+              )}
+              {selectedKf.easing && easingSupportsPeriod(selectedKf.easing.fn) && (
+                <label className="tki-field">
+                  <span>Wobble</span>
+                  <DebouncedNumberInput
+                    value={selectedKf.easing.period ?? 0.3}
+                    min={0}
+                    onCommit={(next) => onSetKeyframeEasingParams(
+                      selectedKeyframe.componentId,
+                      selectedKeyframe.property,
+                      selectedKeyframe.frame,
+                      { ...selectedKf.easing!, period: next },
+                    )}
+                    aria-label="Easing wobble"
+                  />
+                </label>
+              )}
               {selectedKf.interpolation === 'bezier' && (
                 <label className="tki-field">
                   <span>Handles</span>
@@ -1121,6 +1276,8 @@ const TimelinePanel = ({
                 selectedKeyframe={selectedKeyframe}
                 onSelectKeyframe={setSelectedKeyframe}
                 onRetimeKeyframe={onRetimeKeyframe}
+                onBeginKeyframeGesture={onBeginKeyframeGesture}
+                onEndKeyframeGesture={onEndKeyframeGesture}
                 onSetKeyframeValue={onSetKeyframeValue}
                 onInsertOnCurve={onInsertOnCurve}
                 onSetKeyframeHandle={onSetKeyframeHandle}
@@ -1151,6 +1308,9 @@ const TimelinePanel = ({
                 />
               ))}
             </div>
+          )}
+          {switchFrame !== null && (
+            <SwitchMarker switchFrame={switchFrame} frameOffset={frameOffset} pixelsPerFrame={pixelsPerFrame} />
           )}
           <div
             className="timeline-playhead"

@@ -149,3 +149,37 @@ describe('validateOverlayTracks', () => {
     expect(validateOverlayTracks('not-an-array', ids)).toEqual([]);
   });
 });
+
+describe('validateOverlay switchFrame', () => {
+  it('preserves an authored switchFrame', () => {
+    const result = validateOverlay(baseOverlay({ switchFrame: 12 }));
+    expect(result!.switchFrame).toBe(12);
+  });
+
+  it('leaves switchFrame absent when the JSON has none, so the midpoint default applies', () => {
+    const result = validateOverlay(baseOverlay({}));
+    expect(result!.switchFrame).toBeUndefined();
+  });
+
+  it('drops a non-numeric or non-finite switchFrame rather than passing it through', () => {
+    expect(validateOverlay(baseOverlay({ switchFrame: 'half' }))!.switchFrame).toBeUndefined();
+    expect(validateOverlay(baseOverlay({ switchFrame: NaN }))!.switchFrame).toBeUndefined();
+    expect(validateOverlay(baseOverlay({ switchFrame: Infinity }))!.switchFrame).toBeUndefined();
+  });
+});
+
+describe('validateOverlay isTransition', () => {
+  it('preserves the transition flag', () => {
+    expect(validateOverlay(baseOverlay({ isTransition: true }))!.isTransition).toBe(true);
+  });
+
+  it('leaves it absent when the JSON has none', () => {
+    expect(validateOverlay(baseOverlay({}))!.isTransition).toBeUndefined();
+  });
+
+  it('only accepts a literal true, not a truthy value', () => {
+    expect(validateOverlay(baseOverlay({ isTransition: 'yes' }))!.isTransition).toBeUndefined();
+    expect(validateOverlay(baseOverlay({ isTransition: 1 }))!.isTransition).toBeUndefined();
+    expect(validateOverlay(baseOverlay({ isTransition: false }))!.isTransition).toBeUndefined();
+  });
+});

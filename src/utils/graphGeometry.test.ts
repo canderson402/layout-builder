@@ -198,21 +198,18 @@ describe('nearestCurvePoint', () => {
   const ramp = track([kf(0, 0), kf(10, 100)]);
 
   it('finds the curve when the pointer is right on it', () => {
-    // frame 5 -> value 50 -> x=20, y=50
     const hit = nearestCurvePoint([ramp], 20, 50, opts)!;
     expect(hit.distance).toBeLessThan(2);
     expect(hit.frame).toBeCloseTo(5, 1);
   });
 
   it('still finds a STEEP curve that a vertical-only test would miss', () => {
-    // 100 value units over 40px is steep; pointer 6px to the left of the line
     const steep = track([kf(0, 0), kf(5, 100)]);
     const hit = nearestCurvePoint([steep], 14, 50, { ...opts })!;
     expect(hit.distance).toBeLessThan(8);
   });
 
   it('reports a large distance when the pointer is nowhere near', () => {
-    // flat curve at value 90 (y = 10); pointer near the bottom of the view
     const flat = track([kf(0, 90), kf(10, 90)]);
     const hit = nearestCurvePoint([flat], 20, 95, opts)!;
     expect(hit.distance).toBeGreaterThan(80);
@@ -233,5 +230,68 @@ describe('nearestCurvePoint', () => {
   it('skips non-numeric channels', () => {
     const colour = { ...track([kf(0, '#000000'), kf(10, '#ffffff')]), property: 'color' as const };
     expect(nearestCurvePoint([colour], 20, 50, opts)).toBeNull();
+  });
+});
+
+describe('eased segments', () => {
+  const easedKeys: Keyframe[] = [
+    { frame: 0, value: 0, interpolation: 'eased', easing: { fn: 'elastic', direction: 'out' } },
+    { frame: 10, value: 100, interpolation: 'linear' },
+  ];
+
+  it('draws a sampled polyline rather than a single straight line', () => {
+    const path = buildCurvePath(easedKeys, { min: 0, max: 200 }, 100, 10, 0);
+    const lineCommands = (path.match(/L /g) ?? []).length;
+    expect(lineCommands).toBeGreaterThan(4);
+  });
+
+  it('still emits a plain line for a linear segment', () => {
+    const linear: Keyframe[] = [
+      { frame: 0, value: 0, interpolation: 'linear' },
+      { frame: 10, value: 100, interpolation: 'linear' },
+    ];
+    const path = buildCurvePath(linear, { min: 0, max: 200 }, 100, 10, 0);
+    expect((path.match(/L /g) ?? []).length).toBe(1);
+  });
+
+  it('still emits a cubic for a bezier segment', () => {
+    const bezier: Keyframe[] = [
+      { frame: 0, value: 0, interpolation: 'bezier', handleOut: { dFrame: 3, dValue: 20 } },
+      { frame: 10, value: 100, interpolation: 'linear', handleIn: { dFrame: -3, dValue: -20 } },
+    ];
+    expect(buildCurvePath(bezier, { min: 0, max: 200 }, 100, 10, 0)).toContain('C ');
+  });
+
+  it('widens the value range to contain elastic overshoot', () => {
+    const track: AnimationTrack = { componentId: 'c1', property: 'x', keyframes: easedKeys };
+    const range = computeValueRange([track]);
+    expect(range.max).toBeGreaterThan(100);
+  });
+
+  it('widens the value range to contain back undershoot below the start value', () => {
+    const track: AnimationTrack = {
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        { frame: 0, value: 0, interpolation: 'eased', easing: { fn: 'back', direction: 'in' } },
+        { frame: 10, value: 100, interpolation: 'linear' },
+      ],
+    };
+    expect(computeValueRange([track]).min).toBeLessThan(0);
+  });
+
+  it('leaves the range alone for a non-overshooting easing', () => {
+    const track: AnimationTrack = {
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        { frame: 0, value: 0, interpolation: 'eased', easing: { fn: 'sine', direction: 'inOut' } },
+        { frame: 10, value: 100, interpolation: 'linear' },
+      ],
+    };
+    const range = computeValueRange([track]);
+    expect(range.min).toBeLessThanOrEqual(0);
+    expect(range.max).toBeGreaterThanOrEqual(100);
+    expect(range.max).toBeLessThan(120);
   });
 });

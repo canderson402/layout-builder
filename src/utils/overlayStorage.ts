@@ -101,8 +101,41 @@ export function overlayIds(): Set<string> {
   return new Set(listOverlays().map(o => o.id));
 }
 
-export function newOverlay(name: string, dimensions: { width: number; height: number }): OverlayConfig {
+export const DEFAULT_OVERLAY_FPS = 25;
+export const DEFAULT_OVERLAY_LENGTH_FRAMES = 50;
+export const MIN_OVERLAY_FPS = 1;
+export const MAX_OVERLAY_FPS = 240;
+export const MIN_OVERLAY_LENGTH_FRAMES = 1;
+export const MAX_OVERLAY_LENGTH_SECONDS = 60;
+
+export function maxOverlayLengthFrames(fps: number): number {
+  return Math.round(fps * MAX_OVERLAY_LENGTH_SECONDS);
+}
+
+export interface NewOverlayOptions {
+  isTransition?: boolean;
+  fps?: number;
+  lengthFrames?: number;
+}
+
+function clampOrDefault(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+export function newOverlay(
+  name: string,
+  dimensions: { width: number; height: number },
+  options: NewOverlayOptions = {},
+): OverlayConfig {
   const id = uniqueOverlayId(name, overlayIds());
+  const fps = clampOrDefault(options.fps, DEFAULT_OVERLAY_FPS, MIN_OVERLAY_FPS, MAX_OVERLAY_FPS);
+  const lengthFrames = clampOrDefault(
+    options.lengthFrames,
+    DEFAULT_OVERLAY_LENGTH_FRAMES,
+    MIN_OVERLAY_LENGTH_FRAMES,
+    maxOverlayLengthFrames(fps),
+  );
 
   return {
     id,
@@ -110,9 +143,10 @@ export function newOverlay(name: string, dimensions: { width: number; height: nu
     components: [],
     dimensions,
     backgroundColor: undefined,
-    fps: 30,
+    fps,
     startFrame: 0,
-    endFrame: 90,
+    endFrame: lengthFrames,
+    ...(options.isTransition ? { isTransition: true } : {}),
     tracks: [],
   };
 }

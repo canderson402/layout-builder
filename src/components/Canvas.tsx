@@ -20,9 +20,6 @@ import {
 } from '../shared/utils/componentHierarchy';
 import './Canvas.css';
 
-// Walk parentId up from `componentId`, immediate parent first, root last.
-// Cycle/missing-parent safe (mirrors componentHierarchy's own guard) so a
-// malformed layout can never spin this into an infinite loop.
 function getAncestorChain(componentId: string, components: ComponentConfig[]): ComponentConfig[] {
   const byId = new Map(components.map(c => [c.id, c] as const));
   const chain: ComponentConfig[] = [];
@@ -39,13 +36,6 @@ function getAncestorChain(componentId: string, components: ComponentConfig[]): C
   return chain;
 }
 
-// Convert a canvas-space point into `target`'s own local space by inverting
-// the ancestor chain's transforms one level at a time, outermost (root)
-// first -- composing transformBounds.ts's single-transform inverse rather
-// than writing new matrix math. The result still needs target's own
-// transform inverted (containsPoint already does that internally), so this
-// only strips the ANCESTORS' transforms and each container's authored
-// offset, exactly mirroring how those offsets are applied when rendering.
 function pointToNestedLocalSpace(
   canvasX: number,
   canvasY: number,
@@ -72,13 +62,6 @@ function pointToNestedLocalSpace(
   return { x: px - targetOffset.x, y: py - targetOffset.y };
 }
 
-// Convert a canvas-space DRAG DELTA into the local space of `target`'s
-// ancestor chain, same outermost-first composition as pointToNestedLocalSpace.
-// A delta is a vector, not a point, so only the transforms' linear part
-// (rotation + scale) applies -- translation/origin cancels out, which is why
-// this subtracts inverseTransformPoint(0,0,...) rather than adding a
-// translation term of its own (still just reusing the single-transform
-// helper, no new maths).
 function deltaToNestedLocalSpace(
   dx: number,
   dy: number,
@@ -106,12 +89,12 @@ interface CanvasProps {
   onUpdateComponent: (id: string, updates: Partial<ComponentConfig>) => void;
   onDeleteComponent: (id: string) => void;
   onDuplicateComponent: (id: string) => void;
-  onCopyDragComponents?: (ids: string[]) => Map<string, string>; // For Command+drag to copy
+  onCopyDragComponents?: (ids: string[]) => Map<string, string>;
   draggedComponent: ComponentConfig | null;
   setDraggedComponent: (component: ComponentConfig | null) => void;
   onAddComponent: (type: ComponentConfig['type'], customPosition?: { x: number, y: number }, customSize?: { width: number, height: number }) => string;
   onStartDragOperation: () => void;
-  onEndDragOperation: (description: string) => void;
+  onEndDragOperation: (description: string, mergeKey?: string) => void;
   onUpdateLayout: (updates: Partial<LayoutConfig>) => void;
   gameData?: any;
   editingShapeId: string | null;
@@ -124,25 +107,22 @@ interface CanvasProps {
   dirtyChannels?: Map<string, Set<DirtyChannel>>;
 }
 
-// Pixel-based grid settings
 const DEFAULT_GRID_SIZE = 20;
-const DEFAULT_SNAP_THRESHOLD = 25; // Default snap threshold in pixels
-const SNAP_THRESHOLD_OPTIONS = [5, 10, 15, 20, 25, 35, 50]; // Snap strength options (higher = stickier)
-const GRID_SIZE_OPTIONS = [5, 10, 20]; // Grid spacing options in pixels
+const DEFAULT_SNAP_THRESHOLD = 25;
+const SNAP_THRESHOLD_OPTIONS = [5, 10, 15, 20, 25, 35, 50];
+const GRID_SIZE_OPTIONS = [5, 10, 20];
 
-// Smart guide types
 interface SmartGuide {
   type: 'center-h' | 'center-v' | 'edge-top' | 'edge-bottom' | 'edge-left' | 'edge-right' |
         'element-edge-v' | 'element-edge-h' | 'element-center-h' | 'element-center-v';
-  position: number; // x for vertical lines, y for horizontal lines
-  label?: string; // Optional distance label
-  // For element-to-element guides, store the span for drawing the connecting line
+  position: number;
+  label?: string;
   span?: { start: number; end: number };
 }
 
 interface ActiveGuides {
   guides: SmartGuide[];
-  elementBounds?: { // The bounds of the element being moved (for rendering guides)
+  elementBounds?: {
     left: number;
     top: number;
     right: number;
@@ -152,12 +132,11 @@ interface ActiveGuides {
   };
 }
 
-// Common resolution presets
 const RESOLUTION_PRESETS = [
   { name: 'HD 720p', width: 1280, height: 720 },
   { name: '1080p', width: 1920, height: 1080 },
   { name: '4K', width: 3840, height: 2160 },
-  { name: 'Custom', width: 0, height: 0 } // Special case for custom input
+  { name: 'Custom', width: 0, height: 0 }
 ];
 
 export default function Canvas({
@@ -194,7 +173,6 @@ export default function Canvas({
   const layoutRef = useRef(layout);
   const selectedComponentsRef = useRef(selectedComponents);
 
-  // Keep refs updated
   layoutRef.current = layout;
   selectedComponentsRef.current = selectedComponents;
   const [isDragging, setIsDragging] = useState(false);
@@ -203,21 +181,17 @@ export default function Canvas({
   const [isRotating, setIsRotating] = useState(false);
   const rotateStartRef = useRef({ rotation: 0, angle: 0 });
   const [showGrid, setShowGrid] = useState(true);
-  // When on, only what the preview is actually drawing can be clicked. Stops a
-  // click from landing on a component belonging to a state you aren't editing.
   const [lockHidden, setLockHidden] = useState(true);
   const [showHalfwayLines, setShowHalfwayLines] = useState(false);
-  const [showBoundingBoxes, setShowBoundingBoxes] = useState(true); // Toggle for green selection outlines (default ON)
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string>(() => {
-    // Load from localStorage, default to the test background
     return localStorage.getItem('canvas-background-image') || '/images/Generic/Utility/background_test.jpeg';
   });
   const [showCanvasBackground, setShowCanvasBackground] = useState<boolean>(() => {
     const stored = localStorage.getItem('canvas-background-visible');
-    return stored !== null ? stored === 'true' : true; // Default to visible
+    return stored !== null ? stored === 'true' : true;
   });
 
-  // Resolve background image path with BASE_URL
   const resolvedBackgroundImage = React.useMemo(() => {
     if (!canvasBackgroundImage) return '';
     if (canvasBackgroundImage.startsWith('http://') || canvasBackgroundImage.startsWith('https://') || canvasBackgroundImage.startsWith('data:')) {
@@ -229,70 +203,59 @@ export default function Canvas({
     }
     return `${baseUrl}${canvasBackgroundImage}`;
   }, [canvasBackgroundImage]);
-  const [gridSizeIndex, setGridSizeIndex] = useState(2); // Default to 20px grid (index 2)
+  const [gridSizeIndex, setGridSizeIndex] = useState(2);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [zoomLevel, setZoomLevel] = useState(60); // Zoom level from 10% to 300%
+  const [zoomLevel, setZoomLevel] = useState(60);
   const [isCreating, setIsCreating] = useState(false);
   const [createStart, setCreateStart] = useState({ x: 0, y: 0 });
   const [createEnd, setCreateEnd] = useState({ x: 0, y: 0 });
-  // Marquee selection — default click+drag on empty canvas
   const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
   const [marqueeStart, setMarqueeStart] = useState({ x: 0, y: 0 });
   const [marqueeEnd, setMarqueeEnd] = useState({ x: 0, y: 0 });
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [hasDraggedFarEnough, setHasDraggedFarEnough] = useState(false);
   const [initialComponentPositions, setInitialComponentPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
-  const [initialResizeBounds, setInitialResizeBounds] = useState<{ x: number, y: number, width: number, height: number, components: ComponentConfig[] } | null>(null); // Store bounds at resize start
-  const isCopyDragRef = useRef(false); // Track if Command was held at drag start for copy-drag
+  const [initialResizeBounds, setInitialResizeBounds] = useState<{ x: number, y: number, width: number, height: number, components: ComponentConfig[] } | null>(null);
+  const isCopyDragRef = useRef(false);
 
-  // Viewport panning state
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
-  const [isSpaceHeld, setIsSpaceHeld] = useState(false); // Space bar for pan mode (for UI)
-  const isSpaceHeldRef = useRef(false); // Ref for immediate access during mouse events
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false);
+  const isSpaceHeldRef = useRef(false);
 
-  // Smart guides state
   const [activeGuides, setActiveGuides] = useState<ActiveGuides>({ guides: [] });
 
-  // Configurable snap threshold (snap strength)
-  const [snapThresholdIndex, setSnapThresholdIndex] = useState(4); // Default to 25px (index 4)
+  const [snapThresholdIndex, setSnapThresholdIndex] = useState(4);
   const snapThreshold = SNAP_THRESHOLD_OPTIONS[snapThresholdIndex] || DEFAULT_SNAP_THRESHOLD;
 
-  // Snap type toggles
-  const [snapToElements, setSnapToElements] = useState(true); // Element-to-element snapping
-  const [snapToCanvasGuides, setSnapToCanvasGuides] = useState(true); // Canvas center/edge snapping
-  const [isAltHeld, setIsAltHeld] = useState(false); // Alt key temporarily disables all snapping (for UI)
-  const isAltHeldRef = useRef(false); // Ref for immediate access during drag
+  const [snapToElements, setSnapToElements] = useState(true);
+  const [snapToCanvasGuides, setSnapToCanvasGuides] = useState(true);
+  const [isAltHeld, setIsAltHeld] = useState(false);
+  const isAltHeldRef = useRef(false);
 
-  // Dropdown menu states
   const [showSnapMenu, setShowSnapMenu] = useState(false);
   const [showAlignMenu, setShowAlignMenu] = useState(false);
   const [showBgMenu, setShowBgMenu] = useState(false)
 
-  // Scale mode state (press 'S' to scale selected components proportionally from center)
   const [isScaling, setIsScaling] = useState(false);
   const [scaleStartState, setScaleStartState] = useState<Map<string, { x: number, y: number, width: number, height: number }>>(new Map());
   const [scaleCenter, setScaleCenter] = useState({ x: 0, y: 0 });
   const [scaleStartDistance, setScaleStartDistance] = useState(0);
   const [currentScaleFactor, setCurrentScaleFactor] = useState(1);
-  const currentMousePosRef = useRef({ x: 0, y: 0 }); // Track mouse position for scale mode
-  // For smooth precision mode - tracks transition points to prevent jumps
+  const currentMousePosRef = useRef({ x: 0, y: 0 });
   const precisionModeRef = useRef({
     active: false,
-    baseScaleFactor: 1, // The visual scale when entering precision mode
-    baseDistance: 0,    // The mouse distance when entering precision mode
-    scaleOffset: 0      // Accumulated offset to maintain continuity when exiting precision mode
+    baseScaleFactor: 1,
+    baseDistance: 0,
+    scaleOffset: 0
   });
 
-  // Throttle drag updates for better performance
   const lastUpdateTime = useRef(0);
-  const THROTTLE_MS = 16; // ~60fps
+  const THROTTLE_MS = 16;
 
-  // Ref to store handleResize function to avoid initialization order issues
   const handleResizeRef = useRef<((canvasX: number, canvasY: number, maintainAspectRatio?: boolean) => void) | null>(null);
 
-  // Persist canvas background settings
   React.useEffect(() => {
     localStorage.setItem('canvas-background-image', canvasBackgroundImage);
   }, [canvasBackgroundImage]);
@@ -301,7 +264,6 @@ export default function Canvas({
     localStorage.setItem('canvas-background-visible', String(showCanvasBackground));
   }, [showCanvasBackground]);
 
-  // Close dropdown menus when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -315,22 +277,18 @@ export default function Canvas({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Helper function to handle component selection with Ctrl/Cmd for multi-select
   const handleComponentSelect = useCallback((componentId: string, isCtrlClick: boolean = false) => {
     if (isCtrlClick) {
-      // Toggle selection of this component
       if (selectedComponents.includes(componentId)) {
         onSelectComponents(selectedComponents.filter(id => id !== componentId));
       } else {
         onSelectComponents([...selectedComponents, componentId]);
       }
     } else {
-      // Single selection
       onSelectComponents([componentId]);
     }
   }, [selectedComponents, onSelectComponents]);
 
-  // Helper function to get all descendants (children, grandchildren, etc.) of given component IDs
   const getAllDescendants = useCallback((parentIds: string[], components: ComponentConfig[]): string[] => {
     const descendants: string[] = [];
     const toProcess = [...parentIds];
@@ -341,12 +299,11 @@ export default function Canvas({
       if (processed.has(currentId)) continue;
       processed.add(currentId);
 
-      // Find all components that have this as their parent
       const children = components.filter(c => c.parentId === currentId);
       for (const child of children) {
         if (!parentIds.includes(child.id) && !descendants.includes(child.id)) {
           descendants.push(child.id);
-          toProcess.push(child.id); // Process grandchildren too
+          toProcess.push(child.id);
         }
       }
     }
@@ -354,7 +311,6 @@ export default function Canvas({
     return descendants;
   }, []);
 
-  // Helper function to check if any ancestor of a component is hidden
   const isAncestorHidden = useCallback((component: ComponentConfig, components: ComponentConfig[]): boolean => {
     let child = component;
     let currentParentId = component.parentId;
@@ -362,9 +318,6 @@ export default function Canvas({
       const parent = components.find(c => c.id === currentParentId);
       if (!parent) break;
       if (parent.visible === false) return true;
-      // Components in an INACTIVE multi-state container are hidden from the
-      // preview, so their handles must not be hit-testable either. Pin a
-      // state via Preview State to make its contents editable.
       if (isMultiStateGroup(parent.props)) {
         const states = parent.props.states as { id: string; childId?: string }[];
         const stateEntry = states.find(s => s.childId === child.id);
@@ -382,15 +335,6 @@ export default function Canvas({
     return false;
   }, [gameData]);
 
-  /**
-   * Is this component hidden by its OWN rules right now?
-   *
-   * Ancestor gates are handled by isAncestorHidden; this covers the case of
-   * several components stacked in one spot, each shown by a different
-   * condition (a correct-answer variant over a wrong-answer variant, say).
-   * Without it, clicking the stack grabs whichever is on top rather than the
-   * one you can see.
-   */
   const isSelfHidden = useCallback((component: ComponentConfig): boolean => {
     const props: any = component.props || {};
     const conditionResult = evaluateConditionGroup(props.visibilityCondition, gameData);
@@ -402,26 +346,14 @@ export default function Canvas({
     return false;
   }, [gameData]);
 
-  /**
-   * Can this component be grabbed on the canvas? Selecting from the Layer
-   * Panel always works, so hidden things are never truly out of reach --
-   * and the Hidden toolbar toggle turns this filter off entirely.
-   */
   const isSelectableOnCanvas = useCallback((component: ComponentConfig): boolean => {
-    // Groups and multi-state parents are containers -- they have no drawn
-    // form, so there is nothing on the canvas to grab. Select them in the
-    // Layer Panel; their children carry the geometry.
     if (component.type === 'group' || component.type === 'multiState') return false;
     if (component.visible === false) return false;
-    // A component in a state you aren't previewing is never grabbable, even if
-    // it is currently selected -- it isn't on screen. Edit it from the
-    // Property Panel, or switch states in the Layer Panel.
     if (isAncestorHidden(component, layout.components || [])) return false;
     if (lockHidden && isSelfHidden(component)) return false;
     return true;
   }, [isAncestorHidden, isSelfHidden, lockHidden, layout.components]);
 
-  // Simple pixel-based grid
   const gridSize = GRID_SIZE_OPTIONS[gridSizeIndex] || DEFAULT_GRID_SIZE;
 
   const decreaseGridSize = () => {
@@ -434,23 +366,19 @@ export default function Canvas({
     setGridSizeIndex(nextIndex);
   };
 
-  // Center-aware pixel-based grid snapping
   const snapToGrid = useCallback((value: number, dimension: 'width' | 'height') => {
     const layoutDimension = dimension === 'width' ? layout.dimensions.width : layout.dimensions.height;
     const center = layoutDimension / 2;
 
-    // Always allow snapping to the exact center
     if (Math.abs(value - center) <= snapThreshold) {
       return center;
     }
 
-    // For larger grid sizes, add center as an additional snap point
     if (gridSize >= 50) {
       const regularSnap = Math.round(value / gridSize) * gridSize;
       const distToRegular = Math.abs(value - regularSnap);
       const distToCenter = Math.abs(value - center);
 
-      // If we're closer to center than regular grid, snap to center
       if (distToCenter < distToRegular && distToCenter <= snapThreshold) {
         return center;
       }
@@ -458,7 +386,6 @@ export default function Canvas({
       return regularSnap;
     }
 
-    // For smaller grid sizes, use regular snapping
     return Math.round(value / gridSize) * gridSize;
   }, [gridSize, layout.dimensions.width, layout.dimensions.height, snapThreshold]);
 
@@ -466,11 +393,6 @@ export default function Canvas({
     return Math.abs(value - snappedValue) <= snapThreshold;
   }, [snapThreshold]);
 
-  // On-screen rect of a component: what the preview actually draws, which is
-  // not always position/size. Container types (multiState, slotList) have no
-  // footprint of their own — theirs is the bounding box of their contents, so
-  // selection, hit testing, snapping and guides all use that instead of the
-  // container's nominal frame.
   const getDisplayRect = useCallback((component: ComponentConfig) => {
     const bounds = component.type === 'multiState'
       ? getMultiStateBounds(component, layout.components || [])
@@ -486,14 +408,13 @@ export default function Canvas({
     };
   }, [layout.components, gameData]);
 
-  // Smart snapping function that returns snapped position and active guides
   const smartSnap = useCallback((
     rawX: number,
     rawY: number,
     componentWidth: number,
     componentHeight: number,
     enableSnapping: boolean,
-    excludeComponentIds?: string[] // IDs of components to exclude from element-to-element checks (all selected components)
+    excludeComponentIds?: string[]
   ): { x: number; y: number; guides: ActiveGuides } => {
     const guides: SmartGuide[] = [];
     let snappedX = rawX;
@@ -504,7 +425,6 @@ export default function Canvas({
     const canvasCenterX = canvasWidth / 2;
     const canvasCenterY = canvasHeight / 2;
 
-    // Calculate element bounds and center
     const elementLeft = rawX;
     const elementRight = rawX + componentWidth;
     const elementTop = rawY;
@@ -512,8 +432,6 @@ export default function Canvas({
     const elementCenterX = rawX + componentWidth / 2;
     const elementCenterY = rawY + componentHeight / 2;
 
-    // If Alt is held, skip all smart snapping but still apply grid
-    // Use ref for immediate access during drag (state may be stale during rapid events)
     if (isAltHeldRef.current) {
       if (showGrid) {
         snappedX = snapToGrid(snappedX, 'width');
@@ -527,19 +445,15 @@ export default function Canvas({
     }
 
     if (enableSnapping) {
-      // Track if we've snapped on each axis to prevent conflicting snaps
       let snappedOnX = false;
       let snappedOnY = false;
 
-      // Get other components for element-to-element snapping (exclude all selected components)
       const excludeSet = new Set(excludeComponentIds || []);
       const otherComponents = (layout.components || []).filter(
         c => !excludeSet.has(c.id) && c.visible !== false
       );
 
-      // ========== CANVAS CENTER SNAPPING (highest priority) ==========
       if (snapToCanvasGuides) {
-        // 1. Check element CENTER to canvas center
         if (Math.abs(elementCenterX - canvasCenterX) <= snapThreshold) {
           snappedX = canvasCenterX - componentWidth / 2;
           guides.push({ type: 'center-v', position: canvasCenterX });
@@ -552,7 +466,6 @@ export default function Canvas({
           snappedOnY = true;
         }
 
-        // 2. Check element edges to canvas center
         if (!snappedOnX && Math.abs(elementLeft - canvasCenterX) <= snapThreshold) {
           snappedX = canvasCenterX;
           guides.push({ type: 'center-v', position: canvasCenterX });
@@ -578,7 +491,6 @@ export default function Canvas({
         }
       }
 
-      // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
       if (snapToElements) {
         for (const other of otherComponents) {
         const otherRect = getDisplayRect(other);
@@ -589,121 +501,99 @@ export default function Canvas({
         const otherCenterX = otherRect.left + otherRect.width / 2;
         const otherCenterY = otherRect.top + otherRect.height / 2;
 
-        // Calculate vertical span for horizontal guides (min/max Y of both elements)
         const getVerticalSpan = () => ({
           start: Math.min(elementTop, otherTop),
           end: Math.max(elementBottom, otherBottom)
         });
 
-        // Calculate horizontal span for vertical guides (min/max X of both elements)
         const getHorizontalSpan = () => ({
           start: Math.min(elementLeft, otherLeft),
           end: Math.max(elementRight, otherRight)
         });
 
-        // --- Vertical edge alignments (X-axis snapping) ---
-
-        // Left edge to left edge
         if (!snappedOnX && Math.abs(elementLeft - otherLeft) <= snapThreshold) {
           snappedX = otherLeft;
           guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan() });
           snappedOnX = true;
         }
 
-        // Right edge to right edge
         if (!snappedOnX && Math.abs(elementRight - otherRight) <= snapThreshold) {
           snappedX = otherRight - componentWidth;
           guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan() });
           snappedOnX = true;
         }
 
-        // Left edge to right edge
         if (!snappedOnX && Math.abs(elementLeft - otherRight) <= snapThreshold) {
           snappedX = otherRight;
           guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan() });
           snappedOnX = true;
         }
 
-        // Right edge to left edge
         if (!snappedOnX && Math.abs(elementRight - otherLeft) <= snapThreshold) {
           snappedX = otherLeft - componentWidth;
           guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan() });
           snappedOnX = true;
         }
 
-        // Center to center (horizontal alignment)
         if (!snappedOnX && Math.abs(elementCenterX - otherCenterX) <= snapThreshold) {
           snappedX = otherCenterX - componentWidth / 2;
           guides.push({ type: 'element-center-v', position: otherCenterX, span: getVerticalSpan() });
           snappedOnX = true;
         }
 
-        // --- Horizontal edge alignments (Y-axis snapping) ---
-
-        // Top edge to top edge
         if (!snappedOnY && Math.abs(elementTop - otherTop) <= snapThreshold) {
           snappedY = otherTop;
           guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan() });
           snappedOnY = true;
         }
 
-        // Bottom edge to bottom edge
         if (!snappedOnY && Math.abs(elementBottom - otherBottom) <= snapThreshold) {
           snappedY = otherBottom - componentHeight;
           guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan() });
           snappedOnY = true;
         }
 
-        // Top edge to bottom edge
         if (!snappedOnY && Math.abs(elementTop - otherBottom) <= snapThreshold) {
           snappedY = otherBottom;
           guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan() });
           snappedOnY = true;
         }
 
-        // Bottom edge to top edge
         if (!snappedOnY && Math.abs(elementBottom - otherTop) <= snapThreshold) {
           snappedY = otherTop - componentHeight;
           guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan() });
           snappedOnY = true;
         }
 
-        // Center to center (vertical alignment)
         if (!snappedOnY && Math.abs(elementCenterY - otherCenterY) <= snapThreshold) {
           snappedY = otherCenterY - componentHeight / 2;
           guides.push({ type: 'element-center-h', position: otherCenterY, span: getHorizontalSpan() });
           snappedOnY = true;
         }
 
-          // Break early if we've snapped on both axes
           if (snappedOnX && snappedOnY) break;
         }
       }
 
-      // ========== CANVAS EDGE SNAPPING ==========
       if (snapToCanvasGuides) {
-        // Check left edge to canvas left
         if (!snappedOnX && Math.abs(elementLeft) <= snapThreshold) {
           snappedX = 0;
           guides.push({ type: 'edge-left', position: 0 });
           snappedOnX = true;
         }
 
-        // Check right edge to canvas right
         if (!snappedOnX && Math.abs(elementRight - canvasWidth) <= snapThreshold) {
           snappedX = canvasWidth - componentWidth;
           guides.push({ type: 'edge-right', position: canvasWidth });
           snappedOnX = true;
         }
 
-        // Check top edge to canvas top
         if (!snappedOnY && Math.abs(elementTop) <= snapThreshold) {
           snappedY = 0;
           guides.push({ type: 'edge-top', position: 0 });
           snappedOnY = true;
         }
 
-        // Check bottom edge to canvas bottom
         if (!snappedOnY && Math.abs(elementBottom - canvasHeight) <= snapThreshold) {
           snappedY = canvasHeight - componentHeight;
           guides.push({ type: 'edge-bottom', position: canvasHeight });
@@ -711,8 +601,6 @@ export default function Canvas({
         }
       }
 
-      // Apply grid snapping on axes that aren't already snapped by smart guides
-      // This ensures movement is always grid-locked when grid is enabled
       if (showGrid) {
         if (!snappedOnX) {
           snappedX = snapToGrid(snappedX, 'width');
@@ -723,7 +611,6 @@ export default function Canvas({
       }
     }
 
-    // Calculate final element bounds after snapping
     const finalCenterX = snappedX + componentWidth / 2;
     const finalCenterY = snappedY + componentHeight / 2;
 
@@ -744,7 +631,6 @@ export default function Canvas({
     };
   }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides, getDisplayRect]);
 
-  // Smart snapping function for resize operations - snaps moving edges to guides
   const smartSnapResize = useCallback((
     handle: string,
     left: number,
@@ -764,14 +650,12 @@ export default function Canvas({
     const canvasCenterX = canvasWidth / 2;
     const canvasCenterY = canvasHeight / 2;
 
-    // Determine which edges are being moved based on handle
     const edges = movesEdges(handle as ResizeHandle);
     const movingLeft = edges.left;
     const movingRight = edges.right;
     const movingTop = edges.top;
     const movingBottom = edges.bottom;
 
-    // If Alt is held, skip all smart snapping but still apply grid
     if (isAltHeldRef.current) {
       if (showGrid) {
         if (movingLeft) snappedLeft = snapToGrid(snappedLeft, 'width');
@@ -788,33 +672,27 @@ export default function Canvas({
       };
     }
 
-    // Track if we've snapped each edge
     let snappedLeftEdge = false;
     let snappedRightEdge = false;
     let snappedTopEdge = false;
     let snappedBottomEdge = false;
 
-    // Get other components for element-to-element snapping
     const excludeSet = new Set(excludeComponentIds || []);
     const otherComponents = (layout.components || []).filter(
       c => !excludeSet.has(c.id) && c.visible !== false
     );
 
-    // Helper to get vertical span for horizontal guides
     const getVerticalSpan = (otherTop: number, otherBottom: number) => ({
       start: Math.min(top, otherTop),
       end: Math.max(bottom, otherBottom)
     });
 
-    // Helper to get horizontal span for vertical guides
     const getHorizontalSpan = (otherLeft: number, otherRight: number) => ({
       start: Math.min(left, otherLeft),
       end: Math.max(right, otherRight)
     });
 
-    // ========== CANVAS CENTER SNAPPING ==========
     if (snapToCanvasGuides) {
-      // Snap moving edges to canvas center
       if (movingLeft && !snappedLeftEdge && Math.abs(left - canvasCenterX) <= snapThreshold) {
         snappedLeft = canvasCenterX;
         guides.push({ type: 'center-v', position: canvasCenterX });
@@ -837,7 +715,6 @@ export default function Canvas({
       }
     }
 
-    // ========== ELEMENT-TO-ELEMENT SNAPPING ==========
     if (snapToElements) {
       for (const other of otherComponents) {
         const otherRect = getDisplayRect(other);
@@ -848,21 +725,17 @@ export default function Canvas({
         const otherCenterX = otherRect.left + otherRect.width / 2;
         const otherCenterY = otherRect.top + otherRect.height / 2;
 
-        // --- Vertical edge snapping (X-axis) ---
         if (movingLeft && !snappedLeftEdge) {
-          // Left edge to other left edge
           if (Math.abs(left - otherLeft) <= snapThreshold) {
             snappedLeft = otherLeft;
             guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan(otherTop, otherBottom) });
             snappedLeftEdge = true;
           }
-          // Left edge to other right edge
           else if (Math.abs(left - otherRight) <= snapThreshold) {
             snappedLeft = otherRight;
             guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan(otherTop, otherBottom) });
             snappedLeftEdge = true;
           }
-          // Left edge to other center
           else if (Math.abs(left - otherCenterX) <= snapThreshold) {
             snappedLeft = otherCenterX;
             guides.push({ type: 'element-center-v', position: otherCenterX, span: getVerticalSpan(otherTop, otherBottom) });
@@ -871,19 +744,16 @@ export default function Canvas({
         }
 
         if (movingRight && !snappedRightEdge) {
-          // Right edge to other right edge
           if (Math.abs(right - otherRight) <= snapThreshold) {
             snappedRight = otherRight;
             guides.push({ type: 'element-edge-v', position: otherRight, span: getVerticalSpan(otherTop, otherBottom) });
             snappedRightEdge = true;
           }
-          // Right edge to other left edge
           else if (Math.abs(right - otherLeft) <= snapThreshold) {
             snappedRight = otherLeft;
             guides.push({ type: 'element-edge-v', position: otherLeft, span: getVerticalSpan(otherTop, otherBottom) });
             snappedRightEdge = true;
           }
-          // Right edge to other center
           else if (Math.abs(right - otherCenterX) <= snapThreshold) {
             snappedRight = otherCenterX;
             guides.push({ type: 'element-center-v', position: otherCenterX, span: getVerticalSpan(otherTop, otherBottom) });
@@ -891,21 +761,17 @@ export default function Canvas({
           }
         }
 
-        // --- Horizontal edge snapping (Y-axis) ---
         if (movingTop && !snappedTopEdge) {
-          // Top edge to other top edge
           if (Math.abs(top - otherTop) <= snapThreshold) {
             snappedTop = otherTop;
             guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan(otherLeft, otherRight) });
             snappedTopEdge = true;
           }
-          // Top edge to other bottom edge
           else if (Math.abs(top - otherBottom) <= snapThreshold) {
             snappedTop = otherBottom;
             guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan(otherLeft, otherRight) });
             snappedTopEdge = true;
           }
-          // Top edge to other center
           else if (Math.abs(top - otherCenterY) <= snapThreshold) {
             snappedTop = otherCenterY;
             guides.push({ type: 'element-center-h', position: otherCenterY, span: getHorizontalSpan(otherLeft, otherRight) });
@@ -914,19 +780,16 @@ export default function Canvas({
         }
 
         if (movingBottom && !snappedBottomEdge) {
-          // Bottom edge to other bottom edge
           if (Math.abs(bottom - otherBottom) <= snapThreshold) {
             snappedBottom = otherBottom;
             guides.push({ type: 'element-edge-h', position: otherBottom, span: getHorizontalSpan(otherLeft, otherRight) });
             snappedBottomEdge = true;
           }
-          // Bottom edge to other top edge
           else if (Math.abs(bottom - otherTop) <= snapThreshold) {
             snappedBottom = otherTop;
             guides.push({ type: 'element-edge-h', position: otherTop, span: getHorizontalSpan(otherLeft, otherRight) });
             snappedBottomEdge = true;
           }
-          // Bottom edge to other center
           else if (Math.abs(bottom - otherCenterY) <= snapThreshold) {
             snappedBottom = otherCenterY;
             guides.push({ type: 'element-center-h', position: otherCenterY, span: getHorizontalSpan(otherLeft, otherRight) });
@@ -934,7 +797,6 @@ export default function Canvas({
           }
         }
 
-        // Break if all moving edges are snapped
         const allSnapped =
           (!movingLeft || snappedLeftEdge) &&
           (!movingRight || snappedRightEdge) &&
@@ -944,7 +806,6 @@ export default function Canvas({
       }
     }
 
-    // ========== CANVAS EDGE SNAPPING ==========
     if (snapToCanvasGuides) {
       if (movingLeft && !snappedLeftEdge && Math.abs(left) <= snapThreshold) {
         snappedLeft = 0;
@@ -968,7 +829,6 @@ export default function Canvas({
       }
     }
 
-    // ========== GRID SNAPPING (fallback) ==========
     if (showGrid) {
       if (movingLeft && !snappedLeftEdge) snappedLeft = snapToGrid(snappedLeft, 'width');
       if (movingRight && !snappedRightEdge) snappedRight = snapToGrid(snappedRight, 'width');
@@ -976,7 +836,6 @@ export default function Canvas({
       if (movingBottom && !snappedBottomEdge) snappedBottom = snapToGrid(snappedBottom, 'height');
     }
 
-    // Calculate final bounds for guide rendering
     const finalWidth = snappedRight - snappedLeft;
     const finalHeight = snappedBottom - snappedTop;
 
@@ -999,14 +858,11 @@ export default function Canvas({
     };
   }, [layout.dimensions.width, layout.dimensions.height, layout.components, snapToGrid, showGrid, snapThreshold, snapToElements, snapToCanvasGuides, getDisplayRect]);
 
-  // Use manual zoom level (10% to 200%)
   const scale = zoomLevel / 100;
 
-  // Track the last selected component ID for cycling
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [componentsAtClickPosition, setComponentsAtClickPosition] = useState<ComponentConfig[]>([]);
   
-  // Resolution management state
   const [selectedPreset, setSelectedPreset] = useState(() => {
     const currentPreset = RESOLUTION_PRESETS.find(p => 
       p.width === layout.dimensions.width && p.height === layout.dimensions.height
@@ -1016,7 +872,6 @@ export default function Canvas({
   const [customWidth, setCustomWidth] = useState(layout.dimensions.width.toString());
   const [customHeight, setCustomHeight] = useState(layout.dimensions.height.toString());
 
-  // Sync local resolution state when layout dimensions change externally
   React.useEffect(() => {
     setCustomWidth(layout.dimensions.width.toString());
     setCustomHeight(layout.dimensions.height.toString());
@@ -1027,7 +882,6 @@ export default function Canvas({
     setSelectedPreset(matchingPreset?.name || 'Custom');
   }, [layout.dimensions.width, layout.dimensions.height]);
 
-  // Handle resolution changes
   const handleResolutionChange = useCallback((presetName: string) => {
     setSelectedPreset(presetName);
     
@@ -1046,7 +900,6 @@ export default function Canvas({
     }
   }, [onUpdateLayout]);
   
-  // Handle custom resolution input
   const handleCustomResolution = useCallback(() => {
     const width = parseInt(customWidth);
     const height = parseInt(customHeight);
@@ -1059,7 +912,6 @@ export default function Canvas({
         }
       });
       
-      // Check if this matches a preset
       const matchingPreset = RESOLUTION_PRESETS.find(p => 
         p.width === width && p.height === height
       );
@@ -1067,10 +919,8 @@ export default function Canvas({
     }
   }, [customWidth, customHeight, onUpdateLayout]);
 
-  // Cancel scale mode and revert to original state
   const cancelScaleMode = useCallback(() => {
     if (isScaling && scaleStartState.size > 0) {
-      // Revert all components to their original state
       scaleStartState.forEach((original, id) => {
         onUpdateComponent(id, {
           position: { x: original.x, y: original.y },
@@ -1082,22 +932,18 @@ export default function Canvas({
     setScaleStartState(new Map());
     setCurrentScaleFactor(1);
     setActiveGuides({ guides: [] });
-    // Reset precision mode state
     precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: 0 };
   }, [isScaling, scaleStartState, onUpdateComponent]);
 
-  // Confirm scale mode (keep current scale)
   const confirmScaleMode = useCallback(() => {
     setIsScaling(false);
     setScaleStartState(new Map());
     setCurrentScaleFactor(1);
     setActiveGuides({ guides: [] });
-    // Reset precision mode state
     precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: 0 };
     onEndDragOperation?.('Scale components');
   }, [onEndDragOperation]);
 
-  // Handle right-click to cancel scale mode
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     if (isScaling) {
       e.preventDefault();
@@ -1107,7 +953,6 @@ export default function Canvas({
   }, [isScaling, cancelScaleMode]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, component: ComponentConfig) => {
-    // Handle scale mode - left click confirms, right click cancels
     if (isScaling) {
       e.preventDefault();
       e.stopPropagation();
@@ -1119,39 +964,29 @@ export default function Canvas({
       return;
     }
 
-    // Allow middle mouse button to bubble up to canvas for panning
     if (e.button === 1) {
-      return; // Don't prevent default or stop propagation - let canvas handle it
+      return;
     }
 
-    // Prevent synthetic touch events from interfering
     if (e.type === 'touchstart') {
       e.preventDefault();
     }
     e.stopPropagation();
     
-    // Multi-select with Cmd (Mac) or Ctrl (Windows/Linux)
-    // Cmd+drag will also copy-drag, but Cmd+click without drag = multi-select
     const isCopyDrag = e.metaKey && !e.ctrlKey;
-    const isMultiSelectClick = e.ctrlKey || e.metaKey; // Both Ctrl and Cmd work for multi-select
+    const isMultiSelectClick = e.ctrlKey || e.metaKey;
     const isAlreadySelected = selectedComponents.includes(component.id);
 
     const rect = canvasRef.current!.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) / scale;
     const canvasY = (e.clientY - rect.top) / scale;
 
-    // Store initial mouse position for drag detection
     setDragStartPos({ x: canvasX, y: canvasY });
     setHasDraggedFarEnough(false);
 
-    // Track if Command/Meta is held for potential copy-drag
     isCopyDragRef.current = isCopyDrag;
     
-    // Find all components at this click position
     const componentsAtPosition = (layout.components || [])
-      // Cycling through stacked components must not reach into a state that
-      // isn't being previewed -- selecting one used to re-pin the preview to
-      // it, flipping the canvas out from under you.
       .filter(c => isSelectableOnCanvas(c))
       .filter(c => {
         const left = c.position.x;
@@ -1160,24 +995,19 @@ export default function Canvas({
         const bottom = c.position.y + c.size.height;
         return canvasX >= left && canvasX <= right && canvasY >= top && canvasY <= bottom;
       })
-      .sort((a, b) => (b.layer || 0) - (a.layer || 0)); // Sort by layer, highest first
+      .sort((a, b) => (b.layer || 0) - (a.layer || 0));
     
-    // Store the components at this position for potential cycling on mouseUp
     setComponentsAtClickPosition(componentsAtPosition);
     
-    // For now, just set up for potential drag with the topmost or currently selected component
     const currentComponent = componentsAtPosition.find(c => selectedComponents.includes(c.id)) || componentsAtPosition[0] || component;
     
-    // Set up for potential drag
     setDraggedComponent(currentComponent);
     setDragOffset({
       x: canvasX - currentComponent.position.x,
       y: canvasY - currentComponent.position.y
     });
     
-    // Handle Cmd/Ctrl+click for multi-select immediately
     if (isMultiSelectClick) {
-      // Cmd/Ctrl+click: toggle this component in the selection
       handleComponentSelect(currentComponent.id, true);
       setLastSelectedId(currentComponent.id);
     }
@@ -1190,10 +1020,8 @@ export default function Canvas({
     const canvasX = (e.clientX - rect.left) / scale;
     const canvasY = (e.clientY - rect.top) / scale;
 
-    // Track mouse position for scale mode
     currentMousePosRef.current = { x: canvasX, y: canvasY };
 
-    // Handle viewport panning
     if (isPanning) {
       const deltaX = e.clientX - panStart.x;
       const deltaY = e.clientY - panStart.y;
@@ -1204,50 +1032,39 @@ export default function Canvas({
       });
 
       setPanStart({ x: e.clientX, y: e.clientY });
-      return; // Don't process other mouse movements while panning
+      return;
     }
 
-    // Handle scale mode - scale proportionally from anchor based on mouse distance
     if (isScaling && scaleStartState.size > 0) {
-      // Calculate distance from mouse to scale anchor
       const dx = canvasX - scaleCenter.x;
       const dy = canvasY - scaleCenter.y;
       const currentDistance = Math.sqrt(dx * dx + dy * dy);
 
-      // Calculate raw scale factor based on distance ratio
       const rawScaleFactor = currentDistance / scaleStartDistance;
 
-      // Precision mode: hold Shift to slow down scaling for fine adjustments
-      // Smooth transitions - no jumps when pressing/releasing Shift
-      const PRECISION_FACTOR = 5; // How much slower precision mode is
+      const PRECISION_FACTOR = 5;
       let newScaleFactor: number;
 
       if (e.shiftKey) {
         if (!precisionModeRef.current.active) {
-          // Just entered precision mode - save the current state as our reference
-          // The current visual scale factor (including any accumulated offset)
           const currentVisualScale = rawScaleFactor + precisionModeRef.current.scaleOffset;
           precisionModeRef.current = {
             active: true,
-            baseScaleFactor: currentVisualScale, // The visual scale we're currently at
-            baseDistance: currentDistance, // The mouse distance when we entered precision mode
-            scaleOffset: precisionModeRef.current.scaleOffset // Preserve existing offset
+            baseScaleFactor: currentVisualScale,
+            baseDistance: currentDistance,
+            scaleOffset: precisionModeRef.current.scaleOffset
           };
         }
-        // In precision mode: scale changes are dampened relative to where we entered
         const distanceChange = currentDistance - precisionModeRef.current.baseDistance;
-        const scaleChange = distanceChange / scaleStartDistance; // How much the scale would change in normal mode
-        const dampenedScaleChange = scaleChange / PRECISION_FACTOR; // Dampen it
+        const scaleChange = distanceChange / scaleStartDistance;
+        const dampenedScaleChange = scaleChange / PRECISION_FACTOR;
         newScaleFactor = Math.max(0.1, precisionModeRef.current.baseScaleFactor + dampenedScaleChange);
       } else {
         if (precisionModeRef.current.active) {
-          // Just exited precision mode - calculate offset to maintain visual continuity
-          // Current visual scale = baseScaleFactor + dampened change from base
           const distanceChange = currentDistance - precisionModeRef.current.baseDistance;
           const scaleChange = distanceChange / scaleStartDistance;
           const dampenedScaleChange = scaleChange / PRECISION_FACTOR;
           const currentVisualScale = precisionModeRef.current.baseScaleFactor + dampenedScaleChange;
-          // New offset = currentVisualScale - rawScaleFactor
           const newOffset = currentVisualScale - rawScaleFactor;
           precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: newOffset };
         }
@@ -1256,29 +1073,23 @@ export default function Canvas({
 
       setCurrentScaleFactor(newScaleFactor);
 
-      // First pass: calculate all new positions and find bounding box
       const scaledComponents: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
       scaleStartState.forEach((original, id) => {
-        // Scale size
         const newWidth = Math.max(10, original.width * newScaleFactor);
         const newHeight = Math.max(10, original.height * newScaleFactor);
 
-        // Calculate position offset from anchor point
-        // The anchor point stays fixed, everything else scales away from it
         const originalLeft = original.x;
         const originalTop = original.y;
         const originalRight = original.x + original.width;
         const originalBottom = original.y + original.height;
 
-        // Calculate how far each edge is from the anchor
         const leftOffset = originalLeft - scaleCenter.x;
         const topOffset = originalTop - scaleCenter.y;
         const rightOffset = originalRight - scaleCenter.x;
         const bottomOffset = originalBottom - scaleCenter.y;
 
-        // Scale the offsets
         const newLeft = scaleCenter.x + leftOffset * newScaleFactor;
         const newTop = scaleCenter.y + topOffset * newScaleFactor;
 
@@ -1290,7 +1101,6 @@ export default function Canvas({
         maxY = Math.max(maxY, newTop + newHeight);
       });
 
-      // Apply smart snapping to the bounding box if snapping is enabled
       let snapOffsetX = 0;
       let snapOffsetY = 0;
 
@@ -1316,21 +1126,18 @@ export default function Canvas({
         setActiveGuides({ guides: [] });
       }
 
-      // Second pass: apply positions with snap offset and grid snapping
       scaledComponents.forEach(({ id, x, y, width, height }) => {
         let finalX = x + snapOffsetX;
         let finalY = y + snapOffsetY;
         let finalWidth = width;
         let finalHeight = height;
 
-        // Apply grid snapping if grid is enabled
         if (showGrid) {
           finalX = snapToGrid(finalX, 'width');
           finalY = snapToGrid(finalY, 'height');
           finalWidth = snapToGrid(finalWidth, 'width');
           finalHeight = snapToGrid(finalHeight, 'height');
         } else {
-          // Round to integers for pixel-perfect alignment
           finalX = Math.round(finalX);
           finalY = Math.round(finalY);
           finalWidth = Math.round(finalWidth);
@@ -1343,22 +1150,19 @@ export default function Canvas({
         });
       });
 
-      return; // Don't process other mouse movements while scaling
+      return;
     }
     
     
-    // Check if we've moved far enough to start an operation
     if (draggedComponent && !isDragging && !isCreating && !isResizing) {
       const deltaX = Math.abs(canvasX - dragStartPos.x);
       const deltaY = Math.abs(canvasY - dragStartPos.y);
-      const hasMoved = deltaX > 3 || deltaY > 3; // 3px threshold
+      const hasMoved = deltaX > 3 || deltaY > 3;
       
       if (hasMoved) {
         const isAlreadySelected = selectedComponents.includes(draggedComponent.id);
 
-        // Check if this is a copy-drag (Command held on Mac)
         if (isCopyDragRef.current && onCopyDragComponents) {
-          // Copy-drag: duplicate selected components and drag the copies
           const idsToCopy = isAlreadySelected ? selectedComponentsRef.current : [draggedComponent.id];
           const idMapping = onCopyDragComponents(idsToCopy);
 
@@ -1367,12 +1171,8 @@ export default function Canvas({
             setIsDragging(true);
             setHasDraggedFarEnough(true);
 
-            // Get the new IDs for the duplicated components
             const newSelectedIds = idsToCopy.map(id => idMapping.get(id)!).filter(Boolean);
 
-            // Update selection to the new components (this happens async in copyDragComponents)
-            // Store initial positions of the NEW components
-            // We need to wait a tick for the layout to update
             setTimeout(() => {
               const positions = new Map<string, { x: number, y: number }>();
               const descendantIds = getAllDescendants(newSelectedIds, layoutRef.current.components);
@@ -1386,7 +1186,6 @@ export default function Canvas({
               });
               setInitialComponentPositions(positions);
 
-              // Update the dragged component to point to the new copy
               const newDraggedId = idMapping.get(draggedComponent.id);
               if (newDraggedId) {
                 const newDragged = layoutRef.current.components.find(c => c.id === newDraggedId);
@@ -1398,14 +1197,12 @@ export default function Canvas({
 
             window.dispatchEvent(new CustomEvent('canvas-drag-start'));
           }
-          isCopyDragRef.current = false; // Reset
+          isCopyDragRef.current = false;
         } else if (isAlreadySelected) {
-          // Normal drag: Start dragging selected component
-          onStartDragOperation(); // Save initial state for undo
+          onStartDragOperation();
           setIsDragging(true);
           setHasDraggedFarEnough(true);
 
-          // Store initial positions of all selected components AND their descendants
           const positions = new Map<string, { x: number, y: number }>();
           const selectedIds = selectedComponentsRef.current;
           const descendantIds = getAllDescendants(selectedIds, layoutRef.current.components);
@@ -1419,16 +1216,13 @@ export default function Canvas({
           });
           setInitialComponentPositions(positions);
 
-          // Notify PropertyPanel to pause expensive rendering
           window.dispatchEvent(new CustomEvent('canvas-drag-start'));
         } else {
-          // Select the unselected component and start dragging it
           handleComponentSelect(draggedComponent.id, false);
-          onStartDragOperation(); // Save initial state for undo
+          onStartDragOperation();
           setIsDragging(true);
           setHasDraggedFarEnough(true);
 
-          // Store initial position of the single selected component AND its descendants
           const positions = new Map<string, { x: number, y: number }>();
           const descendantIds = getAllDescendants([draggedComponent.id], layoutRef.current.components);
           const allIdsToMove = [draggedComponent.id, ...descendantIds];
@@ -1441,13 +1235,11 @@ export default function Canvas({
           });
           setInitialComponentPositions(positions);
 
-          // Notify PropertyPanel to pause expensive rendering
           window.dispatchEvent(new CustomEvent('canvas-drag-start'));
         }
       }
     }
     
-    // Handle marquee selection dragging — track end point on every move
     if (isMarqueeSelecting) {
       setMarqueeEnd({ x: canvasX, y: canvasY });
       return;
@@ -1455,7 +1247,6 @@ export default function Canvas({
 
     if (!isDragging && !isResizing && !isRotating && !isCreating) return;
 
-    // Handle creation dragging
     if (isCreating) {
       setCreateEnd({ x: canvasX, y: canvasY });
       return;
@@ -1481,26 +1272,20 @@ export default function Canvas({
     }
 
     if (isDragging) {
-      // Throttle drag updates for better performance
       const now = Date.now();
       if (now - lastUpdateTime.current < THROTTLE_MS) {
         return;
       }
       lastUpdateTime.current = now;
 
-      // Calculate raw mouse movement delta (before any snapping)
       const rawPrimaryX = canvasX - dragOffset.x;
       const rawPrimaryY = canvasY - dragOffset.y;
 
-      // Get the initial position of the primary component
       const initialPrimaryPos = initialComponentPositions.get(draggedComponent.id) || draggedComponent.position;
 
-      // Calculate the raw delta from initial position
-      // Apply axis constraint if dragging from an axis handle
       const rawDeltaX = rawPrimaryX - initialPrimaryPos.x;
       const rawDeltaY = rawPrimaryY - initialPrimaryPos.y;
 
-      // For multi-selection, calculate the bounding box of the selection and use it for snapping
       const selectedIds = selectedComponentsRef.current;
       let snapWidth: number;
       let snapHeight: number;
@@ -1508,15 +1293,12 @@ export default function Canvas({
       let snapRawY: number;
 
       if (selectedIds.length > 1) {
-        // Calculate initial bounding box of all selected components
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
         selectedIds.forEach(id => {
           const initPos = initialComponentPositions.get(id);
           const comp = layoutRef.current.components.find(c => c.id === id);
           if (initPos && comp) {
-            // Snap against what's drawn, so container types (slotList,
-            // multiState) contribute their content box, not their frame.
             const rect = getDisplayRect(comp);
             const insetX = rect.left - comp.position.x;
             const insetY = rect.top - comp.position.y;
@@ -1527,15 +1309,12 @@ export default function Canvas({
           }
         });
 
-        // Bounding box dimensions
         snapWidth = maxX - minX;
         snapHeight = maxY - minY;
 
-        // Calculate where the bounding box would be with the current drag delta
         snapRawX = minX + rawDeltaX;
         snapRawY = minY + rawDeltaY;
       } else {
-        // Single selection - use the component's drawn rect
         const rect = getDisplayRect(draggedComponent);
         snapWidth = rect.width;
         snapHeight = rect.height;
@@ -1543,34 +1322,21 @@ export default function Canvas({
         snapRawY = rawPrimaryY + (rect.top - draggedComponent.position.y);
       }
 
-      // Use smart snapping with the bounding box dimensions
-      // Pass all selected component IDs to exclude them from element-to-element snapping
       const snapResult = smartSnap(snapRawX, snapRawY, snapWidth, snapHeight, true, selectedIds);
 
-      // Update active guides for visual feedback
       setActiveGuides(snapResult.guides);
 
-      // Calculate the snapped delta
       const snappedDeltaX = (snapResult.x - snapRawX) + rawDeltaX;
       const snappedDeltaY = (snapResult.y - snapRawY) + rawDeltaY;
 
-      // Update all selected components AND their descendants (position only, never size during move)
       const movingIds = new Set(initialComponentPositions.keys());
       initialComponentPositions.forEach((initialPos, componentId) => {
         const comp = layoutRef.current.components.find(c => c.id === componentId);
-        // A component whose own parent is ALSO moving in this drag is being
-        // carried rigidly -- both shift by the same raw canvas delta, so its
-        // offset from that parent (and the parent's own rotation/scale)
-        // never enters into it. Only a component being dragged while its
-        // parent chain stays put needs the delta re-expressed in that
-        // chain's local space, or it drifts off canvas axes instead of the
-        // parent's the moment that parent is rotated or scaled.
         const isCarriedByMovingParent = !!comp?.parentId && movingIds.has(comp.parentId);
         const delta = (!comp || !comp.parentId || isCarriedByMovingParent)
           ? { x: snappedDeltaX, y: snappedDeltaY }
           : deltaToNestedLocalSpace(snappedDeltaX, snappedDeltaY, comp, layoutRef.current.components, getDisplayRect);
 
-        // Round to integers for pixel-perfect alignment
         const newX = Math.round(initialPos.x + delta.x);
         const newY = Math.round(initialPos.y + delta.y);
 
@@ -1581,8 +1347,6 @@ export default function Canvas({
     }
 
     if (isResizing) {
-      // Handle resizing logic here - will call handleResize defined below
-      // Using a function ref to avoid dependency issues
       if (handleResizeRef.current) {
         handleResizeRef.current(canvasX, canvasY, e.metaKey || e.ctrlKey);
       }
@@ -1590,14 +1354,11 @@ export default function Canvas({
   }, [isDragging, isResizing, isRotating, draggedComponent, dragOffset, onUpdateComponent, snapToGrid, smartSnap, scale, showGrid, isPanning, isCreating, isMarqueeSelecting, panStart, viewportOffset, isScaling, scaleStartState, scaleCenter, scaleStartDistance, snapToElements, snapToCanvasGuides, getDisplayRect]);
 
   const handleMouseUp = useCallback((e?: React.MouseEvent) => {
-    // Handle viewport panning end
     if (isPanning) {
       setIsPanning(false);
       return;
     }
 
-    // Handle marquee selection completion: pick components whose bounding box
-    // intersects the marquee rectangle, then clear marquee state.
     if (isMarqueeSelecting) {
       const left = Math.min(marqueeStart.x, marqueeEnd.x);
       const right = Math.max(marqueeStart.x, marqueeEnd.x);
@@ -1607,8 +1368,6 @@ export default function Canvas({
 
       if (hasArea) {
         const hit = (layout.components || [])
-          // Marquee must not sweep up components from a state that isn't
-          // being previewed -- they aren't on screen to be dragged around.
           .filter(c => isSelectableOnCanvas(c))
           .filter(c => {
             const cRect = getDisplayRect(c);
@@ -1616,8 +1375,6 @@ export default function Canvas({
             const cRight = cRect.left + cRect.width;
             const cTop = cRect.top;
             const cBottom = cRect.top + cRect.height;
-            // Intersection — partial overlap counts. Switch to full
-            // containment by requiring cLeft >= left && cRight <= right etc.
             return cLeft < right && cRight > left && cTop < bottom && cBottom > top;
           })
           .map(c => c.id)
@@ -1635,27 +1392,20 @@ export default function Canvas({
     }
     
     
-    // Handle case where we clicked but didn't drag (should either select or cycle)
     if (draggedComponent && !isDragging && !isCreating && !hasDraggedFarEnough) {
-      // Check if we should cycle through overlapping components
       if (componentsAtClickPosition.length > 1) {
-        // Multiple components at click position - cycle through them
         const currentIndex = componentsAtClickPosition.findIndex(c => c.id === lastSelectedId);
         
         let nextComponent: ComponentConfig;
         if (currentIndex === -1 || currentIndex === componentsAtClickPosition.length - 1) {
-          // If no component was selected or we're at the end, start from the beginning
           nextComponent = componentsAtClickPosition[0];
         } else {
-          // Select the next component in the stack
           nextComponent = componentsAtClickPosition[currentIndex + 1];
         }
         
-        // Select the next component
         handleComponentSelect(nextComponent.id, false);
         setLastSelectedId(nextComponent.id);
       } else {
-        // Single component - just select it if not already selected
         const isAlreadySelected = selectedComponents.includes(draggedComponent.id);
         if (!isAlreadySelected) {
           handleComponentSelect(draggedComponent.id, false);
@@ -1664,23 +1414,19 @@ export default function Canvas({
       }
     }
     
-    // Handle component creation completion
     if (isCreating) {
       const width = Math.abs(createEnd.x - createStart.x);
       const height = Math.abs(createEnd.y - createStart.y);
       
-      // Only create if dragged area is reasonably sized (at least 20x20 pixels)
       if (width >= 20 && height >= 20) {
         const left = Math.min(createStart.x, createEnd.x);
         const top = Math.min(createStart.y, createEnd.y);
         
-        // Only snap to grid if grid is enabled, always round to integers
         const snappedLeft = showGrid ? snapToGrid(left, 'width') : Math.round(left);
         const snappedTop = showGrid ? snapToGrid(top, 'height') : Math.round(top);
         const snappedWidth = showGrid ? snapToGrid(width, 'width') : Math.round(width);
         const snappedHeight = showGrid ? snapToGrid(height, 'height') : Math.round(height);
 
-        // Create component with pixel-perfect integer dimensions
         const position = {
           x: snappedLeft,
           y: snappedTop
@@ -1700,27 +1446,23 @@ export default function Canvas({
       return;
     }
     
-    // End drag operation for undo if we were dragging or resizing
     if (isDragging && draggedComponent) {
       const component = (layout.components || []).find(c => c.id === draggedComponent.id);
       if (component) {
         onEndDragOperation(`Move ${component.type} component`);
       }
-      // Notify PropertyPanel to resume normal rendering
       window.dispatchEvent(new CustomEvent('canvas-drag-end'));
     } else if (isResizing && draggedComponent) {
       const component = (layout.components || []).find(c => c.id === draggedComponent.id);
       if (component) {
         onEndDragOperation(`Resize ${component.type} component`);
       }
-      // Notify PropertyPanel to resume normal rendering
       window.dispatchEvent(new CustomEvent('canvas-drag-end'));
     } else if (isRotating && draggedComponent) {
       const component = (layout.components || []).find(c => c.id === draggedComponent.id);
       if (component) {
         onEndDragOperation(`Rotate ${component.type} component`);
       }
-      // Notify PropertyPanel to resume normal rendering
       window.dispatchEvent(new CustomEvent('canvas-drag-end'));
     }
 
@@ -1730,14 +1472,13 @@ export default function Canvas({
     setResizeHandle('');
     setDraggedComponent(null);
     setHasDraggedFarEnough(false);
-    setComponentsAtClickPosition([]); // Clear the stored components
-    setInitialComponentPositions(new Map()); // Clear initial positions
-    setInitialResizeBounds(null); // Clear initial resize bounds
-    setActiveGuides({ guides: [] }); // Clear smart guides
-    isCopyDragRef.current = false; // Clear copy-drag flag
+    setComponentsAtClickPosition([]);
+    setInitialComponentPositions(new Map());
+    setInitialResizeBounds(null);
+    setActiveGuides({ guides: [] });
+    isCopyDragRef.current = false;
   }, [setDraggedComponent, isCreating, createStart, createEnd, isMarqueeSelecting, marqueeStart, marqueeEnd, snapToGrid, layout.dimensions, onAddComponent, showGrid, draggedComponent, isDragging, hasDraggedFarEnough, selectedComponents, handleComponentSelect, isResizing, isRotating, onEndDragOperation, layout.components, isPanning, scale, onSelectComponents, layoutRef, componentsAtClickPosition, lastSelectedId, setLastSelectedId, isSelectableOnCanvas]);
 
-  // Calculate bounding box for multiple selected components
   const getMultiSelectBounds = useCallback(() => {
     if (selectedComponents.length <= 1) return null;
 
@@ -1770,16 +1511,12 @@ export default function Canvas({
     };
   }, [selectedComponents, layout.components]);
 
-  // ========== ALIGNMENT FUNCTIONS ==========
-
-  // Get selected components data
   const getSelectedComponentsData = useCallback(() => {
     return selectedComponents
       .map(id => layout.components.find(c => c.id === id))
       .filter((c): c is ComponentConfig => c !== undefined);
   }, [selectedComponents, layout.components]);
 
-  // Align selected components to left
   const alignLeft = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 2) return;
@@ -1792,7 +1529,6 @@ export default function Canvas({
     onEndDragOperation('Align left');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Align selected components to horizontal center
   const alignCenterH = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 2) return;
@@ -1809,7 +1545,6 @@ export default function Canvas({
     onEndDragOperation('Align center horizontal');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Align selected components to right
   const alignRight = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 2) return;
@@ -1822,7 +1557,6 @@ export default function Canvas({
     onEndDragOperation('Align right');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Align selected components to top
   const alignTop = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 2) return;
@@ -1835,7 +1569,6 @@ export default function Canvas({
     onEndDragOperation('Align top');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Align selected components to vertical center
   const alignCenterV = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 2) return;
@@ -1852,7 +1585,6 @@ export default function Canvas({
     onEndDragOperation('Align center vertical');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Align selected components to bottom
   const alignBottom = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 2) return;
@@ -1865,22 +1597,17 @@ export default function Canvas({
     onEndDragOperation('Align bottom');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Distribute selected components horizontally (equal spacing)
   const distributeH = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 3) return;
 
     onStartDragOperation();
-    // Sort by x position
     const sorted = [...components].sort((a, b) => a.position.x - b.position.x);
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
 
-    // Calculate total width of all components
     const totalComponentWidth = sorted.reduce((sum, c) => sum + c.size.width, 0);
-    // Calculate available space
     const totalSpace = (last.position.x + last.size.width) - first.position.x;
-    // Calculate gap between components
     const gap = (totalSpace - totalComponentWidth) / (sorted.length - 1);
 
     let currentX = first.position.x;
@@ -1895,22 +1622,17 @@ export default function Canvas({
     onEndDragOperation('Distribute horizontal');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Distribute selected components vertically (equal spacing)
   const distributeV = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length < 3) return;
 
     onStartDragOperation();
-    // Sort by y position
     const sorted = [...components].sort((a, b) => a.position.y - b.position.y);
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
 
-    // Calculate total height of all components
     const totalComponentHeight = sorted.reduce((sum, c) => sum + c.size.height, 0);
-    // Calculate available space
     const totalSpace = (last.position.y + last.size.height) - first.position.y;
-    // Calculate gap between components
     const gap = (totalSpace - totalComponentHeight) / (sorted.length - 1);
 
     let currentY = first.position.y;
@@ -1925,7 +1647,6 @@ export default function Canvas({
     onEndDragOperation('Distribute vertical');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Center selected component(s) on canvas horizontally
   const centerOnCanvasH = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length === 0) return;
@@ -1934,12 +1655,10 @@ export default function Canvas({
     const canvasCenterX = layout.dimensions.width / 2;
 
     if (components.length === 1) {
-      // Single component - center it
       const comp = components[0];
       const newX = canvasCenterX - comp.size.width / 2;
       onUpdateComponent(comp.id, { position: { ...comp.position, x: newX } });
     } else {
-      // Multiple components - center the group
       const minX = Math.min(...components.map(c => c.position.x));
       const maxX = Math.max(...components.map(c => c.position.x + c.size.width));
       const groupWidth = maxX - minX;
@@ -1953,7 +1672,6 @@ export default function Canvas({
     onEndDragOperation('Center on canvas horizontal');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation, layout.dimensions.width]);
 
-  // Center selected component(s) on canvas vertically
   const centerOnCanvasV = useCallback(() => {
     const components = getSelectedComponentsData();
     if (components.length === 0) return;
@@ -1962,12 +1680,10 @@ export default function Canvas({
     const canvasCenterY = layout.dimensions.height / 2;
 
     if (components.length === 1) {
-      // Single component - center it
       const comp = components[0];
       const newY = canvasCenterY - comp.size.height / 2;
       onUpdateComponent(comp.id, { position: { ...comp.position, y: newY } });
     } else {
-      // Multiple components - center the group
       const minY = Math.min(...components.map(c => c.position.y));
       const maxY = Math.max(...components.map(c => c.position.y + c.size.height));
       const groupHeight = maxY - minY;
@@ -1981,7 +1697,6 @@ export default function Canvas({
     onEndDragOperation('Center on canvas vertical');
   }, [getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation, layout.dimensions.height]);
 
-  // Set parent-child relationship: first selected becomes parent, rest become children
   const setAsParent = useCallback(() => {
     if (selectedComponents.length < 2) return;
 
@@ -1995,7 +1710,6 @@ export default function Canvas({
     onEndDragOperation('Set parent-child relationship');
   }, [selectedComponents, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Clear parent relationship from selected components
   const clearParent = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
@@ -2012,7 +1726,6 @@ export default function Canvas({
     onEndDragOperation('Clear parent relationship');
   }, [selectedComponents, getSelectedComponentsData, onUpdateComponent, onStartDragOperation, onEndDragOperation]);
 
-  // Handle multi-component resize
   const handleMultiResizeMouseDown = useCallback((e: React.MouseEvent, handle: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2020,13 +1733,11 @@ export default function Canvas({
     const bounds = getMultiSelectBounds();
     if (!bounds) return;
 
-    // Store the initial bounds and component positions/sizes at resize start
     const initialBounds = {
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
-      // Deep copy component data to preserve original positions/sizes
       components: bounds.components.map(c => ({
         ...c,
         position: { ...c.position },
@@ -2035,10 +1746,9 @@ export default function Canvas({
     };
     setInitialResizeBounds(initialBounds);
 
-    onStartDragOperation(); // Save initial state for undo
+    onStartDragOperation();
     setIsResizing(true);
     setResizeHandle(handle);
-    // Set a dummy component for the resize logic
     setDraggedComponent({
       id: 'multi-select',
       type: 'custom',
@@ -2048,16 +1758,12 @@ export default function Canvas({
     } as ComponentConfig);
   }, [getMultiSelectBounds, onStartDragOperation, setDraggedComponent]);
 
-  // Handle resize logic
   const handleResize = useCallback((canvasX: number, canvasY: number, maintainAspectRatio: boolean = false) => {
     if (!draggedComponent) return;
 
-    // Check if this is a multi-component resize
     if (draggedComponent.id === 'multi-select' && selectedComponents.length > 1) {
-      // Use stored initial bounds - this is critical to prevent drift during resize
       if (!initialResizeBounds) return;
 
-      // Use the ORIGINAL bounds from when resize started, not current bounds
       const originalWidth = initialResizeBounds.width;
       const originalHeight = initialResizeBounds.height;
       const originalLeft = initialResizeBounds.x;
@@ -2071,62 +1777,56 @@ export default function Canvas({
       const minSize = 20;
 
       switch (resizeHandle) {
-        case 'se': // Bottom-right
+        case 'se':
           newWidth = Math.max(minSize, canvasX - originalLeft);
           newHeight = Math.max(minSize, canvasY - originalTop);
           break;
-        case 'sw': // Bottom-left
+        case 'sw':
           newWidth = Math.max(minSize, originalLeft + originalWidth - canvasX);
           newHeight = Math.max(minSize, canvasY - originalTop);
           newX = canvasX;
           break;
-        case 'ne': // Top-right
+        case 'ne':
           newWidth = Math.max(minSize, canvasX - originalLeft);
           newHeight = Math.max(minSize, originalTop + originalHeight - canvasY);
           newY = canvasY;
           break;
-        case 'nw': // Top-left
+        case 'nw':
           newWidth = Math.max(minSize, originalLeft + originalWidth - canvasX);
           newHeight = Math.max(minSize, originalTop + originalHeight - canvasY);
           newX = canvasX;
           newY = canvasY;
           break;
-        // Side handles - single axis resize
-        case 'n': // Top edge - height only
+        case 'n':
           newHeight = Math.max(minSize, originalTop + originalHeight - canvasY);
           newY = canvasY;
           break;
-        case 's': // Bottom edge - height only
+        case 's':
           newHeight = Math.max(minSize, canvasY - originalTop);
           break;
-        case 'e': // Right edge - width only
+        case 'e':
           newWidth = Math.max(minSize, canvasX - originalLeft);
           break;
-        case 'w': // Left edge - width only
+        case 'w':
           newWidth = Math.max(minSize, originalLeft + originalWidth - canvasX);
           newX = canvasX;
           break;
       }
 
-      // Calculate scale factors based on original dimensions
       const scaleX = newWidth / originalWidth;
       const scaleY = newHeight / originalHeight;
 
-      // Apply scaling to all selected components using their ORIGINAL positions/sizes
       initialResizeBounds.components.forEach(originalComponent => {
-        // Calculate relative position within the ORIGINAL bounding box
         const relativeX = (originalComponent.position.x - originalLeft) / originalWidth;
         const relativeY = (originalComponent.position.y - originalTop) / originalHeight;
         const relativeWidth = originalComponent.size.width / originalWidth;
         const relativeHeight = originalComponent.size.height / originalHeight;
 
-        // Calculate new position and size
         const newComponentX = newX + (relativeX * newWidth);
         const newComponentY = newY + (relativeY * newHeight);
         const newComponentWidth = Math.max(minSize, relativeWidth * newWidth);
         const newComponentHeight = Math.max(minSize, relativeHeight * newHeight);
 
-        // Apply grid snapping if enabled, always round to integers for pixel-perfect alignment
         let finalX = newComponentX;
         let finalY = newComponentY;
         let finalWidth = newComponentWidth;
@@ -2138,7 +1838,6 @@ export default function Canvas({
           finalWidth = snapToGrid(finalWidth, 'width');
           finalHeight = snapToGrid(finalHeight, 'height');
         } else {
-          // Round to integers even without grid snapping
           finalX = Math.round(finalX);
           finalY = Math.round(finalY);
           finalWidth = Math.round(finalWidth);
@@ -2154,7 +1853,6 @@ export default function Canvas({
       return;
     }
 
-    // Single component resize logic
     const currentLeft = draggedComponent.position.x;
     const currentTop = draggedComponent.position.y;
     const currentWidth = draggedComponent.size.width;
@@ -2162,11 +1860,9 @@ export default function Canvas({
     const currentRight = currentLeft + currentWidth;
     const currentBottom = currentTop + currentHeight;
 
-    // Use stored aspect ratio if available, otherwise calculate from current dimensions
     const aspectRatio = draggedComponent.originalAspectRatio || (currentWidth / currentHeight);
-    const scaleAnchor = draggedComponent.scaleAnchor || 'corner'; // 'corner' means use the opposite corner of the handle
+    const scaleAnchor = draggedComponent.scaleAnchor || 'corner';
 
-    // If component has a locked aspect ratio, always maintain it (even without Cmd/Ctrl)
     const shouldMaintainAspectRatio = maintainAspectRatio || !!draggedComponent.originalAspectRatio;
 
     const minSize = 20;
@@ -2181,44 +1877,42 @@ export default function Canvas({
     const localX = local.x + draggedComponent.position.x;
     const localY = local.y + draggedComponent.position.y;
 
-    // Calculate raw edge positions based on resize handle
     let rawLeft = currentLeft;
     let rawTop = currentTop;
     let rawRight = currentRight;
     let rawBottom = currentBottom;
 
     switch (resizeHandle) {
-      case 'se': // Bottom-right - right and bottom edges move
+      case 'se':
         rawRight = localX;
         rawBottom = localY;
         break;
-      case 'sw': // Bottom-left - left and bottom edges move
+      case 'sw':
         rawLeft = localX;
         rawBottom = localY;
         break;
-      case 'ne': // Top-right - right and top edges move
+      case 'ne':
         rawRight = localX;
         rawTop = localY;
         break;
-      case 'nw': // Top-left - left and top edges move
+      case 'nw':
         rawLeft = localX;
         rawTop = localY;
         break;
-      case 'e': // Right edge - width only
+      case 'e':
         rawRight = localX;
         break;
-      case 'w': // Left edge - width only
+      case 'w':
         rawLeft = localX;
         break;
-      case 's': // Bottom edge - height only
+      case 's':
         rawBottom = localY;
         break;
-      case 'n': // Top edge - height only
+      case 'n':
         rawTop = localY;
         break;
     }
 
-    // Apply smart snapping to the edges being resized (only when not maintaining aspect ratio)
     let finalLeft = rawLeft;
     let finalTop = rawTop;
     let finalRight = rawRight;
@@ -2233,7 +1927,7 @@ export default function Canvas({
         rawTop,
         rawRight,
         rawBottom,
-        [draggedComponent.id] // Exclude the component being resized
+        [draggedComponent.id]
       );
       setActiveGuides(snapResult.guides);
       finalLeft = snapResult.left;
@@ -2244,11 +1938,9 @@ export default function Canvas({
       setActiveGuides({ guides: [] });
     }
 
-    // Calculate dimensions
     let newWidth = finalRight - finalLeft;
     let newHeight = finalBottom - finalTop;
 
-    // Helper to get anchor position based on scaleAnchor setting
     const getAnchorPosition = (anchor: string, left: number, top: number, right: number, bottom: number): { x: number; y: number } => {
       switch (anchor) {
         case 'center':
@@ -2270,7 +1962,6 @@ export default function Canvas({
         case 'bottom-right':
           return { x: right, y: bottom };
         default: {
-          // 'corner' - anchor at the point whose edges do NOT move
           const m = movesEdges(resizeHandle as ResizeHandle);
           const x = m.left ? right : m.right ? left : (left + right) / 2;
           const y = m.top ? bottom : m.bottom ? top : (top + bottom) / 2;
@@ -2279,7 +1970,6 @@ export default function Canvas({
       }
     };
 
-    // Helper to calculate position from anchor
     const positionFromAnchor = (anchor: string, anchorX: number, anchorY: number, width: number, height: number): { left: number; top: number } => {
       switch (anchor) {
         case 'center':
@@ -2301,7 +1991,6 @@ export default function Canvas({
         case 'bottom-right':
           return { left: anchorX - width, top: anchorY - height };
         default: {
-          // 'corner' - the anchor point is the fixed edge/point; derive box position from it
           const m = movesEdges(resizeHandle as ResizeHandle);
           const left = m.left ? anchorX - width : m.right ? anchorX : anchorX - width / 2;
           const top = m.top ? anchorY - height : m.bottom ? anchorY : anchorY - height / 2;
@@ -2310,26 +1999,20 @@ export default function Canvas({
       }
     };
 
-    // Get original anchor position (before resize) for non-aspect-ratio resizing with custom anchor
     const hasCustomAnchor = scaleAnchor !== 'corner' && scaleAnchor !== undefined;
     const originalAnchor = hasCustomAnchor
       ? getAnchorPosition(scaleAnchor, currentLeft, currentTop, currentRight, currentBottom)
       : null;
 
-    // Enforce aspect ratio AFTER snapping if aspect ratio should be maintained
     if (shouldMaintainAspectRatio) {
-      // Determine anchor point for scaling
       const { x: anchorX, y: anchorY } = getAnchorPosition(scaleAnchor, finalLeft, finalTop, finalRight, finalBottom);
 
-      // Calculate the desired width based on mouse movement, then derive height from aspect ratio
       const rawWidth = Math.max(minSize, newWidth);
       const rawHeight = Math.max(minSize, newHeight);
 
-      // Use whichever dimension changed more to drive the scaling
       const widthRatio = rawWidth / currentWidth;
       const heightRatio = rawHeight / currentHeight;
 
-      // Pick the larger change to determine final size
       if (Math.abs(widthRatio - 1) >= Math.abs(heightRatio - 1)) {
         newWidth = rawWidth;
         newHeight = newWidth / aspectRatio;
@@ -2338,14 +2021,12 @@ export default function Canvas({
         newWidth = newHeight * aspectRatio;
       }
 
-      // Recalculate position based on anchor point
       const newPos = positionFromAnchor(scaleAnchor, anchorX, anchorY, newWidth, newHeight);
       finalLeft = newPos.left;
       finalTop = newPos.top;
       finalRight = finalLeft + newWidth;
       finalBottom = finalTop + newHeight;
     } else if (hasCustomAnchor && originalAnchor) {
-      // For non-aspect-ratio resizing with a custom anchor, keep the anchor point fixed
       const newPos = positionFromAnchor(scaleAnchor, originalAnchor.x, originalAnchor.y, newWidth, newHeight);
       finalLeft = newPos.left;
       finalTop = newPos.top;
@@ -2353,7 +2034,6 @@ export default function Canvas({
       finalBottom = finalTop + newHeight;
     }
 
-    // Enforce minimum size
     if (finalRight - finalLeft < minSize) {
       if (movesEdges(resizeHandle as ResizeHandle).left) {
         finalLeft = finalRight - minSize;
@@ -2369,7 +2049,6 @@ export default function Canvas({
       }
     }
 
-    // Round to integers for pixel-perfect alignment
     const finalWidth = Math.round(finalRight - finalLeft);
     const finalHeight = Math.round(finalBottom - finalTop);
 
@@ -2388,13 +2067,11 @@ export default function Canvas({
     const newX = Math.round(compensated.x);
     const newY = Math.round(compensated.y);
 
-    // Store pixel values as integers
     onUpdateComponent(draggedComponent.id, {
       position: { x: newX, y: newY },
       size: { width: finalWidth, height: finalHeight }
     });
 
-    // If this is a group, scale all children proportionally
     if (draggedComponent.type === 'group' && initialResizeBounds) {
       const originalWidth = initialResizeBounds.width;
       const originalHeight = initialResizeBounds.height;
@@ -2404,21 +2081,17 @@ export default function Canvas({
       const scaleX = finalWidth / originalWidth;
       const scaleY = finalHeight / originalHeight;
 
-      // Get all children of this group
       const children = (layout.components || []).filter(c => c.parentId === draggedComponent.id);
 
       children.forEach(child => {
-        // Find the original child state from initialResizeBounds.components
         const originalChild = initialResizeBounds.components?.find(c => c.id === child.id);
         if (!originalChild) return;
 
-        // Calculate relative position within the original group bounds
         const relativeX = (originalChild.position.x - originalLeft) / originalWidth;
         const relativeY = (originalChild.position.y - originalTop) / originalHeight;
         const relativeWidth = originalChild.size.width / originalWidth;
         const relativeHeight = originalChild.size.height / originalHeight;
 
-        // Calculate new position and size
         const childX = Math.round(newX + relativeX * finalWidth);
         const childY = Math.round(newY + relativeY * finalHeight);
         const childWidth = Math.max(10, Math.round(relativeWidth * finalWidth));
@@ -2432,12 +2105,9 @@ export default function Canvas({
     }
   }, [draggedComponent, resizeHandle, snapToGrid, onUpdateComponent, showGrid, selectedComponents, initialResizeBounds, smartSnapResize, layout.components]);
 
-  // Update the ref whenever handleResize changes
   handleResizeRef.current = handleResize;
 
-  // Handle resize handle mouse down
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, handle: string, component: ComponentConfig) => {
-    // Prevent synthetic touch events from interfering
     if (e.type === 'touchstart') {
       e.preventDefault();
     } else {
@@ -2445,13 +2115,12 @@ export default function Canvas({
     }
     e.stopPropagation();
 
-    onStartDragOperation(); // Save initial state for undo
+    onStartDragOperation();
     setIsResizing(true);
     setResizeHandle(handle);
     setDraggedComponent(component);
-    handleComponentSelect(component.id, false); // Single select for resize
+    handleComponentSelect(component.id, false);
 
-    // For groups, capture initial state of all children for proportional scaling
     if (component.type === 'group') {
       const children = (layout.components || []).filter(c => c.parentId === component.id);
       setInitialResizeBounds({
@@ -2468,7 +2137,6 @@ export default function Canvas({
     }
   }, [handleComponentSelect, setDraggedComponent, onStartDragOperation, layout.components]);
 
-  // Handle rotation node mouse down
   const handleRotateMouseDown = useCallback((e: React.MouseEvent, component: ComponentConfig) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2482,18 +2150,17 @@ export default function Canvas({
     const originCanvas = { x: component.position.x + originLocal.x, y: component.position.y + originLocal.y };
     const startAngle = Math.atan2(canvasY - originCanvas.y, canvasX - originCanvas.x) * 180 / Math.PI;
 
-    onStartDragOperation(); // Save initial state for undo
+    onStartDragOperation();
     rotateStartRef.current = { rotation: component.transform?.rotation ?? 0, angle: startAngle };
     setIsRotating(true);
     setDraggedComponent(component);
-    handleComponentSelect(component.id, false); // Single select for rotation
+    handleComponentSelect(component.id, false);
   }, [handleComponentSelect, setDraggedComponent, onStartDragOperation, scale]);
 
-  // Helper function to check if a point is inside a visible component
   const getComponentAtPoint = useCallback((x: number, y: number) => {
     const components = layout.components || [];
     return components
-      .filter(component => isSelectableOnCanvas(component)) // Only what the preview draws
+      .filter(component => isSelectableOnCanvas(component))
       .find(component => {
         const { width, height } = getDisplayRect(component);
         const local = pointToNestedLocalSpace(x, y, component, components, getDisplayRect);
@@ -2502,7 +2169,6 @@ export default function Canvas({
   }, [layout.components, isSelectableOnCanvas, getDisplayRect]);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    // Handle scale mode - left click confirms, right click is handled by context menu
     if (isScaling && e.button === 0) {
       e.preventDefault();
       e.stopPropagation();
@@ -2510,8 +2176,7 @@ export default function Canvas({
       return;
     }
 
-    // Handle middle mouse button for panning
-    if (e.button === 1) { // Middle mouse button
+    if (e.button === 1) {
       e.preventDefault();
       e.stopPropagation();
       setIsPanning(true);
@@ -2519,7 +2184,6 @@ export default function Canvas({
       return;
     }
 
-    // Space + left click for panning (like Photoshop/Figma)
     if (isSpaceHeldRef.current && e.button === 0) {
       e.preventDefault();
       e.stopPropagation();
@@ -2528,30 +2192,21 @@ export default function Canvas({
       return;
     }
 
-    // Check if the click is on the canvas or any non-component element
     const target = e.target as HTMLElement;
     const isHandleClick = target.closest('.canvas-handle');
 
-    if (!isHandleClick && e.button === 0) { // Left mouse button only
+    if (!isHandleClick && e.button === 0) {
       const rect = canvasRef.current!.getBoundingClientRect();
       const canvasX = (e.clientX - rect.left) / scale;
       const canvasY = (e.clientY - rect.top) / scale;
 
-      // Component creation is now opt-in: hold Cmd (Mac) / Ctrl (Win/Linux)
-      // and drag to create. Without the modifier, click+drag on empty canvas
-      // just clears selection; on an unselected component the per-component
-      // handleMouseDown selects + sets up drag, so we leave that path alone.
       const isCreateModifier = e.metaKey || e.ctrlKey;
 
-      // Reset last selected ID when clicking on empty canvas
       setLastSelectedId(null);
 
-      // Check if we're clicking inside an unselected component
       const componentAtPoint = getComponentAtPoint(canvasX, canvasY);
 
       if (!isCreateModifier) {
-        // Default selection mode: empty canvas starts a marquee, unselected
-        // component falls through to its own mousedown (already selects + drags).
         if (!componentAtPoint) {
           setIsMarqueeSelecting(true);
           setMarqueeStart({ x: canvasX, y: canvasY });
@@ -2564,13 +2219,10 @@ export default function Canvas({
       }
 
       if (componentAtPoint && !selectedComponents.includes(componentAtPoint.id)) {
-        // Cmd+drag inside an unselected component - create a new component
         setIsCreating(true);
         setCreateStart({ x: canvasX, y: canvasY });
         setCreateEnd({ x: canvasX, y: canvasY });
-        // Don't change selection - keep the current component unselected
 
-        // Prevent synthetic touch events from interfering
         if (e.type === 'touchstart') {
           e.preventDefault();
         } else {
@@ -2578,14 +2230,10 @@ export default function Canvas({
         }
         e.stopPropagation();
       } else if (!componentAtPoint) {
-        // Cmd+drag on empty canvas - create a new component. Selection is left
-        // alone on purpose: it is what tells App which group or state the new
-        // component belongs to.
         setIsCreating(true);
         setCreateStart({ x: canvasX, y: canvasY });
         setCreateEnd({ x: canvasX, y: canvasY });
 
-        // Prevent synthetic touch events from interfering
         if (e.type === 'touchstart') {
           e.preventDefault();
         } else {
@@ -2597,27 +2245,21 @@ export default function Canvas({
   }, [onSelectComponents, scale, getComponentAtPoint, selectedComponents, setLastSelectedId, isScaling, confirmScaleMode]);
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
-    // Check if Cmd (Mac) or Ctrl (Windows/Linux) is held
     if (e.metaKey || e.ctrlKey) {
       e.preventDefault();
       
-      // Determine zoom direction and amount
-      const zoomDelta = e.deltaY > 0 ? -10 : 10; // Reverse direction (scroll up = zoom in)
+      const zoomDelta = e.deltaY > 0 ? -10 : 10;
       const newZoomLevel = Math.max(10, Math.min(300, zoomLevel + zoomDelta));
       
-      // Just change zoom level - don't adjust viewport offset
       setZoomLevel(newZoomLevel);
     }
   }, [zoomLevel]);
 
-  // Start scale mode for selected components
   const startScaleMode = useCallback(() => {
     if (selectedComponents.length === 0) return;
 
-    // Save start state for undo
     onStartDragOperation?.();
 
-    // Calculate the bounding box of all selected components
     const selectedComps = layout.components.filter(c => selectedComponents.includes(c.id));
     if (selectedComps.length === 0) return;
 
@@ -2637,10 +2279,8 @@ export default function Canvas({
       });
     });
 
-    // Get scale anchor from first selected component (default to center)
     const scaleAnchor = selectedComps[0]?.scaleAnchor || 'center';
 
-    // Calculate anchor position based on scaleAnchor setting
     let anchorX: number;
     let anchorY: number;
 
@@ -2687,27 +2327,22 @@ export default function Canvas({
     setScaleStartState(startState);
     setScaleCenter({ x: anchorX, y: anchorY });
 
-    // Calculate initial distance from current mouse position to anchor
-    // This makes scaling relative to where the mouse is when 'S' is pressed
     const mouseX = currentMousePosRef.current.x;
     const mouseY = currentMousePosRef.current.y;
     const dx = mouseX - anchorX;
     const dy = mouseY - anchorY;
     const initialDistance = Math.sqrt(dx * dx + dy * dy);
 
-    // Use mouse distance if valid, otherwise fall back to bounding box size
     setScaleStartDistance(initialDistance > 10 ? initialDistance : (Math.max(maxX - minX, maxY - minY) / 2 || 100));
     setCurrentScaleFactor(1);
-    // Reset precision mode state for fresh start
     precisionModeRef.current = { active: false, baseScaleFactor: 1, baseDistance: 0, scaleOffset: 0 };
     setIsScaling(true);
   }, [selectedComponents, layout.components, onStartDragOperation]);
 
-  // Auto-fit canvas to available space
   const fitCanvasToWrapper = useCallback(() => {
     if (!wrapperRef.current) return;
     const wrapper = wrapperRef.current;
-    const padding = 40; // 20px padding on each side
+    const padding = 40;
     const availableWidth = wrapper.clientWidth - padding;
     const availableHeight = wrapper.clientHeight - padding;
 
@@ -2715,39 +2350,33 @@ export default function Canvas({
 
     const scaleX = availableWidth / layout.dimensions.width;
     const scaleY = availableHeight / layout.dimensions.height;
-    const fitScale = Math.min(scaleX, scaleY, 2.0); // Cap at 200%
+    const fitScale = Math.min(scaleX, scaleY, 2.0);
 
     setZoomLevel(Math.max(10, Math.round(fitScale * 100)));
     setViewportOffset({ x: 0, y: 0 });
   }, [layout.dimensions.width, layout.dimensions.height]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Check if user is typing in an input field - if so, don't intercept keys
     const activeElement = document.activeElement;
     const isInputFocused = activeElement && (
       activeElement.tagName === 'INPUT' ||
       activeElement.tagName === 'TEXTAREA' ||
       activeElement.tagName === 'SELECT' ||
       (activeElement as HTMLElement).contentEditable === 'true' ||
-      // Check if the active element is inside the property panel
       activeElement.closest('.property-panel') !== null
     );
 
-    // Handle scale mode keys first
     if (isScaling) {
       e.preventDefault();
       if (e.key === 'Enter') {
         confirmScaleMode();
       } else {
-        // Any other key cancels scale mode (including Escape)
         cancelScaleMode();
       }
       return;
     }
 
-    // Always allow grid and center line toggles (unless typing)
     if (!isInputFocused) {
-      // Space bar for pan mode
       if (e.key === ' ' && !e.repeat) {
         e.preventDefault();
         isSpaceHeldRef.current = true;
@@ -2772,7 +2401,6 @@ export default function Canvas({
         return;
       }
 
-      // Start scale mode with 'S' key
       if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && selectedComponents.length > 0) {
         e.preventDefault();
         startScaleMode();
@@ -2780,14 +2408,12 @@ export default function Canvas({
       }
     }
 
-    // Escape key - deselect all components (while vertex editing, Escape exits edit mode instead)
     if (!isInputFocused && e.key === 'Escape' && !editingShapeId) {
       e.preventDefault();
       onSelectComponents([]);
       return;
     }
 
-    // Tab key - cycle through components
     if (!isInputFocused && e.key === 'Tab') {
       e.preventDefault();
       const allComponents = layout.components || [];
@@ -2796,14 +2422,11 @@ export default function Canvas({
       const visibleComponents = allComponents.filter(c => c.visible !== false);
       if (visibleComponents.length === 0) return;
 
-      // Sort by layer (highest first)
       const sortedComponents = [...visibleComponents].sort((a, b) => (b.layer || 0) - (a.layer || 0));
 
       if (selectedComponents.length === 0) {
-        // Select the first component
         onSelectComponents([sortedComponents[0].id]);
       } else {
-        // Find current selection and move to next/previous
         const currentId = selectedComponents[0];
         const currentIndex = sortedComponents.findIndex(c => c.id === currentId);
         const nextIndex = e.shiftKey
@@ -2814,27 +2437,22 @@ export default function Canvas({
       return;
     }
 
-    // Zoom shortcuts (when not typing)
     if (!isInputFocused) {
-      // + or = to zoom in
       if ((e.key === '+' || e.key === '=') && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         setZoomLevel(prev => Math.min(300, prev + 10));
         return;
       }
-      // - to zoom out
       if (e.key === '-' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         setZoomLevel(prev => Math.max(10, prev - 10));
         return;
       }
-      // 0 to reset zoom to 100%
       if (e.key === '0' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         setZoomLevel(100);
         return;
       }
-      // f to fit canvas to screen
       if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         fitCanvasToWrapper();
@@ -2842,12 +2460,10 @@ export default function Canvas({
       }
     }
 
-    // Only handle component-specific keys if not typing in an input field
     if (selectedComponents.length > 0 && !isInputFocused) {
-      // Arrow keys - nudge selected components
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault();
-        const nudgeAmount = e.shiftKey ? 10 : 1; // Shift = 10px, normal = 1px
+        const nudgeAmount = e.shiftKey ? 10 : 1;
         const deltaX = e.key === 'ArrowLeft' ? -nudgeAmount : e.key === 'ArrowRight' ? nudgeAmount : 0;
         const deltaY = e.key === 'ArrowUp' ? -nudgeAmount : e.key === 'ArrowDown' ? nudgeAmount : 0;
 
@@ -2863,12 +2479,12 @@ export default function Canvas({
             });
           }
         });
-        onEndDragOperation(`Nudge ${selectedComponents.length} component(s)`);
+        onEndDragOperation(`Nudge ${selectedComponents.length} component(s)`, 'nudge');
         return;
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (editingShapeId) return; // vertex edit mode handles its own delete
+        if (editingShapeId) return;
         e.preventDefault();
         selectedComponents.forEach(componentId => {
           onDeleteComponent(componentId);
@@ -2878,18 +2494,6 @@ export default function Canvas({
         selectedComponents.forEach(componentId => {
           onDuplicateComponent(componentId);
         });
-      } else if (e.key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        e.preventDefault();
-        // Undo functionality - pass through to parent
-        if (window.dispatchEvent) {
-          window.dispatchEvent(new CustomEvent('canvas-undo'));
-        }
-      } else if ((e.key === 'y' && (e.metaKey || e.ctrlKey)) || (e.key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey)) {
-        e.preventDefault();
-        // Redo functionality - pass through to parent (Ctrl+Y or Ctrl+Shift+Z)
-        if (window.dispatchEvent) {
-          window.dispatchEvent(new CustomEvent('canvas-redo'));
-        }
       }
     }
   }, [selectedComponents, onDeleteComponent, onDuplicateComponent, onUpdateComponent, onStartDragOperation, onEndDragOperation, isScaling, confirmScaleMode, cancelScaleMode, startScaleMode, onSelectComponents, layout.components, fitCanvasToWrapper, editingShapeId]);
@@ -2899,7 +2503,6 @@ export default function Canvas({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // Exit vertex edit mode, refitting the shape's bounds to its vertices (Task 13)
   const exitShapeEditMode = useCallback(() => {
     const comp = layoutRef.current.components?.find(c => c.id === editingShapeId);
     if (comp && comp.type === 'shape' && comp.props?.shape) {
@@ -2918,7 +2521,6 @@ export default function Canvas({
     onSelectVertices([]);
   }, [editingShapeId, onSetEditingShape, onSelectVertices, onStartDragOperation, onEndDragOperation, onUpdateComponent]);
 
-  // Enter or E begins vertex editing on a single selected shape; Escape or E exits
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -2939,7 +2541,6 @@ export default function Canvas({
     return () => window.removeEventListener('keydown', onKey);
   }, [editingShapeId, onSetEditingShape, exitShapeEditMode]);
 
-  // Space key release handler for pan mode
   React.useEffect(() => {
     const handleSpaceKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') {
@@ -2951,14 +2552,12 @@ export default function Canvas({
     return () => document.removeEventListener('keyup', handleSpaceKeyUp);
   }, []);
 
-  // Document-level mouse event handling for drag operations outside canvas
   React.useEffect(() => {
     const isOperationActive = isDragging || isScaling || isResizing || isRotating || isPanning || isCreating || isMarqueeSelecting;
 
     if (!isOperationActive) return;
 
     const handleDocumentMouseMove = (e: MouseEvent) => {
-      // Cast native MouseEvent to work with our handler
       handleMouseMove(e as unknown as React.MouseEvent);
     };
 
@@ -2975,7 +2574,6 @@ export default function Canvas({
     };
   }, [isDragging, isScaling, isResizing, isRotating, isPanning, isCreating, isMarqueeSelecting, handleMouseMove, handleMouseUp]);
 
-  // Alt key listener to temporarily disable snapping
   React.useEffect(() => {
     const handleAltKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Alt') {
@@ -2991,7 +2589,6 @@ export default function Canvas({
     };
     document.addEventListener('keydown', handleAltKeyDown);
     document.addEventListener('keyup', handleAltKeyUp);
-    // Also clear Alt state when window loses focus
     const handleBlur = () => {
       isAltHeldRef.current = false;
       setIsAltHeld(false);
@@ -3004,13 +2601,9 @@ export default function Canvas({
     };
   }, []);
 
-  // Calculate effective z-index based on exact position in flattened layer panel order.
-  // This creates a 1:1 mapping: position in layer panel = z-index order.
-  // Higher position in panel (top) = higher z-index = renders in front.
   const getEffectiveLayer = (component: ComponentConfig): number => {
     const components = layout.components || [];
 
-    // Build the same hierarchy as LayerPanel
     const rootComponents: ComponentConfig[] = [];
     const childrenMap = new Map<string, ComponentConfig[]>();
 
@@ -3024,13 +2617,11 @@ export default function Canvas({
       }
     });
 
-    // Sort by layer (highest first) - same as LayerPanel
     rootComponents.sort((a, b) => (b.layer || 0) - (a.layer || 0));
     childrenMap.forEach(children => {
       children.sort((a, b) => (b.layer || 0) - (a.layer || 0));
     });
 
-    // Flatten tree in display order (depth-first traversal)
     const flatOrder: string[] = [];
     const traverse = (comp: ComponentConfig) => {
       flatOrder.push(comp.id);
@@ -3039,11 +2630,9 @@ export default function Canvas({
     };
     rootComponents.forEach(comp => traverse(comp));
 
-    // Find position (0 = top of list = highest z-index)
     const position = flatOrder.indexOf(component.id);
     if (position === -1) return 0;
 
-    // Invert: top of list (position 0) gets highest z-index
     return (flatOrder.length - position) * 10;
   };
 
@@ -3053,21 +2642,14 @@ export default function Canvas({
     opacityChain: Array<number | undefined> = [],
     childrenContent: React.ReactNode = null
   ) => {
-    // Positions and sizes are already in pixels.
-    // Container types (multiState, slotList) have no footprint of their own —
-    // theirs is the bounding box of what they draw, so the selection box hugs
-    // the slots instead of the container's padded frame.
     const { left, top, width, height } = getDisplayRect(component);
 
-    // Calculate border widths
-    // Note: dynamicList uses borderWidth for items inside, not the wrapper
     const skipWrapperBorder = component.type === 'dynamicList';
     const borderTopWidth = skipWrapperBorder ? 0 : (component.props?.borderTopWidth !== undefined ? component.props.borderTopWidth : (component.props?.borderWidth || 0));
     const borderRightWidth = skipWrapperBorder ? 0 : (component.props?.borderRightWidth !== undefined ? component.props.borderRightWidth : (component.props?.borderWidth || 0));
     const borderBottomWidth = skipWrapperBorder ? 0 : (component.props?.borderBottomWidth !== undefined ? component.props.borderBottomWidth : (component.props?.borderWidth || 0));
     const borderLeftWidth = skipWrapperBorder ? 0 : (component.props?.borderLeftWidth !== undefined ? component.props.borderLeftWidth : (component.props?.borderWidth || 0));
     
-    // Check if any border has width > 0
     const hasBorder = borderTopWidth > 0 || borderRightWidth > 0 || borderBottomWidth > 0 || borderLeftWidth > 0;
 
     const sampled = sampledValues?.get(component.id);
@@ -3077,11 +2659,6 @@ export default function Canvas({
     const animTransform = composed?.transform ?? component.transform;
     const animOpacity = composed?.opacity;
 
-    // Nest the overlay exactly the way WebPreview nests the pixels: this
-    // node's own box sits at its EFFECTIVE (animated) position; a real
-    // parentId child is instead offset from the parent's AUTHORED position,
-    // so the offset stays stable while the parent animates -- the parent's
-    // own container carries that motion. See componentHierarchy.ts.
     const effectivePosition: Point2D = { x: left + animDX, y: top + animDY };
     const renderPosition = parentAuthoredPosition
       ? localOffset(effectivePosition, parentAuthoredPosition)
@@ -3097,7 +2674,7 @@ export default function Canvas({
       width,
       height,
       opacity: chainedOpacity,
-      boxSizing: 'border-box' as const,  // Include border in width/height
+      boxSizing: 'border-box' as const,
       borderTopWidth: borderTopWidth,
       borderRightWidth: borderRightWidth,
       borderBottomWidth: borderBottomWidth,
@@ -3128,23 +2705,20 @@ export default function Canvas({
         style={{
           ...baseStyle,
           backgroundColor: 'transparent',
-          pointerEvents: 'auto', // Always capture events for component interaction
-          // Multi-state containers stay UNDER their children's handles so the
-          // children remain clickable — empty container area selects the parent.
+          pointerEvents: 'auto',
           zIndex: component.type === 'multiState'
             ? 1
-            : getEffectiveLayer(component) + (isSelected ? 10000000 : 0), // Respect hierarchy layer order, selected on top
+            : getEffectiveLayer(component) + (isSelected ? 10000000 : 0),
         }}
         onMouseDown={(e) => handleMouseDown(e, component)}
         onDoubleClick={component.type === 'shape' ? (e: React.MouseEvent) => {
           e.stopPropagation();
-          e.preventDefault(); // block native double-click selection highlight
+          e.preventDefault();
           onSelectComponents([component.id]);
           onSetEditingShape(component.id);
         } : undefined}
         className="canvas-handle"
       >
-        {/* Parent-child relationship indicators */}
         {hasChildren && (
           <div
             style={{
@@ -3171,7 +2745,6 @@ export default function Canvas({
         )}
         {selectedComponents.includes(component.id) && selectedComponents.length === 1 && component.type !== 'slotList' && component.type !== 'multiState' && (
           <>
-            {/* Resize handles - only show for single selection, not for slotList/multiState (size is auto-calculated) */}
             <div
               className="resize-handle resize-handle-nw"
               onMouseDown={(e) => handleResizeMouseDown(e, 'nw', component)}
@@ -3193,7 +2766,6 @@ export default function Canvas({
               style={{ bottom: -4, right: -4 }}
             />
 
-            {/* Edge resize handles - midpoints of each side */}
             <div
               className="resize-handle resize-handle-n"
               onMouseDown={(e) => handleResizeMouseDown(e, 'n', component)}
@@ -3215,7 +2787,6 @@ export default function Canvas({
               style={{ right: -4, top: '50%', transform: 'translateY(-50%)' }}
             />
 
-            {/* Rotation handle - stem rising from top-center with a node at its end */}
             <div
               className="rotate-handle-stem"
               style={{ top: -24, left: '50%', transform: 'translateX(-50%)' }}
@@ -3233,14 +2804,6 @@ export default function Canvas({
     );
   };
 
-  // Render the interaction overlay's tree the same way WebPreview nests the
-  // pixels: a selectable node's handle div carries its children as real DOM
-  // descendants (so CSS transform/opacity inheritance keeps the selection
-  // outline and resize handles glued to an animating or rotated parent). A
-  // multiState or group container -- neither draws a handle of its own --
-  // still needs an invisible pass-through box at its own effective geometry
-  // so its children inherit its transform, mirroring WebPreview's dashed
-  // msStyle box and its group container respectively.
   const renderHandleTree = (
     nodes: ComponentTreeNode[],
     parentAuthoredPosition: Point2D | undefined,
@@ -3335,7 +2898,6 @@ export default function Canvas({
   return (
     <div className="canvas-container">
       <div className="canvas-toolbar">
-        {/* Resolution & Canvas Size */}
         <div className="toolbar-group" style={{ borderLeft: 'none', paddingLeft: 0 }}>
           <select
             className="toolbar-select"
@@ -3373,7 +2935,6 @@ export default function Canvas({
           )}
         </div>
 
-        {/* View Toggles */}
         <div className="toolbar-group">
           <div className="segmented-control">
             <button
@@ -3407,7 +2968,6 @@ export default function Canvas({
           </div>
         </div>
 
-        {/* Background Image Dropdown */}
         <div className="toolbar-group">
           <div className="toolbar-dropdown">
             <button
@@ -3460,7 +3020,6 @@ export default function Canvas({
           </div>
         </div>
 
-        {/* Grid Size Stepper */}
         <div className="toolbar-group">
           <span className="toolbar-group-label">Grid</span>
           <div className="toolbar-stepper">
@@ -3470,7 +3029,6 @@ export default function Canvas({
           </div>
         </div>
 
-        {/* Snap Controls */}
         <div className="toolbar-group">
           <span className="toolbar-group-label">Snap Strength</span>
           <div className="toolbar-stepper">
@@ -3501,7 +3059,6 @@ export default function Canvas({
           )}
         </div>
 
-        {/* Zoom Controls */}
         <div className="toolbar-group">
           <button
             className="toolbar-btn"
@@ -3530,7 +3087,6 @@ export default function Canvas({
           </div>
         </div>
 
-        {/* Alignment Dropdown */}
         <div className="toolbar-group">
           <div className="toolbar-dropdown">
             <button
@@ -3580,7 +3136,6 @@ export default function Canvas({
           padding: '20px'
         }}
         onMouseDown={(e) => {
-          // Prevent browser default middle-click behavior (like opening links in new tabs)
           if (e.button === 1) {
             e.preventDefault();
           }
@@ -3604,30 +3159,26 @@ export default function Canvas({
         onContextMenu={handleCanvasContextMenu}
         onWheel={handleCanvasWheel}
         onDragOver={(e) => {
-          e.preventDefault(); // Allow drop
+          e.preventDefault();
         }}
         onDrop={(e) => {
           e.preventDefault();
           try {
             const data = JSON.parse(e.dataTransfer.getData('text/plain'));
             if (data.type === 'preset-component') {
-              // Get canvas coordinates
               const canvasRect = canvasRef.current?.getBoundingClientRect();
               if (canvasRect) {
                 const x = (e.clientX - canvasRect.left) / scale;
                 const y = (e.clientY - canvasRect.top) / scale;
 
-                // Create component at drop position and get its ID
                 const newComponentId = onAddComponent(
                   data.componentType,
                   { x: x - (data.size?.width || 250) / 2, y: y - (data.size?.height || 250) / 2 },
                   data.size
                 );
 
-                // Auto-select the new component
                 onSelectComponents([newComponentId]);
 
-                // Apply preset props if any
                 if (data.props) {
                   onUpdateComponent(newComponentId, { props: data.props });
                 }
@@ -3645,7 +3196,6 @@ export default function Canvas({
             position: 'relative',
           }}
         >
-          {/* Canvas background image */}
           {showCanvasBackground && resolvedBackgroundImage && (
             <img
               src={resolvedBackgroundImage}
@@ -3663,7 +3213,6 @@ export default function Canvas({
               onError={(e) => console.error('Background image failed to load:', resolvedBackgroundImage)}
             />
           )}
-          {/* Simple pixel-based grid overlay */}
           {showGrid && (
             <svg
               width={layout.dimensions.width}
@@ -3683,8 +3232,6 @@ export default function Canvas({
                   height={gridSize}
                   patternUnits="userSpaceOnUse"
                 >
-                  {/* Use paths instead of rect stroke for pixel-perfect grid lines */}
-                  {/* Lines are drawn at integer positions for crisp rendering */}
                   <path
                     d={`M ${gridSize} 0 L 0 0 L 0 ${gridSize}`}
                     fill="none"
@@ -3700,10 +3247,8 @@ export default function Canvas({
                 fill="url(#pixel-grid)"
                 shapeRendering="crispEdges"
               />
-              {/* Add center snap lines for large grid sizes */}
               {gridSize >= 50 && (
                 <>
-                  {/* Vertical center line */}
                   <line
                     x1={layout.dimensions.width / 2}
                     y1={0}
@@ -3713,7 +3258,6 @@ export default function Canvas({
                     strokeWidth="2"
                     strokeDasharray="5,5"
                   />
-                  {/* Horizontal center line */}
                   <line
                     x1={0}
                     y1={layout.dimensions.height / 2}
@@ -3728,10 +3272,8 @@ export default function Canvas({
             </svg>
           )}
 
-          {/* Center lines positioned at exact middle of canvas */}
           {showHalfwayLines && (
             <>
-              {/* Vertical center line */}
               <div
                 style={{
                   position: 'absolute',
@@ -3745,7 +3287,6 @@ export default function Canvas({
                   pointerEvents: 'none'
                 }}
               />
-              {/* Horizontal center line */}
               <div
                 style={{
                   position: 'absolute',
@@ -3762,7 +3303,6 @@ export default function Canvas({
             </>
           )}
 
-          {/* Smart Guides Overlay - shows alignment guides when dragging */}
           {activeGuides.guides.length > 0 && (
             <svg
               width={layout.dimensions.width}
@@ -3776,29 +3316,26 @@ export default function Canvas({
               }}
             >
               {activeGuides.guides.map((guide, index) => {
-                // Define colors for different guide types
                 const colors: Record<string, string> = {
-                  'center-h': '#FF00FF', // Magenta for canvas center
+                  'center-h': '#FF00FF',
                   'center-v': '#FF00FF',
-                  'edge-top': '#00FFFF', // Cyan for canvas edges
+                  'edge-top': '#00FFFF',
                   'edge-bottom': '#00FFFF',
                   'edge-left': '#00FFFF',
                   'edge-right': '#00FFFF',
-                  'element-edge-h': '#00FF00', // Green for element-to-element edges
+                  'element-edge-h': '#00FF00',
                   'element-edge-v': '#00FF00',
-                  'element-center-h': '#39FF14', // Bright green for element-to-element centers
+                  'element-center-h': '#39FF14',
                   'element-center-v': '#39FF14'
                 };
                 const color = colors[guide.type] || '#FF00FF';
                 const isElementGuide = guide.type.startsWith('element-');
                 const isCenterGuide = guide.type.includes('center');
 
-                // Determine if this is a vertical or horizontal guide
                 const isVertical = guide.type === 'center-v' || guide.type === 'edge-left' || guide.type === 'edge-right' ||
                                    guide.type === 'element-edge-v' || guide.type === 'element-center-v';
 
                 if (isVertical) {
-                  // Vertical line - use span for element-to-element guides
                   const y1 = guide.span ? guide.span.start : 0;
                   const y2 = guide.span ? guide.span.end : layout.dimensions.height;
 
@@ -3813,7 +3350,6 @@ export default function Canvas({
                         strokeWidth={isElementGuide ? '2' : '1'}
                         strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
-                      {/* Glow effect */}
                       <line
                         x1={guide.position}
                         y1={y1}
@@ -3824,7 +3360,6 @@ export default function Canvas({
                         strokeOpacity="0.3"
                         strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
-                      {/* Center indicator circle for canvas center */}
                       {guide.type === 'center-v' && activeGuides.elementBounds && (
                         <circle
                           cx={guide.position}
@@ -3835,7 +3370,6 @@ export default function Canvas({
                           strokeWidth="2"
                         />
                       )}
-                      {/* Small markers at element edges for element-to-element guides */}
                       {isElementGuide && guide.span && (
                         <>
                           <rect x={guide.position - 3} y={guide.span.start - 1} width="6" height="2" fill={color} />
@@ -3845,7 +3379,6 @@ export default function Canvas({
                     </g>
                   );
                 } else {
-                  // Horizontal line - use span for element-to-element guides
                   const x1 = guide.span ? guide.span.start : 0;
                   const x2 = guide.span ? guide.span.end : layout.dimensions.width;
 
@@ -3860,7 +3393,6 @@ export default function Canvas({
                         strokeWidth={isElementGuide ? '2' : '1'}
                         strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
-                      {/* Glow effect */}
                       <line
                         x1={x1}
                         y1={guide.position}
@@ -3871,7 +3403,6 @@ export default function Canvas({
                         strokeOpacity="0.3"
                         strokeDasharray={isCenterGuide ? '8,4' : 'none'}
                       />
-                      {/* Center indicator circle for canvas center */}
                       {guide.type === 'center-h' && activeGuides.elementBounds && (
                         <circle
                           cx={activeGuides.elementBounds.centerX}
@@ -3882,7 +3413,6 @@ export default function Canvas({
                           strokeWidth="2"
                         />
                       )}
-                      {/* Small markers at element edges for element-to-element guides */}
                       {isElementGuide && guide.span && (
                         <>
                           <rect x={guide.span.start - 1} y={guide.position - 3} width="2" height="6" fill={color} />
@@ -3904,7 +3434,6 @@ export default function Canvas({
             sampledValues={sampledValues}
             dirtyChannels={dirtyChannels}
           />
-          {/* Vertex edit overlay for the shape being edited */}
           {editingShapeId && (() => {
             const comp = (layout.components || []).find(c => c.id === editingShapeId);
             if (!comp || comp.type !== 'shape' || !comp.props?.shape) return null;
@@ -3925,7 +3454,6 @@ export default function Canvas({
               />
             );
           })()}
-          {/* Creation rectangle overlay (Cmd+drag) */}
           {isCreating && (
             <div
               style={{
@@ -3941,7 +3469,6 @@ export default function Canvas({
               }}
             />
           )}
-          {/* Marquee selection rectangle (plain drag on empty canvas) */}
           {isMarqueeSelecting && (
             <div
               style={{
@@ -3958,12 +3485,8 @@ export default function Canvas({
             />
           )}
           
-          {/* Overlay draggable handles, nested the same way WebPreview nests the
-              pixels so a selection outline/resize handles follow a child inside
-              an animating or rotated parent. */}
           {renderHandleTree(buildComponentTree(layout.components || []), undefined, [])}
 
-          {/* Multi-select bounding box */}
           {selectedComponents.length > 1 && (() => {
             const bounds = getMultiSelectBounds();
             if (!bounds) return null;
@@ -3983,7 +3506,6 @@ export default function Canvas({
                   zIndex: 100
                 }}
               >
-                {/* Multi-select resize handles */}
                 <div
                   className="resize-handle resize-handle-nw"
                   onMouseDown={(e) => handleMultiResizeMouseDown(e, 'nw')}
@@ -4029,8 +3551,6 @@ export default function Canvas({
                   }}
                 />
 
-                {/* Multi-select edge resize handles */}
-                {/* Top edge - resize height */}
                 <div
                   className="resize-handle resize-handle-n"
                   onMouseDown={(e) => handleMultiResizeMouseDown(e, 'n')}
@@ -4050,7 +3570,6 @@ export default function Canvas({
                   }}
                   title="Drag to resize height"
                 />
-                {/* Bottom edge - resize height */}
                 <div
                   className="resize-handle resize-handle-s"
                   onMouseDown={(e) => handleMultiResizeMouseDown(e, 's')}
@@ -4070,7 +3589,6 @@ export default function Canvas({
                   }}
                   title="Drag to resize height"
                 />
-                {/* Left edge - resize width */}
                 <div
                   className="resize-handle resize-handle-w"
                   onMouseDown={(e) => handleMultiResizeMouseDown(e, 'w')}
@@ -4090,7 +3608,6 @@ export default function Canvas({
                   }}
                   title="Drag to resize width"
                 />
-                {/* Right edge - resize width */}
                 <div
                   className="resize-handle resize-handle-e"
                   onMouseDown={(e) => handleMultiResizeMouseDown(e, 'e')}
@@ -4111,7 +3628,6 @@ export default function Canvas({
                   title="Drag to resize width"
                 />
 
-                {/* Multi-select info label */}
                 <div
                   style={{
                     position: 'absolute',
@@ -4132,7 +3648,6 @@ export default function Canvas({
             );
           })()}
 
-          {/* Scale mode indicator */}
           {isScaling && (
             <div
               style={{
@@ -4148,7 +3663,6 @@ export default function Canvas({
                 gap: '8px'
               }}
             >
-              {/* Center crosshair */}
               <div
                 style={{
                   width: '20px',
@@ -4158,7 +3672,6 @@ export default function Canvas({
                   backgroundColor: 'rgba(255, 152, 0, 0.3)'
                 }}
               />
-              {/* Scale percentage label */}
               <div
                 style={{
                   backgroundColor: '#FF9800',

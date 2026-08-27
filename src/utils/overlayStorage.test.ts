@@ -5,6 +5,7 @@ import {
   loadOverlay,
   deleteOverlay,
   newOverlay,
+  MAX_OVERLAY_LENGTH_SECONDS,
   OVERLAY_STORAGE_KEY,
   type SavedOverlay,
 } from './overlayStorage';
@@ -176,13 +177,65 @@ describe('overlayStorage', () => {
 
       expect(overlay.name).toBe('My Overlay');
       expect(overlay.dimensions).toEqual({ width: 1920, height: 1080 });
-      expect(overlay.fps).toBe(30);
+      expect(overlay.fps).toBe(25);
       expect(overlay.startFrame).toBe(0);
-      expect(overlay.endFrame).toBe(90);
+      expect(overlay.endFrame).toBe(50);
       expect(overlay.components).toEqual([]);
       expect(overlay.tracks).toEqual([]);
       expect(overlay.backgroundColor).toBeUndefined();
       expect(overlay.id).toMatch(/^overlay_my-overlay/);
+    });
+
+    it('is not a transition overlay unless asked', () => {
+      const overlay = newOverlay('My Overlay', { width: 1920, height: 1080 });
+
+      expect('isTransition' in overlay).toBe(false);
+    });
+
+    it('marks a transition overlay so the switch frame applies to it', () => {
+      const overlay = newOverlay('Layout Transition', { width: 1920, height: 1080 }, { isTransition: true });
+
+      expect(overlay.isTransition).toBe(true);
+    });
+
+    it('takes a starting frame rate and length', () => {
+      const overlay = newOverlay('My Overlay', { width: 1920, height: 1080 }, { fps: 60, lengthFrames: 45 });
+
+      expect(overlay.fps).toBe(60);
+      expect(overlay.startFrame).toBe(0);
+      expect(overlay.endFrame).toBe(45);
+    });
+
+    it('clamps a nonsensical frame rate or length rather than storing it', () => {
+      const slow = newOverlay('A', { width: 100, height: 100 }, { fps: 0, lengthFrames: 0 });
+      expect(slow.fps).toBe(1);
+      expect(slow.endFrame).toBe(1);
+
+      const fast = newOverlay('B', { width: 100, height: 100 }, { fps: 9999, lengthFrames: 12.7 });
+      expect(fast.fps).toBe(240);
+      expect(fast.endFrame).toBe(13);
+    });
+
+    it('caps the length at a minute of the chosen frame rate', () => {
+      const slow = newOverlay('A', { width: 100, height: 100 }, { fps: 25, lengthFrames: 999999 });
+      expect(slow.endFrame).toBe(25 * MAX_OVERLAY_LENGTH_SECONDS);
+
+      const fast = newOverlay('B', { width: 100, height: 100 }, { fps: 60, lengthFrames: 999999 });
+      expect(fast.endFrame).toBe(60 * MAX_OVERLAY_LENGTH_SECONDS);
+    });
+
+    it('caps against the clamped frame rate, not the requested one', () => {
+      const overlay = newOverlay('A', { width: 100, height: 100 }, { fps: 9999, lengthFrames: 999999 });
+
+      expect(overlay.fps).toBe(240);
+      expect(overlay.endFrame).toBe(240 * MAX_OVERLAY_LENGTH_SECONDS);
+    });
+
+    it('falls back to the defaults for non-finite values', () => {
+      const overlay = newOverlay('A', { width: 100, height: 100 }, { fps: NaN, lengthFrames: Infinity });
+
+      expect(overlay.fps).toBe(25);
+      expect(overlay.endFrame).toBe(50);
     });
 
     it('generates deterministic, unique ids when names collide', () => {

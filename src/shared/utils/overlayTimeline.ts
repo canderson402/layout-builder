@@ -1,7 +1,11 @@
+import { ease, type Easing } from './easing';
+
 export type AnimatableProperty =
   | 'x' | 'y' | 'width' | 'height' | 'scale' | 'rotation' | 'opacity' | 'color' | 'backgroundColor';
 
-export type Interpolation = 'linear' | 'bezier' | 'constant';
+export type { Easing, EasingDirection, EasingFunction } from './easing';
+
+export type Interpolation = 'linear' | 'bezier' | 'constant' | 'eased';
 export type HandleMode = 'free' | 'aligned' | 'vector' | 'auto';
 
 export interface Handle {
@@ -16,6 +20,7 @@ export interface Keyframe {
   handleIn?: Handle;
   handleOut?: Handle;
   handleMode?: HandleMode;
+  easing?: Easing;
 }
 
 export interface AnimationTrack {
@@ -33,6 +38,8 @@ export interface OverlayConfig {
   fps: number;
   startFrame: number;
   endFrame: number;
+  isTransition?: boolean;
+  switchFrame?: number;
   tracks: AnimationTrack[];
 }
 
@@ -183,16 +190,19 @@ export function sampleTrack(track: AnimationTrack, frame: number): number | stri
   if (span <= 0) return right.value;
   if (left.interpolation === 'constant') return left.value;
 
+  const progress = (frame - left.frame) / span;
+  const t = left.interpolation === 'eased' && left.easing
+    ? ease(left.easing, progress)
+    : progress;
+
   if (typeof left.value === 'number' && typeof right.value === 'number') {
     if (left.interpolation === 'bezier') {
       return bezierValue(left, right, frame);
     }
-    const t = (frame - left.frame) / span;
     return left.value + (right.value - left.value) * t;
   }
 
   if (typeof left.value === 'string' && typeof right.value === 'string') {
-    const t = (frame - left.frame) / span;
     return mixHexColors(left.value, right.value, t);
   }
 
@@ -260,14 +270,6 @@ function handleLength(handle: Handle): number {
   return Math.hypot(handle.dFrame, handle.dValue);
 }
 
-/**
- * Given the handle the user just dragged, return what the opposite handle
- * becomes under the keyframe's handle mode. Blender semantics:
- *   free    — the other side is untouched
- *   aligned — the other side keeps its length but flips to stay collinear
- *   vector  — the other side is an exact mirror
- *   auto    — handles are derived, so a drag does not move the other side
- */
 export function counterpartHandle(
   mode: HandleMode | undefined,
   dragged: Handle,
@@ -288,11 +290,6 @@ export function counterpartHandle(
   return other;
 }
 
-/**
- * Smooth handles for a keyframe, derived from its neighbours the way Blender's
- * 'auto' mode does: the tangent follows the line between the surrounding keys,
- * flattening at the ends so a curve does not overshoot past its last value.
- */
 export function autoHandles(
   previous: Keyframe | undefined,
   keyframe: Keyframe,
@@ -372,13 +369,6 @@ export function setKeyframeInterpolation(
   });
 }
 
-/**
- * Interpolation is stored per keyframe but governs only the segment to its
- * RIGHT, so setting it on one key leaves the incoming segment unchanged — and
- * on the last key it changes nothing visible at all. Easing is applied to the
- * key and to its predecessor so the motion *through* the key changes, which is
- * what selecting a keyframe and picking an easing is understood to mean.
- */
 interface ControlPoints {
   f0: number; v0: number;
   f1: number; v1: number;
@@ -401,11 +391,6 @@ function segmentControlPoints(left: Keyframe, right: Keyframe): ControlPoints {
   };
 }
 
-/**
- * de Casteljau split of a cubic at parameter u. Returns the control points of
- * the two halves, so a keyframe can be inserted mid-curve without the shape
- * changing at all — the point just becomes editable.
- */
 function splitCubic(cp: ControlPoints, u: number) {
   const lerp = (a: number, b: number) => a + (b - a) * u;
 
@@ -428,12 +413,6 @@ function splitCubic(cp: ControlPoints, u: number) {
   };
 }
 
-/**
- * Add a keyframe to an existing curve at `frame`, taking its value from the
- * curve itself so the animation is unchanged. Bezier segments are split
- * exactly; linear and constant segments simply adopt the sampled value.
- * Returns the tracks untouched if there is nothing to split.
- */
 export function insertKeyframeOnCurve(
   tracks: AnimationTrack[],
   componentId: string,
@@ -450,7 +429,6 @@ export function insertKeyframeOnCurve(
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
 
-  // Outside the authored range the curve is flat, so a hold keyframe suffices.
   if (target < first.frame || target > last.frame) {
     const edge = target < first.frame ? first : last;
     if (typeof edge.value !== 'number') return tracks;
@@ -478,6 +456,16 @@ export function insertKeyframeOnCurve(
       frame: target,
       value: left.value,
       interpolation: 'constant',
+    });
+  }
+
+  if (left.interpolation === 'eased') {
+    const sampled = sampleTrack({ ...existing, keyframes: sorted }, target);
+    if (typeof sampled !== 'number') return tracks;
+    return insertKeyframe(tracks, componentId, property, {
+      frame: target,
+      value: sampled,
+      interpolation: 'linear',
     });
   }
 
@@ -516,7 +504,7 @@ export function insertKeyframeOnCurve(
   return replaceTrackKeyframes(tracks, componentId, property, sortKeyframes(keyframes));
 }
 
-export function setKeyframeEasing(
+export function setKeyframeInterpolationMode(
   tracks: AnimationTrack[],
   componentId: string,
   property: AnimatableProperty,
@@ -530,10 +518,26 @@ export function setKeyframeEasing(
 
   let out = setKeyframeInterpolation(tracks, componentId, property, frame, interpolation);
   const previous = existing.keyframes[index - 1];
-  if (previous) {
+  if (previous && previous.interpolation !== 'eased') {
     out = setKeyframeInterpolation(out, componentId, property, previous.frame, interpolation);
   }
   return out;
+}
+
+export function setKeyframeEasingSpec(
+  tracks: AnimationTrack[],
+  componentId: string,
+  property: AnimatableProperty,
+  frame: number,
+  easing: Easing | null,
+): AnimationTrack[] {
+  return mapKeyframeAt(tracks, componentId, property, frame, k => {
+    if (easing === null) {
+      const { easing: _cleared, ...rest } = k;
+      return { ...rest, interpolation: 'linear' };
+    }
+    return { ...k, interpolation: 'eased', easing };
+  });
 }
 
 export function setKeyframeHandleMode(
@@ -587,11 +591,68 @@ export function retimeKeyframe(
   return replaceTrackKeyframes(tracks, componentId, property, keyframes);
 }
 
+export function resolveSwitchFrame(overlay: OverlayConfig): number {
+  const { startFrame, endFrame } = overlay;
+
+  if (endFrame < startFrame) return startFrame;
+
+  const authored = overlay.switchFrame;
+  if (typeof authored === 'number' && Number.isFinite(authored)) {
+    return Math.min(endFrame, Math.max(startFrame, Math.round(authored)));
+  }
+
+  return Math.round(startFrame + (endFrame - startFrame) / 2);
+}
+
+export function setSwitchFrame(overlay: OverlayConfig, frame: number | null): OverlayConfig {
+  const next = { ...overlay };
+
+  if (frame === null || !Number.isFinite(frame)) {
+    delete next.switchFrame;
+    return next;
+  }
+
+  const low = Math.min(overlay.startFrame, overlay.endFrame);
+  const high = Math.max(overlay.startFrame, overlay.endFrame);
+  next.switchFrame = Math.min(high, Math.max(low, Math.round(frame)));
+  return next;
+}
+
 export function pruneTracksForComponent(
   tracks: AnimationTrack[],
   componentId: string,
 ): AnimationTrack[] {
   return tracks.filter(t => t.componentId !== componentId);
+}
+
+export function remapTracksForComponents(
+  tracks: AnimationTrack[],
+  idMapping: Map<string, string>,
+): AnimationTrack[] {
+  const copies: AnimationTrack[] = [];
+  for (const track of tracks) {
+    const newComponentId = idMapping.get(track.componentId);
+    if (!newComponentId) continue;
+    copies.push({
+      ...track,
+      componentId: newComponentId,
+      keyframes: track.keyframes.map(k => ({
+        ...k,
+        ...(k.handleIn ? { handleIn: { ...k.handleIn } } : {}),
+        ...(k.handleOut ? { handleOut: { ...k.handleOut } } : {}),
+      })),
+    });
+  }
+  return copies;
+}
+
+export function copyTracksForComponents(
+  tracks: AnimationTrack[],
+  idMapping: Map<string, string>,
+): AnimationTrack[] {
+  const copies = remapTracksForComponents(tracks, idMapping);
+  if (copies.length === 0) return tracks;
+  return [...tracks, ...copies];
 }
 
 export type TrackValidationProblem =

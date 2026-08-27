@@ -1,7 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { OverlayConfig } from '../shared/utils/overlayTimeline';
 import { useToast } from './Toast';
-import { listOverlays, saveOverlay, deleteOverlay, newOverlay, loadOverlay as loadSavedOverlay, SavedOverlay } from '../utils/overlayStorage';
+import {
+  listOverlays,
+  saveOverlay,
+  deleteOverlay,
+  newOverlay,
+  loadOverlay as loadSavedOverlay,
+  SavedOverlay,
+  DEFAULT_OVERLAY_FPS,
+  DEFAULT_OVERLAY_LENGTH_FRAMES,
+  MIN_OVERLAY_FPS,
+  MAX_OVERLAY_FPS,
+  MIN_OVERLAY_LENGTH_FRAMES,
+  maxOverlayLengthFrames,
+} from '../utils/overlayStorage';
 import './PresetModal.css';
 
 interface OverlayLibraryModalProps {
@@ -13,6 +26,11 @@ interface OverlayLibraryModalProps {
 function OverlayLibraryModal({ dimensions, onClose, onLoadOverlay }: OverlayLibraryModalProps) {
   const toast = useToast();
   const [savedOverlays, setSavedOverlays] = useState<SavedOverlay[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('Untitled Overlay');
+  const [newIsTransition, setNewIsTransition] = useState(false);
+  const [newFps, setNewFps] = useState(String(DEFAULT_OVERLAY_FPS));
+  const [newLength, setNewLength] = useState(String(DEFAULT_OVERLAY_LENGTH_FRAMES));
 
   const refresh = useCallback(() => {
     setSavedOverlays(listOverlays());
@@ -22,16 +40,31 @@ function OverlayLibraryModal({ dimensions, onClose, onLoadOverlay }: OverlayLibr
     refresh();
   }, [refresh]);
 
+  const beginCreate = () => {
+    setNewName('Untitled Overlay');
+    setNewIsTransition(false);
+    setNewFps(String(DEFAULT_OVERLAY_FPS));
+    setNewLength(String(DEFAULT_OVERLAY_LENGTH_FRAMES));
+    setCreating(true);
+  };
+
+  const parsedFps = parseInt(newFps, 10);
+  const lengthCap = maxOverlayLengthFrames(
+    Number.isFinite(parsedFps) ? Math.min(MAX_OVERLAY_FPS, Math.max(MIN_OVERLAY_FPS, parsedFps)) : DEFAULT_OVERLAY_FPS,
+  );
+
   const createOverlay = () => {
-    const name = window.prompt('Name the new overlay:', 'Untitled Overlay');
-    if (name === null) return;
-    const trimmed = name.trim();
+    const trimmed = newName.trim();
     if (!trimmed) {
       toast.warning('Please enter an overlay name');
       return;
     }
 
-    const created = newOverlay(trimmed, dimensions);
+    const created = newOverlay(trimmed, dimensions, {
+      isTransition: newIsTransition,
+      fps: parsedFps,
+      lengthFrames: parseInt(newLength, 10),
+    });
     saveOverlay(created, new Date().toISOString());
     refresh();
     onLoadOverlay(created);
@@ -59,7 +92,7 @@ function OverlayLibraryModal({ dimensions, onClose, onLoadOverlay }: OverlayLibr
         <div className="preset-modal-header">
           <h2>Overlay Library</h2>
           <div className="preset-modal-header__actions">
-            <button onClick={createOverlay} className="action-btn action-btn-green">
+            <button onClick={beginCreate} className="action-btn action-btn-green">
               New Overlay
             </button>
             <button className="close-button" onClick={onClose}>×</button>
@@ -67,6 +100,60 @@ function OverlayLibraryModal({ dimensions, onClose, onLoadOverlay }: OverlayLibr
         </div>
 
         <div className="preset-modal-content">
+          {creating && (
+            <div className="overlay-create-form">
+              <label className="overlay-create-field">
+                <span>Name</span>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createOverlay();
+                    if (e.key === 'Escape') setCreating(false);
+                  }}
+                />
+              </label>
+              <div className="overlay-create-row">
+                <label className="overlay-create-field overlay-create-field-narrow">
+                  <span>FPS</span>
+                  <input
+                    type="number"
+                    min={MIN_OVERLAY_FPS}
+                    max={MAX_OVERLAY_FPS}
+                    value={newFps}
+                    onChange={(e) => setNewFps(e.target.value)}
+                  />
+                </label>
+                <label className="overlay-create-field overlay-create-field-narrow">
+                  <span>Frames</span>
+                  <input
+                    type="number"
+                    min={MIN_OVERLAY_LENGTH_FRAMES}
+                    max={lengthCap}
+                    value={newLength}
+                    onChange={(e) => setNewLength(e.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="overlay-create-check">
+                <input
+                  type="checkbox"
+                  checked={newIsTransition}
+                  onChange={(e) => setNewIsTransition(e.target.checked)}
+                />
+                <span>Transition overlay</span>
+              </label>
+              <p className="overlay-create-hint">
+                A transition overlay plays over a layout change and gets a switch frame on its timeline.
+              </p>
+              <div className="overlay-create-actions">
+                <button onClick={createOverlay} className="action-btn action-btn-green">Create</button>
+                <button onClick={() => setCreating(false)} className="action-btn action-btn-gray">Cancel</button>
+              </div>
+            </div>
+          )}
           <div className="load-preset-section">
             {savedOverlays.length === 0 ? (
               <div className="no-presets">

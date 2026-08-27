@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   AnimationTrack,
+  Easing,
+  Interpolation,
   Keyframe,
+  OverlayConfig,
   sortKeyframes,
   sampleTrack,
   sampleTracks,
@@ -15,11 +18,16 @@ import {
   setKeyframeHandle,
   setKeyframeHandleMode,
   setKeyframeInterpolation,
-  setKeyframeEasing,
+  setKeyframeInterpolationMode,
+  setKeyframeEasingSpec,
   setKeyframeValue,
   removeKeyframe,
   retimeKeyframe,
   pruneTracksForComponent,
+  resolveSwitchFrame,
+  setSwitchFrame,
+  copyTracksForComponents,
+  remapTracksForComponents,
   validateTracks,
 } from './overlayTimeline';
 
@@ -819,7 +827,7 @@ describe('keyframe editing helpers', () => {
   });
 });
 
-describe('setKeyframeEasing', () => {
+describe('setKeyframeInterpolationMode', () => {
   const twoKeys = (): AnimationTrack[] => [{
     componentId: 'c1',
     property: 'x',
@@ -830,7 +838,7 @@ describe('setKeyframeEasing', () => {
   }];
 
   it('eases the incoming segment when the LAST keyframe is selected', () => {
-    const out = setKeyframeEasing(twoKeys(), 'c1', 'x', 58, 'bezier');
+    const out = setKeyframeInterpolationMode(twoKeys(), 'c1', 'x', 58, 'bezier');
     const keys = findTrack(out, 'c1', 'x')!.keyframes;
     expect(keys[0].interpolation).toBe('bezier');
     expect(keys[0].handleOut).toBeDefined();
@@ -838,7 +846,7 @@ describe('setKeyframeEasing', () => {
   });
 
   it('eases the outgoing segment when the FIRST keyframe is selected', () => {
-    const out = setKeyframeEasing(twoKeys(), 'c1', 'x', 5, 'bezier');
+    const out = setKeyframeInterpolationMode(twoKeys(), 'c1', 'x', 5, 'bezier');
     expect(findTrack(out, 'c1', 'x')!.keyframes[0].interpolation).toBe('bezier');
   });
 
@@ -850,18 +858,40 @@ describe('setKeyframeEasing', () => {
     const onlyLast = setKeyframeInterpolation(linear, 'c1', 'x', 58, 'bezier');
     expect(sampleTrack(findTrack(onlyLast, 'c1', 'x')!, midFrame)).toBe(before);
 
-    const eased = setKeyframeEasing(linear, 'c1', 'x', 58, 'bezier');
+    const eased = setKeyframeInterpolationMode(linear, 'c1', 'x', 58, 'bezier');
     expect(sampleTrack(findTrack(eased, 'c1', 'x')!, midFrame)).not.toBe(before);
   });
 
   it('applies constant to the incoming segment too', () => {
-    const out = setKeyframeEasing(twoKeys(), 'c1', 'x', 58, 'constant');
+    const out = setKeyframeInterpolationMode(twoKeys(), 'c1', 'x', 58, 'constant');
     expect(findTrack(out, 'c1', 'x')!.keyframes[0].interpolation).toBe('constant');
   });
 
   it('leaves tracks alone for a frame with no keyframe', () => {
     const input = twoKeys();
-    expect(setKeyframeEasing(input, 'c1', 'x', 12, 'bezier')).toBe(input);
+    expect(setKeyframeInterpolationMode(input, 'c1', 'x', 12, 'bezier')).toBe(input);
+  });
+
+  it('leaves an eased predecessor untouched instead of stripping its easing', () => {
+    const easedFirst: AnimationTrack[] = [{
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        { frame: 5, value: 700, interpolation: 'eased', easing: { fn: 'elastic', direction: 'out' } },
+        { frame: 58, value: 1347, interpolation: 'linear' },
+      ],
+    }];
+    const out = setKeyframeInterpolationMode(easedFirst, 'c1', 'x', 58, 'bezier');
+    const keys = findTrack(out, 'c1', 'x')!.keyframes;
+    expect(keys[0].interpolation).toBe('eased');
+    expect(keys[0].easing).toEqual({ fn: 'elastic', direction: 'out' });
+    expect(keys[1].interpolation).toBe('bezier');
+  });
+
+  it('still updates a non-eased predecessor as before', () => {
+    const out = setKeyframeInterpolationMode(twoKeys(), 'c1', 'x', 58, 'bezier');
+    const keys = findTrack(out, 'c1', 'x')!.keyframes;
+    expect(keys[0].interpolation).toBe('bezier');
   });
 });
 
@@ -968,6 +998,25 @@ describe('insertKeyframeOnCurve', () => {
     expect(insertKeyframeOnCurve(input, 'c1', 'x', 0)).toBe(input);
   });
 
+  it('takes the value from the eased curve, not the linear midpoint', () => {
+    const easedTrack: AnimationTrack[] = [{
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        { frame: 0, value: 0, interpolation: 'eased', easing: { fn: 'elastic', direction: 'out' } },
+        { frame: 30, value: 100, interpolation: 'linear' },
+      ],
+    }];
+    const out = insertKeyframeOnCurve(easedTrack, 'c1', 'x', 15);
+    const keys = findTrack(out, 'c1', 'x')!.keyframes;
+    const inserted = keys.find(k => k.frame === 15)!;
+    expect(inserted.value).toBeGreaterThan(75);
+    expect(inserted.interpolation).toBe('linear');
+    expect(inserted.easing).toBeUndefined();
+    expect(keys[0].interpolation).toBe('eased');
+    expect(keys[0].easing).toEqual({ fn: 'elastic', direction: 'out' });
+  });
+
   it('holds the end value when inserting outside the authored range', () => {
     const out = insertKeyframeOnCurve(linearTrack(), 'c1', 'x', 80);
     expect(findTrack(out, 'c1', 'x')!.keyframes.find(k => k.frame === 80)!.value).toBe(600);
@@ -988,5 +1037,316 @@ describe('insertKeyframeOnCurve', () => {
       ],
     }];
     expect(insertKeyframeOnCurve(colour, 'c1', 'color', 5)).toBe(colour);
+  });
+});
+
+describe('copyTracksForComponents', () => {
+  it('appends remapped copies of the tracks belonging to the copied components', () => {
+    const existing = [
+      track('x', [kf(0, 1), kf(10, 5)], 'parent'),
+      track('opacity', [kf(0, 0)], 'child'),
+      track('x', [kf(0, 9)], 'untouched'),
+    ];
+    const mapping = new Map([['parent', 'parent2'], ['child', 'child2']]);
+
+    const out = copyTracksForComponents(existing, mapping);
+
+    expect(out).toHaveLength(5);
+    expect(out.slice(0, 3)).toEqual(existing);
+    expect(out[3]).toEqual({
+      componentId: 'parent2',
+      property: 'x',
+      keyframes: [kf(0, 1), kf(10, 5)],
+    });
+    expect(out[4].componentId).toBe('child2');
+    expect(out[4].property).toBe('opacity');
+  });
+
+  it('is a no-op when no copied component has tracks', () => {
+    const existing = [track('x', [kf(0, 1)], 'c1')];
+    const out = copyTracksForComponents(existing, new Map([['c9', 'c9copy']]));
+    expect(out).toEqual(existing);
+  });
+
+  it('deep clones keyframes so editing a copy does not touch the original', () => {
+    const original = track('x', [{ frame: 0, value: 1, interpolation: 'bezier', handleIn: { dFrame: -2, dValue: 3 } }], 'c1');
+    const out = copyTracksForComponents([original], new Map([['c1', 'c2']]));
+    const copy = out.find(t => t.componentId === 'c2')!;
+
+    copy.keyframes[0].frame = 99;
+    copy.keyframes[0].handleIn!.dFrame = 42;
+
+    expect(original.keyframes[0].frame).toBe(0);
+    expect(original.keyframes[0].handleIn!.dFrame).toBe(-2);
+  });
+
+  it('does not mutate the input array', () => {
+    const input = [track('x', [kf(0, 1)], 'c1')];
+    const out = copyTracksForComponents(input, new Map([['c1', 'c2']]));
+    expect(input).toHaveLength(1);
+    expect(out).not.toBe(input);
+  });
+});
+
+describe('remapTracksForComponents', () => {
+  it('returns only the remapped copies, not the originals', () => {
+    const existing = [
+      track('x', [kf(0, 1)], 'c1'),
+      track('x', [kf(0, 2)], 'other'),
+    ];
+    const out = remapTracksForComponents(existing, new Map([['c1', 'c1copy']]));
+    expect(out).toHaveLength(1);
+    expect(out[0].componentId).toBe('c1copy');
+  });
+
+  it('returns an empty array when nothing maps', () => {
+    expect(remapTracksForComponents([track('x', [kf(0, 1)], 'c1')], new Map())).toEqual([]);
+  });
+});
+
+describe('sampleTrack with eased interpolation', () => {
+  const easedTrack = (easing: Easing): AnimationTrack => ({
+    componentId: 'c1',
+    property: 'x',
+    keyframes: [
+      { frame: 0, value: 0, interpolation: 'eased', easing },
+      { frame: 10, value: 100, interpolation: 'linear' },
+    ],
+  });
+
+  it('hits both keyframes exactly', () => {
+    const t = easedTrack({ fn: 'elastic', direction: 'out' });
+    expect(sampleTrack(t, 0)).toBe(0);
+    expect(sampleTrack(t, 10)).toBe(100);
+  });
+
+  it('differs from linear in the middle of the segment', () => {
+    const eased = easedTrack({ fn: 'quint', direction: 'in' });
+    const linear = {
+      ...eased,
+      keyframes: [
+        { frame: 0, value: 0, interpolation: 'linear' as const },
+        { frame: 10, value: 100, interpolation: 'linear' as const },
+      ],
+    };
+    expect(sampleTrack(linear, 5)).toBe(50);
+    expect(sampleTrack(eased, 5)).toBeLessThan(20);
+  });
+
+  it('overshoots past the destination value for an elastic out', () => {
+    const t = easedTrack({ fn: 'elastic', direction: 'out' });
+    let max = -Infinity;
+    for (let f = 0; f <= 10; f += 0.05) max = Math.max(max, sampleTrack(t, f) as number);
+    expect(max).toBeGreaterThan(100);
+  });
+
+  it('eases a hex colour channel, proving easing is property-agnostic', () => {
+    const track: AnimationTrack = {
+      componentId: 'c1',
+      property: 'backgroundColor',
+      keyframes: [
+        { frame: 0, value: '#000000', interpolation: 'eased', easing: { fn: 'quint', direction: 'in' } },
+        { frame: 10, value: '#ffffff', interpolation: 'linear' },
+      ],
+    };
+    expect(sampleTrack(track, 0)).toBe('#000000');
+    expect(sampleTrack(track, 10)).toBe('#ffffff');
+    const mid = sampleTrack(track, 5) as string;
+    expect(parseInt(mid.slice(1, 3), 16)).toBeLessThan(0x40);
+  });
+
+  it('falls back to linear for an unrecognised interpolation', () => {
+    const track: AnimationTrack = {
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        { frame: 0, value: 0, interpolation: 'not-a-mode' as Interpolation },
+        { frame: 10, value: 100, interpolation: 'linear' },
+      ],
+    };
+    expect(sampleTrack(track, 5)).toBe(50);
+  });
+
+  it('falls back to linear when eased is set but no easing spec is present', () => {
+    const track: AnimationTrack = {
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        { frame: 0, value: 0, interpolation: 'eased' },
+        { frame: 10, value: 100, interpolation: 'linear' },
+      ],
+    };
+    expect(sampleTrack(track, 5)).toBe(50);
+  });
+});
+
+describe('setKeyframeEasingSpec', () => {
+  const twoKeyTrack = (): AnimationTrack[] => ([{
+    componentId: 'c1',
+    property: 'x',
+    keyframes: [
+      { frame: 0, value: 0, interpolation: 'linear' },
+      { frame: 10, value: 100, interpolation: 'linear' },
+    ],
+  }]);
+
+  const elastic: Easing = { fn: 'elastic', direction: 'out', amplitude: 1.5, period: 0.4 };
+
+  it('sets the easing spec and switches the keyframe to eased', () => {
+    const out = setKeyframeEasingSpec(twoKeyTrack(), 'c1', 'x', 0, elastic);
+    expect(out[0].keyframes[0].interpolation).toBe('eased');
+    expect(out[0].keyframes[0].easing).toEqual(elastic);
+  });
+
+  it('writes only the selected keyframe, leaving the next one alone', () => {
+    const out = setKeyframeEasingSpec(twoKeyTrack(), 'c1', 'x', 0, elastic);
+    expect(out[0].keyframes[1].interpolation).toBe('linear');
+    expect(out[0].keyframes[1].easing).toBeUndefined();
+  });
+
+  it('writes only the selected keyframe, leaving the previous one alone', () => {
+    const out = setKeyframeEasingSpec(twoKeyTrack(), 'c1', 'x', 10, elastic);
+    expect(out[0].keyframes[0].interpolation).toBe('linear');
+    expect(out[0].keyframes[0].easing).toBeUndefined();
+  });
+
+  it('clears back to linear and drops the spec when given null', () => {
+    const eased = setKeyframeEasingSpec(twoKeyTrack(), 'c1', 'x', 0, elastic);
+    const cleared = setKeyframeEasingSpec(eased, 'c1', 'x', 0, null);
+    expect(cleared[0].keyframes[0].interpolation).toBe('linear');
+    expect(cleared[0].keyframes[0].easing).toBeUndefined();
+  });
+
+  it('preserves bezier handles so switching back to bezier restores them', () => {
+    const withHandles: AnimationTrack[] = [{
+      componentId: 'c1',
+      property: 'x',
+      keyframes: [
+        {
+          frame: 0,
+          value: 0,
+          interpolation: 'bezier',
+          handleOut: { dFrame: 3, dValue: 20 },
+          handleMode: 'aligned',
+        },
+        { frame: 10, value: 100, interpolation: 'linear' },
+      ],
+    }];
+    const out = setKeyframeEasingSpec(withHandles, 'c1', 'x', 0, elastic);
+    expect(out[0].keyframes[0].handleOut).toEqual({ dFrame: 3, dValue: 20 });
+    expect(out[0].keyframes[0].handleMode).toBe('aligned');
+  });
+
+  it('returns the input unchanged for an unknown track or frame', () => {
+    const input = twoKeyTrack();
+    expect(setKeyframeEasingSpec(input, 'nope', 'x', 0, elastic)).toBe(input);
+    expect(setKeyframeEasingSpec(input, 'c1', 'y', 0, elastic)).toBe(input);
+    expect(setKeyframeEasingSpec(input, 'c1', 'x', 7, elastic)).toBe(input);
+  });
+
+  it('does not mutate the input', () => {
+    const input = twoKeyTrack();
+    setKeyframeEasingSpec(input, 'c1', 'x', 0, elastic);
+    expect(input[0].keyframes[0].interpolation).toBe('linear');
+    expect(input[0].keyframes[0].easing).toBeUndefined();
+  });
+});
+
+describe('resolveSwitchFrame', () => {
+  const overlay = (over: Partial<OverlayConfig>): OverlayConfig => ({
+    id: 'o1',
+    name: 'transition',
+    components: [],
+    dimensions: { width: 1920, height: 1080 },
+    fps: 30,
+    startFrame: 0,
+    endFrame: 60,
+    tracks: [],
+    ...over,
+  });
+
+  it('uses the authored switch frame when it is inside the range', () => {
+    expect(resolveSwitchFrame(overlay({ switchFrame: 12 }))).toBe(12);
+  });
+
+  it('falls back to the midpoint when no switch frame is authored', () => {
+    expect(resolveSwitchFrame(overlay({}))).toBe(30);
+    expect(resolveSwitchFrame(overlay({ startFrame: 10, endFrame: 20 }))).toBe(15);
+  });
+
+  it('rounds a fractional midpoint to a whole frame', () => {
+    expect(resolveSwitchFrame(overlay({ startFrame: 0, endFrame: 5 }))).toBe(3);
+  });
+
+  it('clamps a switch frame past the end, so the layout still changes', () => {
+    expect(resolveSwitchFrame(overlay({ switchFrame: 9999 }))).toBe(60);
+  });
+
+  it('clamps a switch frame before the start', () => {
+    expect(resolveSwitchFrame(overlay({ startFrame: 10, endFrame: 20, switchFrame: -5 }))).toBe(10);
+  });
+
+  it('ignores a non-finite or non-numeric switch frame', () => {
+    expect(resolveSwitchFrame(overlay({ switchFrame: NaN }))).toBe(30);
+    expect(resolveSwitchFrame(overlay({ switchFrame: Infinity }))).toBe(30);
+    expect(resolveSwitchFrame(overlay({ switchFrame: '15' as unknown as number }))).toBe(30);
+  });
+
+  it('handles a single-frame overlay without producing something outside it', () => {
+    const single = resolveSwitchFrame(overlay({ startFrame: 7, endFrame: 7 }));
+    expect(single).toBe(7);
+  });
+
+  it('handles an inverted range without returning a frame that never arrives', () => {
+    const inverted = resolveSwitchFrame(overlay({ startFrame: 40, endFrame: 10 }));
+    expect(inverted).toBe(40);
+  });
+});
+
+describe('setSwitchFrame', () => {
+  const overlay = (over: Partial<OverlayConfig>): OverlayConfig => ({
+    id: 'o1',
+    name: 'transition',
+    components: [],
+    dimensions: { width: 1920, height: 1080 },
+    fps: 30,
+    startFrame: 0,
+    endFrame: 60,
+    tracks: [],
+    ...over,
+  });
+
+  it('stores a switch frame inside the range', () => {
+    expect(setSwitchFrame(overlay({}), 12).switchFrame).toBe(12);
+  });
+
+  it('rounds a fractional frame', () => {
+    expect(setSwitchFrame(overlay({}), 12.6).switchFrame).toBe(13);
+  });
+
+  it('clamps into the authored range', () => {
+    expect(setSwitchFrame(overlay({}), 9999).switchFrame).toBe(60);
+    expect(setSwitchFrame(overlay({ startFrame: 10, endFrame: 20 }), -5).switchFrame).toBe(10);
+  });
+
+  it('clamps against an inverted range using its true bounds', () => {
+    expect(setSwitchFrame(overlay({ startFrame: 40, endFrame: 10 }), 5).switchFrame).toBe(10);
+    expect(setSwitchFrame(overlay({ startFrame: 40, endFrame: 10 }), 99).switchFrame).toBe(40);
+  });
+
+  it('removes the field entirely when cleared', () => {
+    const cleared = setSwitchFrame(overlay({ switchFrame: 12 }), null);
+    expect('switchFrame' in cleared).toBe(false);
+  });
+
+  it('removes the field for a non-finite frame rather than persisting garbage', () => {
+    expect('switchFrame' in setSwitchFrame(overlay({ switchFrame: 12 }), NaN)).toBe(false);
+    expect('switchFrame' in setSwitchFrame(overlay({ switchFrame: 12 }), Infinity)).toBe(false);
+  });
+
+  it('does not mutate the overlay it is given', () => {
+    const original = overlay({ switchFrame: 12 });
+    setSwitchFrame(original, 30);
+    expect(original.switchFrame).toBe(12);
   });
 });

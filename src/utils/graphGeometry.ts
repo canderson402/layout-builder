@@ -1,4 +1,5 @@
 import { sampleTrack, type AnimationTrack, type Handle, type Keyframe } from '../shared/utils/overlayTimeline';
+import { ease } from '../shared/utils/easing';
 
 export interface ValueRange {
   min: number;
@@ -15,11 +16,21 @@ function numericValue(keyframe: Keyframe): number | null {
     : null;
 }
 
-/**
- * The value window the curves are drawn in. Includes bezier handle tips so a
- * handle dragged past its keyframe stays reachable, and pads flat curves so a
- * constant channel does not collapse to a zero-height line.
- */
+const EASED_SAMPLES = 24;
+
+function easedSegmentValues(left: Keyframe, right: Keyframe, samples: number): number[] {
+  const from = numericValue(left);
+  const to = numericValue(right);
+  if (from === null || to === null) return [];
+
+  const out: number[] = [];
+  for (let i = 1; i < samples; i++) {
+    const t = i / samples;
+    out.push(from + (to - from) * ease(left.easing, t));
+  }
+  return out;
+}
+
 export function computeValueRange(tracks: AnimationTrack[], padRatio = 0.1): ValueRange {
   let min = Infinity;
   let max = -Infinity;
@@ -35,6 +46,15 @@ export function computeValueRange(tracks: AnimationTrack[], padRatio = 0.1): Val
         if (!handle || !Number.isFinite(handle.dValue)) continue;
         min = Math.min(min, value + handle.dValue);
         max = Math.max(max, value + handle.dValue);
+      }
+    }
+
+    for (let i = 0; i < track.keyframes.length - 1; i++) {
+      const left = track.keyframes[i];
+      if (left.interpolation !== 'eased' || !left.easing) continue;
+      for (const value of easedSegmentValues(left, track.keyframes[i + 1], EASED_SAMPLES)) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
       }
     }
   }
@@ -53,7 +73,6 @@ export function computeValueRange(tracks: AnimationTrack[], padRatio = 0.1): Val
 const MIN_ZOOM_SPAN = 1e-4;
 const MAX_ZOOM_SPAN = 1e9;
 
-/** Zoom the value axis about a fixed value, so the point under the cursor stays put. */
 export function zoomRange(range: ValueRange, focusValue: number, factor: number): ValueRange {
   const span = range.max - range.min;
   if (!(span > 0) || !Number.isFinite(factor) || factor <= 0) return range;
@@ -64,19 +83,16 @@ export function zoomRange(range: ValueRange, focusValue: number, factor: number)
   return { min, max: min + nextSpan };
 }
 
-/** Shift the value axis without changing its span. */
 export function panRange(range: ValueRange, deltaValue: number): ValueRange {
   if (!Number.isFinite(deltaValue)) return range;
   return { min: range.min + deltaValue, max: range.max + deltaValue };
 }
 
-/** Value span represented by one pixel — used for precision dragging. */
 export function valuePerPixel(range: ValueRange, height: number): number {
   if (height <= 0) return 0;
   return (range.max - range.min) / height;
 }
 
-/** Value axis grows upward, so a larger value maps to a smaller y. */
 export function valueToY(value: number, range: ValueRange, height: number): number {
   const span = range.max - range.min;
   if (span <= 0) return height / 2;
@@ -111,7 +127,6 @@ export function handlePoint(
   };
 }
 
-/** Screen delta back into a handle's frame/value offsets. */
 export function handleFromPoint(
   keyframe: Keyframe,
   point: HandlePoint,
@@ -142,19 +157,10 @@ export interface CurveHitOptions {
   height: number;
   pixelsPerFrame: number;
   originFrame: number;
-  /** How far either side of the pointer to look, in pixels. */
   searchPx?: number;
-  /** Sampling resolution across that window, in pixels. */
   stepPx?: number;
 }
 
-/**
- * Nearest point on any curve to a pointer position, measured in SCREEN space.
- *
- * Measuring only the vertical gap at the pointer's frame fails on steep curves:
- * the pointer can sit visually on the line while being far from it vertically.
- * Scanning a window either side and taking the true 2D distance fixes that.
- */
 export function nearestCurvePoint(
   tracks: AnimationTrack[],
   pointerX: number,
@@ -186,10 +192,6 @@ export function nearestCurvePoint(
   return best;
 }
 
-/**
- * SVG path for one channel's curve. Bezier segments use the authored handles;
- * constant segments step; anything else is a straight line.
- */
 export function buildCurvePath(
   keyframes: Keyframe[],
   range: ValueRange,
@@ -227,6 +229,20 @@ export function buildCurvePath(
       const c2x = px(right.keyframe.frame + (inn?.dFrame ?? 0));
       const c2y = py(right.value + (inn?.dValue ?? 0));
       path += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${x1} ${y1}`;
+      continue;
+    }
+
+    if (left.keyframe.interpolation === 'eased' && left.keyframe.easing) {
+      const pixelWidth = Math.abs(x1 - px(left.keyframe.frame));
+      const samples = Math.max(8, Math.min(96, Math.round(pixelWidth / 4)));
+      const spanFrames = right.keyframe.frame - left.keyframe.frame;
+      for (let s = 1; s < samples; s++) {
+        const t = s / samples;
+        const frame = left.keyframe.frame + spanFrames * t;
+        const value = left.value + (right.value - left.value) * ease(left.keyframe.easing, t);
+        path += ` L ${px(frame)} ${py(value)}`;
+      }
+      path += ` L ${x1} ${y1}`;
       continue;
     }
 

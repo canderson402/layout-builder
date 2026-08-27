@@ -209,6 +209,8 @@ export interface GraphEditorProps {
   onSetKeyframeValue: (componentId: string, property: AnimatableProperty, frame: number, value: number) => void;
   onSetKeyframeHandle: (componentId: string, property: AnimatableProperty, frame: number, side: 'in' | 'out', handle: Handle) => void;
   onInsertOnCurve: (componentId: string, property: AnimatableProperty, frame: number) => void;
+  onBeginKeyframeGesture: () => void;
+  onEndKeyframeGesture: () => void;
   clampFrame: (frame: number) => number;
   fitSignal: number;
 }
@@ -230,6 +232,8 @@ const GraphEditor = ({
   clampFrame,
   fitSignal,
   onInsertOnCurve,
+  onBeginKeyframeGesture,
+  onEndKeyframeGesture,
 }: GraphEditorProps) => {
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const dragRef = React.useRef<DragState | null>(null);
@@ -239,11 +243,6 @@ const GraphEditor = ({
     [rows, activeChannel],
   );
 
-  /**
-   * The axis belongs to the active channel alone. Channels have incompatible
-   * units (x spans a canvas, opacity spans 0..1), so a shared axis makes all
-   * but one of them uneditable.
-   */
   const fitToActive = React.useCallback((): ValueRange => {
     if (!activeRow) return computeValueRange([]);
     return computeValueRange([{
@@ -258,8 +257,6 @@ const GraphEditor = ({
   const fitKeyRef = React.useRef<string>('');
   const channelKey = activeChannel ? `${activeChannel.componentId}:${activeChannel.property}` : '';
 
-  // Re-fit only when the active channel changes or Fit is pressed — never
-  // while editing, or the axis would rescale under the cursor mid-drag.
   React.useEffect(() => {
     const key = `${channelKey}|${fitSignal}`;
     if (fitKeyRef.current === key) return;
@@ -277,12 +274,6 @@ const GraphEditor = ({
     ? `${selectedKeyframe.componentId}:${selectedKeyframe.property}:${selectedKeyframe.frame}`
     : '';
 
-  /**
-   * Bring a selected keyframe's handles into view if they sit outside the
-   * current window — otherwise a handle is simply invisible after zooming.
-   * Keyed on the selection, never on handle values, so dragging cannot
-   * feed back into the axis.
-   */
   React.useEffect(() => {
     if (!selectedKf) return;
     if (typeof selectedKf.value !== 'number') return;
@@ -311,7 +302,8 @@ const GraphEditor = ({
     const point = localPoint(e.clientX, e.clientY);
     svgRef.current?.setPointerCapture(e.pointerId);
     dragRef.current = { ...state, originX: point.x, originY: point.y, rangeAtStart: range };
-  }, [localPoint, range]);
+    if (state.kind !== 'pan') onBeginKeyframeGesture();
+  }, [localPoint, range, onBeginKeyframeGesture]);
 
   const handleKeyframePointerDown = React.useCallback((e: React.PointerEvent, row: GraphRow, keyframe: Keyframe) => {
     e.stopPropagation();
@@ -374,11 +366,6 @@ const GraphEditor = ({
     return { row, frame, value, existing: !!existing };
   }, [rows, localPoint, range, height, pixelsPerFrame, originFrame, clampFrame]);
 
-  /**
-   * Grabbing the curve itself creates a keyframe there and immediately drags
-   * it. Keyframe dots and handles stop propagation, so they always win; empty
-   * space away from any curve pans the view instead.
-   */
   const handleBackgroundPointerDown = React.useCallback((e: React.PointerEvent) => {
     const target = findCurveTarget(e.clientX, e.clientY);
 
@@ -447,14 +434,11 @@ const GraphEditor = ({
     if (svgRef.current?.hasPointerCapture?.(e.pointerId)) {
       svgRef.current.releasePointerCapture(e.pointerId);
     }
+    const wasEditing = dragRef.current !== null && dragRef.current.kind !== 'pan';
     dragRef.current = null;
-  }, []);
+    if (wasEditing) onEndKeyframeGesture();
+  }, [onEndKeyframeGesture]);
 
-  /**
-   * Double-click a curve to drop a keyframe on it. The value comes from the
-   * curve itself, so the animation is untouched — it just becomes editable
-   * at that point.
-   */
   const handleWheel = React.useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const point = localPoint(e.clientX, e.clientY);
